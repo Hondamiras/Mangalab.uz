@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-3*q1k1n4(uwo38_3pwmo05atz9+^fej07%i@xcfn3h8msvoyum'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# DEBUG = True
+DEBUG = True
 
 # ALLOWED_HOSTS = []
 
@@ -152,7 +152,7 @@ import dj_database_url
 import os
 
 SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
-DEBUG = os.getenv("DEBUG", "False") == "True"
+# DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
 
 DATABASES = {
