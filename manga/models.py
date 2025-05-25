@@ -49,7 +49,7 @@ class Manga(models.Model):
         choices=[
             ("Not Translated", "Tarjima qilinmagan"),
             ("In Progress", "Tarjima qilinmoqda"),
-            ("Completed", "Tarjima qibo'lingan"),
+            ("Completed", "Tarjima qilingan"),
             ("Dropped", "Tashlab qo'yilgan"),
         ],
         default="Not Translated",

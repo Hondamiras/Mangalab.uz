@@ -33,12 +33,12 @@ INSTALLED_APPS = [
 
 ASGI_APPLICATION = "conf.asgi.application"
 
-# для локальной разработки хватит встроенного In-Memory слоя
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    }
-}
+# # для локальной разработки хватит встроенного In-Memory слоя
+# CHANNEL_LAYERS = {
+#     "default": {
+#         "BACKEND": "channels.layers.InMemoryChannelLayer",
+#     }
+# }
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

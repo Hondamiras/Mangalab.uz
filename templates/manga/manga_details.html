@@ -52,8 +52,8 @@
             <a href="{% url 'manga:manga_list' %}?status={{ manga.status|urlencode }}"
              class="">
               <div class="flex flex-col items-center">
-                <span class="text-sm text-gray-400 group-hover:text-purple-300 transition-colors">Holati</span>
-                <span class="text-sm font-semibold text-purple-400">{{ manga.status }}</span>
+                <span class="text-sm text-gray-400 group-hover:text-purple-300 transition-colors">Taytl holati</span>
+                <span class="text-sm font-semibold text-purple-400">{{ manga.get_status_display }}</span>
               </div>
             </a>
           </div>
@@ -62,8 +62,8 @@
             <a href="{% url 'manga:manga_list' %}?translation={{ manga.translation_status|urlencode }}"
              class="">
               <div class="flex flex-col items-center">
-              <span class="text-sm text-gray-400 group-hover:text-purple-300 transition-colors">Tarjimasi</span>
-              <span class="text-sm font-semibold text-purple-400">{{ manga.translation_status }}</span>
+              <span class="text-sm text-gray-400 group-hover:text-purple-300 transition-colors">Tarjima holati</span>
+              <span class="text-sm font-semibold text-purple-400">{{ manga.get_translation_status_display }}</span>
               </div>
             </a>
           </div>
