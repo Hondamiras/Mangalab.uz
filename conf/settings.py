@@ -151,7 +151,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 import dj_database_url
 import os
 
-SECRET_KEY = os.getenv("691f3582471ea104f31d2c1d41572d89", "default-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
 DEBUG = os.getenv("DEBUG", "False") == "True"
 ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
 
