@@ -80,12 +80,12 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
 
 
 # Password validation
@@ -145,18 +145,18 @@ EMAIL_USE_TLS      = True
 DEFAULT_FROM_EMAIL = "MyManga <khondamiras@gmail.com>"
 
 
-#renderniki
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# renderniki
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# import dj_database_url
-# import os
+import dj_database_url
+import os
 
-# SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
-# # DEBUG = os.getenv("DEBUG", "False") == "True"
-# ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
+SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
+# DEBUG = os.getenv("DEBUG", "False") == "True"
+ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
 
-# DATABASES = {
-#     'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR}/db.sqlite3', conn_max_age=600)
-# }
+DATABASES = {
+    'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR}/db.sqlite3', conn_max_age=600)
+}
 
 # pipenv install gunicorn psycopg2-binary whitenoise dj-database-url
