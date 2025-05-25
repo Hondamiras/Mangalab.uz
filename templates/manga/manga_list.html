@@ -47,54 +47,58 @@
     </div>
 
     <!-- Manga Grid -->
-    <div class="p-2 grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-3 xs:gap-3 sm:gap-2">
-      {% for manga in page_obj %}
-          <article class="group relative overflow-hidden rounded-xl bg-gray-900 shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1">
-              <a href="{% url 'manga:manga_details' manga.slug %}" class="block">
-                  <div class="relative aspect-[2/3]">
-                      <img
-                          src="{{ manga.cover_image.url }}"
-                          alt="{{ manga.title }}"
-                          class="w-full h-full object-cover transform transition duration-500 group-hover:scale-105"
-                      >
-                      <!-- Gradient overlay -->
-                      <div class="absolute inset-0 bg-gradient-to-t from-gray-900/80 via-gray-900/20 to-transparent"></div>
-                      
-                      <!-- Status badge -->
-                      {% if manga.user_status %}
-                      <div class="absolute top-1.5 left-1.5">
-                        <span class="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-sm sm:text-xs font-medium transition-colors
-                          {% if manga.user_status.0.status == 'planned'   %} bg-blue-900/80  text-blue-300  
-                          {% elif manga.user_status.0.status == 'reading'  %} bg-purple-900/80 text-purple-300
-                          {% elif manga.user_status.0.status == 'completed'%} bg-green-900/80 text-green-300 
-                          {% elif manga.user_status.0.status == 'dropped'  %} bg-red-900/80   text-red-300   
-                          {% elif manga.user_status.0.status == 'favorite' %} bg-yellow-900/80 text-yellow-300
-                          {% elif manga.user_status.0.status == 'ongoing'  %} bg-pink-900/80  text-pink-300  
-                          {% endif %}">
-                          {{ manga.user_status.0.get_status_display }}
-                        </span>
-                      </div>
-                      {% endif %}
+    <div class="p-2 grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3">
+    {% for manga in page_obj %}
+    <article class="group relative overflow-hidden rounded-xl bg-gray-900 shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 hover:z-10">
+    <a href="{% url 'manga:manga_details' manga.slug %}" class="block focus:outline-none focus-visible:ring-2 ring-purple-500">
+      <div class="relative aspect-[2/3]">
+        <!-- Image with optimized loading -->
+        <img
+          src="{{ manga.cover_image.url }}"
+          alt="{{ manga.title }} cover"
+          class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105 will-change-transform"
+          loading="lazy"
+        >
+        
+        <!-- Enhanced gradient overlay -->
+        <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
+        
+        <!-- Status badge -->
+        <div class="absolute top-1.5 left-1.5 flex items-center">
+            <span class="px-2 py-0.5 sm:px-2 sm:py-1 rounded-full text-xs font-medium transition-colors
+                {% if manga.user_status.0.status == 'planned' %} bg-blue-900/80 text-blue-300  
+                {% elif manga.user_status.0.status == 'reading' %} bg-purple-900/80 text-purple-300
+                {% elif manga.user_status.0.status == 'completed' %} bg-green-900/80 text-green-300 
+                {% elif manga.user_status.0.status == 'dropped' %} bg-red-900/80 text-red-300   
+                {% elif manga.user_status.0.status == 'favorite' %} bg-yellow-900/80 text-yellow-300
+                {% elif manga.user_status.0.status == 'ongoing' %} bg-pink-900/80 text-pink-300  
+                {% endif %}">
+                {{ manga.user_status.0.get_status_display }}
+            </span>
+        </div>
 
-                      <!-- Type badge -->
-                      <div class="absolute top-1.5 right-1.5 px-2 py-0.5 sm:py-1 bg-gray-900/80 backdrop-blur-sm rounded-full text-sm sm:text-xs font-medium text-purple-300 transition-opacity duration-300 group-hover:opacity-90">
-                          {{ manga.type }}
-                      </div>
-                      
-                      <!-- Title container -->
-                      <div class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 space-y-0.5">
-                          <h2 class="text-sm sm:text-base md:text-lg font-semibold text-white line-clamp-2 leading-snug sm:leading-tight transition-colors duration-300 group-hover:text-purple-400">
-                              {{ manga.title }}
-                          </h2>
-                      </div>
-                  </div>
+        <!-- Type badge -->
+        <div class="absolute top-1.5 right-1.5 flex items-center px-2 py-0.5 sm:px-2 sm:py-1 bg-gray-900/80 backdrop-blur-sm rounded-full text-xs font-medium text-purple-300 transition-all duration-300 group-hover:bg-gray-900/90">
+            {{ manga.type }}
+        </div>
+                  
+        <!-- Title with optimized text rendering -->
+        <div class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 space-y-0.5">
+            <h2 class="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-snug transition-colors duration-300 group-hover:text-purple-400 subpixel-antialiased">
+                {{ manga.title }}
+            </h2>
+        </div>
+                </div>
               </a>
-          </article>
-      {% empty %}
-          <div class="col-span-full text-center py-8">
-          <p class="text-gray-400 text-sm xs:text-sm">Hech narsa topilmadi. Filtr sozlamalarini o'zgartirib ko'ring.</p>
-          </div>
-      {% endfor %}
+    </article>
+    {% empty %}
+    <div class="col-span-full text-center py-10">
+    <p class="text-gray-400 text-sm xs:text-sm mb-2">
+      <i class="fas fa-search-minus text-lg opacity-70"></i>
+    </p>
+    <p class="text-gray-400 text-sm xs:text-sm">Hech narsa topilmadi. Filtr sozlamalarini o'zgartirib ko'ring.</p>
+    </div>
+    {% endfor %}
     </div>
 
 

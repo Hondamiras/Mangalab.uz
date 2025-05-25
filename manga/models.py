@@ -26,11 +26,11 @@ class Manga(models.Model):
     status = models.CharField(
         max_length=50,
         choices=[
-            ("Ongoing", "Ongoing"),
-            ("Completed", "Completed"),
-            ("Stopped", "Stopped"),
-            ("Paused", "Paused"),
-            ("Announced", "Announced"),
+            ("Ongoing", "Davom etmoqda"),
+            ("Completed", "To'liq chiqarilgan"),
+            ("Stopped", "Bekor qilingan"),
+            ("Paused", "To'xtatilgan"),
+            ("Announced", "E'lon qilingan"),
         ],
         default="Ongoing",
     )
@@ -47,10 +47,10 @@ class Manga(models.Model):
     translation_status = models.CharField(
         max_length=50,
         choices=[
-            ("Not Translated", "Not Translated"),
-            ("In Progress", "In Progress"),
-            ("Completed", "Completed"),
-            ("Dropped", "Dropped"),
+            ("Not Translated", "Tarjima qilinmagan"),
+            ("In Progress", "Tarjima qilinmoqda"),
+            ("Completed", "Tarjima qibo'lingan"),
+            ("Dropped", "Tashlab qo'yilgan"),
         ],
         default="Not Translated",
     )
@@ -58,8 +58,8 @@ class Manga(models.Model):
 
     class Meta:
         ordering = ("title",)
-        verbose_name = "Тайтл"
-        verbose_name_plural = "Тайтлы"
+        verbose_name = "Taytl"
+        verbose_name_plural = "Taytlar"
         indexes = [models.Index(fields=("title",))]
 
     def __str__(self) -> str:

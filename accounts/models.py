@@ -7,12 +7,10 @@ from django.conf import settings
 User = get_user_model()
 
 READING_STATUSES = (
-    ("reading", "Читаю"),
-    ("planned", "В планах"),
-    ("dropped", "Брошено"),
-    ("completed", "Прочитано"),
-    ("favorite", "Любимые"),
-    ("ongoing", "Продолжается"),
+    ("reading", "O'qilyapti"),
+    ("planned", "Rejalashtirilgan"),
+    ("completed", "O'qib bo'lingan"),
+    ("favorite", "Yoqtirganim"),
 )
 
 class EmailVerificationCode(models.Model):
@@ -35,8 +33,8 @@ class UserProfile(models.Model):
     )
 
     class Meta:
-        verbose_name = "Профиль"
-        verbose_name_plural = "Профили"
+        verbose_name = "Profil"
+        verbose_name_plural = "Profillar"
 
     def __str__(self):
         return self.user.username
@@ -66,8 +64,8 @@ class ReadingStatus(models.Model):
 
     class Meta:
         unique_together = ("user_profile", "manga")
-        verbose_name = "Статус чтения"
-        verbose_name_plural = "Статусы чтения"
+        verbose_name = "O'qish holati"
+        verbose_name_plural = "O'qish holatlari"
 
     def __str__(self):
         return f"{self.user_profile.user.username} — {self.manga.title} ({self.status})"
