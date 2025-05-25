@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!-- Flash Messages -->
+{% if messages %}
+    <div id="messages" class="fixed top-4 left-1/2 transform -translate-x-1/2 w-full max-w-md z-50 space-y-2">
+        {% for message in messages %}
+            <div class="message animate-fade-in relative px-6 py-3 rounded-xl shadow-xl border 
+                        {% if message.tags == 'info' %}bg-blue-900/90 border-blue-500/30 text-blue-100{% endif %}
+                        {% if message.tags == 'success' %}bg-emerald-900/90 border-emerald-500/30 text-emerald-100{% endif %}
+                        {% if message.tags == 'warning' %}bg-amber-900/90 border-amber-500/30 text-amber-100{% endif %}
+                        {% if message.tags == 'error' %}bg-rose-900/90 border-rose-500/30 text-rose-100{% endif %}
+                        backdrop-blur-sm flex items-center">
+                <div class="flex-1 flex items-center">
+                    {% if message.tags == 'info' %}<i class="fas fa-info-circle mr-3"></i>{% endif %}
+                    {% if message.tags == 'success' %}<i class="fas fa-check-circle mr-3"></i>{% endif %}
+                    {% if message.tags == 'warning' %}<i class="fas fa-exclamation-triangle mr-3"></i>{% endif %}
+                    {% if message.tags == 'error' %}<i class="fas fa-times-circle mr-3"></i>{% endif %}
+                    <span>{{ message }}</span>
+                </div>
+                <button class="ml-4 opacity-75" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times text-sm"></i>
+                </button>
+            </div>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<!-- Auth Section -->
+<div class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md mx-4 bg-gray-800/95 rounded-2xl shadow-xl backdrop-blur-sm border border-gray-700/50">
+
+        <!-- Form -->
+        <div class="p-8 space-y-6">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-100 text-center mb-6">
+                <i class="fa-solid fa-sign-in-alt mr-2 text-purple-400"></i>Kirish
+            </h1>
+            <form method="post" class="space-y-6" autocomplete="off">
+                {% csrf_token %}
+                
+                <!-- Email Field -->
+                <div class="group relative">
+                    <label class="block text-sm font-medium mb-2 text-gray-400">
+                        Username
+                    </label>
+                    <div class="relative">
+                        <input type="text" name="username"
+                               class="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg 
+                                      text-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 
+                                      transition-all duration-150 placeholder-gray-500"
+                               required>
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            <i class="far fa-envelope text-gray-500"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password Field -->
+                <div class="group relative">
+                    <label class="block text-sm font-medium mb-2 text-gray-400">
+                        Parol
+                    </label>
+                    <div class="relative">
+                        <input type="password" name="password" 
+                               class="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg 
+                                      text-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 
+                                      transition-all duration-150"
+                               required>
+                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                            <i class="fas fa-key text-gray-500"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full px-6 py-3 font-semibold bg-purple-600 text-white rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors duration-200">
+                    <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Kirish
+                </button>
+            </form>
+        </div>
+
+        <!-- Links Section -->
+        <div class="p-6 flex flex-col items-center space-y-3">
+            <a href="{% url 'accounts:signup' %}" class="text-purple-400 text-sm font-medium">
+                Akkount yaratish
+            </a>
+            <a href="{% url 'accounts:password_reset' %}" class="text-gray-400 text-sm">
+                Parolni unutdingizmi?
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes fade-in {
+        0% { opacity: 0; transform: translateY(-10px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+
+    .animate-fade-in {
+        animation: fade-in 0.3s ease-out;
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        // Auto-dismiss messages
+        const messages = document.getElementById('messages');
+        if (messages) {
+            setTimeout(() => {
+                messages.querySelectorAll('.message').forEach(msg => {
+                    msg.style.opacity = '0';
+                    setTimeout(() => msg.remove(), 300);
+                });
+            }, 5000);
+        }
+    });
+</script>
+{% endblock %}

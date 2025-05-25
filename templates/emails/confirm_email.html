@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family: sans-serif; color: #333;">
+    <h2>Здравствуйте, {{ user.username }}!</h2>
+    <p>Чтобы активировать аккаунт на MyManga, перейдите по ссылке:</p>
+    <p><a href="{{ confirm_url }}">{{ confirm_url }}</a></p>
+    <p>Если вы не регистрировались — проигнорируйте это письмо.</p>
+  </body>
+</html>
