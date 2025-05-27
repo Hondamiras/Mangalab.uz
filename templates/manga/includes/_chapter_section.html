@@ -1,0 +1,59 @@
+{# ---------- CHAPTERS SECTION ---------- #}
+{% if chapters %}
+<div class="glass-container">
+  {# Заголовок и переключатель сортировки #}
+  <div class="flex items-center justify-between mb-4">
+    <h2
+      class="text-lg sm:text-2xl font-bold
+             bg-gradient-to-r from-purple-400 to-pink-400
+             bg-clip-text text-transparent"
+    >
+      Boblar ro’yxati
+    </h2>
+    
+    <div class="flex items-center space-x-2">
+      <a
+        href="?order=asc"
+        class="px-3 py-1 text-sm rounded-full border transition
+               {% if current_order == 'asc' %}
+                 bg-purple-500 text-white border-purple-600
+               {% else %}
+                 bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700
+               {% endif %}"
+      >
+        1 → 10
+      </a>
+      <a
+        href="?order=desc"
+        class="px-3 py-1 text-sm rounded-full border transition
+               {% if current_order == 'desc' %}
+                 bg-purple-500 text-white border-purple-600
+               {% else %}
+                 bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700
+               {% endif %}"
+      >
+        10 → 1
+      </a>
+    </div>
+  </div>
+
+  <ul class="divide-y divide-gray-700">
+    {% for chapter in chapters %}
+      <li>
+        <a
+          href="{% url 'manga:chapter_read' manga.slug chapter.chapter_number %}"
+          class="flex items-center justify-between py-2 px-3 hover:bg-gray-800/50 transition-colors"
+        >
+          <span class="text-gray-200">
+            {{ chapter.title }}
+          </span>
+          <span class="text-sm text-gray-500">
+            {{ chapter.release_date|date:"d.m.Y" }}
+          </span>
+        </a>
+      </li>
+
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}

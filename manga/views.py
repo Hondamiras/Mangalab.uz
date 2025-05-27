@@ -161,25 +161,31 @@ def manga_list(request):
 def manga_details(request, manga_slug):
     """
     Показывает страницу деталей конкретной манги.
-    Если пользователь авторизован — подтягивает его статус чтения и закладки.
+    Подтягивает статус чтения пользователя, первый эпизод,
+    рекомендуемые манги и поддерживает сортировку списка глав.
     """
     manga = get_object_or_404(Manga, slug=manga_slug)
 
+    # 1) Статус чтения пользователя
     reading_status = None
-
     if request.user.is_authenticated:
-        # Получаем или создаём профиль
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
-
-        # Статус чтения (или None)
         reading_status = ReadingStatus.objects.filter(
             user_profile=user_profile,
             manga=manga
         ).first()
 
+    # 2) Сортировка глав по GET-параметру ?order=asc|desc
+    order = request.GET.get('order', 'desc')
+    if order == 'asc':
+        chapters = manga.chapters.order_by('chapter_number')
+    else:
+        chapters = manga.chapters.order_by('-chapter_number')
+
+    # 3) Первый доступный эпизод
     first_chapter = manga.chapters.order_by('chapter_number').first()
 
-    # Для рекомендованного списка: ищем манги с пересечением жанров
+    # 4) Рекомендации: манги с пересечением жанров
     user_genres = manga.genres.all()
     similar_mangas = (
         Manga.objects
@@ -197,8 +203,10 @@ def manga_details(request, manga_slug):
 
     return render(request, 'manga/manga_details.html', {
         'manga': manga,
-        'first_chapter': first_chapter,
         'reading_status': reading_status,
+        'first_chapter': first_chapter,
+        'chapters': chapters,
+        'current_order': order,
         'similar_mangas': similar_mangas,
         'READING_STATUSES': READING_STATUSES,
     })
@@ -232,44 +240,50 @@ def add_to_reading_list(request, manga_slug):
     return redirect('manga:manga_details', manga_slug=manga.slug)
 
 # ====== чтение главы ========================================================
-@login_required  # если страница должна быть только для залогиненных
-def chapter_read(request, chapter_id):
-    chapter = get_object_or_404(Chapter, id=chapter_id)
-    pages = chapter.pages.order_by('page_number')
+@login_required
+def chapter_read(request, manga_slug, chapter_number):
+    # Получаем объект манги по слагу
+    manga = get_object_or_404(Manga, slug=manga_slug)
 
+    # Получаем нужную главу по манге и её номеру
+    chapter = get_object_or_404(
+        Chapter,
+        manga=manga,
+        chapter_number=chapter_number
+    )
+
+    # Все главы этой манги
     all_chapters = Chapter.objects.filter(
-        manga=chapter.manga
+        manga=manga
     ).order_by('volume', 'chapter_number')
 
-    # найти «предыдущую» и «следующую» для кнопок навигации
+    # Предыдущая и следующая главы
     previous_chapter = (
-        Chapter.objects
-        .filter(manga=chapter.manga, chapter_number__lt=chapter.chapter_number)
+        all_chapters
+        .filter(chapter_number__lt=chapter.chapter_number)
         .order_by('-chapter_number')
         .first()
     )
     next_chapter = (
-        Chapter.objects
-        .filter(manga=chapter.manga, chapter_number__gt=chapter.chapter_number)
+        all_chapters
+        .filter(chapter_number__gt=chapter.chapter_number)
         .order_by('chapter_number')
         .first()
     )
 
-    # --- Новое: обновляем или создаём прогресс ---
-    progress, _ = ReadingProgress.objects.get_or_create(
+    # Обновляем или создаём прогресс чтения
+    progress, created = ReadingProgress.objects.get_or_create(
         user=request.user,
-        manga=chapter.manga,
+        manga=manga,
         defaults={'last_read_chapter': chapter, 'last_read_page': 1}
     )
-    # если прогресс уже был и это более новая глава — обновляем
-    if (not progress.last_read_chapter) or (chapter.chapter_number > progress.last_read_chapter.chapter_number):
+    if not created and chapter.chapter_number > (progress.last_read_chapter.chapter_number or 0):
         progress.last_read_chapter = chapter
         progress.save()
 
     return render(request, 'manga/chapter_read.html', {
-        'manga': chapter.manga,
+        'manga': manga,
         'chapter': chapter,
-        'pages': pages,
         'previous_chapter': previous_chapter,
         'next_chapter': next_chapter,
         'all_chapters': all_chapters,

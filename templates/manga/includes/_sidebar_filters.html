@@ -1,0 +1,330 @@
+{% load static %}
+
+<!-- Sidebar with filter options -->
+<aside id="filterSidebar"
+       class="fixed inset-0 md:inset-y-0 md:left-0 z-20 w-full h-full md:w-72 lg:w-80
+              bg-gray-900 transform -translate-x-full transition-transform duration-300
+              overflow-hidden flex flex-col">
+  <!-- Custom Scrollbar Styles -->
+  <style>
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      background-color: #1f2937;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: #4b5563;
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background-color: #6b7280;
+    }
+  </style>
+
+  <!-- Header with close button -->
+  <div class="flex justify-between items-center p-4 border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm">
+    <h2 class="text-xl font-bold text-white">Filtrlar</h2>
+    <button class="toggle-filters p-2 rounded-full bg-purple-600 hover:bg-purple-700 transition-colors">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+
+  <form id="filterForm" method="get" class="flex-1 overflow-y-auto custom-scroll p-4 space-y-6">
+    <!-- Search -->
+    <div class="relative">
+      <input type="text" name="search" placeholder="Manga qidirish..." value="{{ search }}"
+             class="w-full bg-gray-800 text-white px-4 py-3 pl-11 rounded-xl 
+                    focus:outline-none focus:ring-2 focus:ring-purple-500
+                    transition-all placeholder-gray-400"/>
+      <svg xmlns="http://www.w3.org/2000/svg" 
+           class="h-5 w-5 absolute left-4 top-4 text-gray-400" 
+           fill="none" 
+           viewBox="0 0 24 24" 
+           stroke="currentColor">
+        <path stroke-linecap="round" 
+              stroke-linejoin="round" 
+              stroke-width="2" 
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+      </svg>
+    </div>
+
+    <!-- Жанры -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+      <button type="button" class="filter-header flex justify-between items-center w-full px-4 py-3 text-white">
+        <span class="font-medium">Janrlar</span>
+        <svg class="w-5 h-5 text-purple-400 transform filter-arrow transition-transform" 
+             fill="none" 
+             viewBox="0 0 24 24" 
+             stroke="currentColor">
+          <path stroke-linecap="round" 
+                stroke-linejoin="round" 
+                stroke-width="2" 
+                d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="filter-content hidden px-4 pt-2 pb-4">
+        <div class="grid grid-cols-2 gap-3">
+          {% for genre in genres %}
+          <label class="flex items-center space-x-3 cursor-pointer">
+            <input
+                type="checkbox"
+                name="genre"
+                value="{{ genre.name }}"
+                {% if genre.name in genre_filter_list %}checked{% endif %}
+                class="
+                h-4 w-4
+                appearance-none
+                border-2 border-gray-500
+                rounded-full
+                transition-colors
+                focus:outline-none
+                checked:bg-purple-500
+                checked:border-transparent
+                "
+            />
+            <span class="text-gray-300 text-sm">{{ genre.name }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Тип -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+        <button type="button"
+                class="filter-header flex justify-between items-center w-full px-4 py-3 text-left">
+        <span class="text-white font-medium">Turi</span>
+        <svg class="w-5 h-5 text-purple-400 transform transition-transform filter-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+        </button>
+        <div class="filter-content hidden px-4 pb-4 pt-2">
+        <div class="grid grid-cols-2 gap-2">
+            {% for code,label in type_choices %}
+            <label class="flex items-center space-x-2 hover:bg-gray-700/30 p-1 rounded cursor-pointer transition-colors">
+            <input
+                type="checkbox"
+                name="type"
+                value="{{ code }}"
+                {% if code in type_filter_list %}checked{% endif %}
+                class="
+                h-4 w-4
+                appearance-none
+                border-2 border-gray-400
+                rounded-full
+                focus:outline-none focus:ring-2 focus:ring-purple-500
+                checked:bg-purple-500 checked:border-transparent
+                transition-colors
+                "
+            />
+            <span class="text-gray-300 text-sm">{{ label }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        </div>
+    </div>
+
+    <!-- Теги -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+      <button type="button" class="filter-header flex justify-between items-center w-full px-4 py-3 text-white">
+        <span class="font-medium">Teglar</span>
+        <svg class="w-5 h-5 text-purple-400 transform filter-arrow transition-transform" 
+             fill="none" 
+             viewBox="0 0 24 24" 
+             stroke="currentColor">
+          <path stroke-linecap="round" 
+                stroke-linejoin="round" 
+                stroke-width="2" 
+                d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="filter-content hidden px-4 pt-2 pb-4">
+        <div class="flex flex-wrap gap-2">
+          {% for tag in tags %}
+          <label class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-gray-700/50 hover:bg-gray-600 transition-colors cursor-pointer">
+            <input
+                type="checkbox"
+                name="tag"
+                value="{{ tag.name }}"
+                {% if tag.name in tag_filter_list %}checked{% endif %}
+                class="
+                h-3.5 w-3.5
+                appearance-none
+                border-2 border-gray-400
+                rounded-full
+                focus:outline-none focus:ring-2 focus:ring-purple-500
+                checked:bg-purple-500 checked:border-transparent
+                transition-colors
+                "
+            />
+            <span class="text-gray-300 text-sm">{{ tag.name }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Год релиза -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+        <button type="button"
+                class="filter-header flex justify-between items-center w-full px-4 py-3 text-left">
+        <span class="text-white font-medium">Chiqarilgan yili</span>
+        <svg class="w-5 h-5 text-purple-400 transform transition-transform filter-arrow"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 9l-7 7-7-7"/>
+        </svg>
+        </button>
+        <div class="filter-content hidden px-4 pb-4 pt-2">
+        <div class="flex gap-2">
+            <div class="w-1/2 relative">
+            <span class="absolute text-xs text-gray-400 -top-5 left-1">Dan</span>
+            <input
+                type="number"
+                name="min_year"
+                placeholder="1950"
+                value="{{ min_year }}"
+                class="w-full bg-gray-700 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            </div>
+            <div class="w-1/2 relative">
+            <span class="absolute text-xs text-gray-400 -top-5 left-1">Gacha</span>
+            <input
+                type="number"
+                name="max_year"
+                placeholder="2025"
+                value="{{ max_year }}"
+                class="w-full bg-gray-700 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Статус манги -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+      <button type="button" class="filter-header flex justify-between items-center w-full px-4 py-3 text-white">
+        <span class="font-medium">Taytl holati</span>
+        <svg class="w-5 h-5 text-purple-400 transform filter-arrow transition-transform" 
+             fill="none" 
+             viewBox="0 0 24 24" 
+             stroke="currentColor">
+          <path stroke-linecap="round" 
+                stroke-linejoin="round" 
+                stroke-width="2" 
+                d="M19 9l-7 7-7-7"/>
+        </svg>
+      </button>
+      <div class="filter-content hidden px-4 pt-2 pb-4">
+        <div class="space-y-2">
+          {% for choice in status_choices %}
+          <label class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-700/30 cursor-pointer transition-colors">
+            <input
+                type="radio"
+                name="status"
+                value="{{ choice.0 }}"
+                {% if choice.0 == selected_status %}checked{% endif %}
+                class="
+                h-4 w-4
+                appearance-none
+                border-2 border-gray-400
+                rounded-full
+                focus:outline-none focus:ring-2 focus:ring-purple-500
+                checked:bg-purple-500 checked:border-transparent
+                transition-colors
+                "
+            />
+            <span class="text-gray-300 text-sm">{{ choice.1 }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Статус перевода -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+        <button type="button"
+                class="filter-header flex justify-between items-center w-full px-4 py-3 text-left">
+        <span class="text-white font-medium">Tarjima holati</span>
+        <svg class="w-5 h-5 text-purple-400 transform transition-transform filter-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+        </svg>
+        </button>
+        <div class="filter-content hidden px-4 pb-4 pt-2">
+        <div class="grid grid-cols-2 gap-2">
+            {% for code,label in translation_choices %}
+            <label class="flex items-center space-x-2 hover:bg-gray-700/30 p-1 rounded cursor-pointer transition-colors">
+            <input
+                type="checkbox"
+                name="translation_status"
+                value="{{ code }}"
+                {% if code in translation_filter_list %}checked{% endif %}
+                class="
+                h-4 w-4
+                appearance-none
+                border-2 border-gray-400
+                rounded-full
+                focus:outline-none focus:ring-2 focus:ring-purple-500
+                checked:bg-purple-500 checked:border-transparent
+                transition-colors
+                "
+            />
+            <span class="text-gray-300 text-sm">{{ label }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        </div>
+    </div>
+
+    <!-- Количество глав -->
+    <div class="filter-group bg-gray-800 rounded-xl transition-all duration-200 hover:bg-gray-800/90">
+        <button type="button"
+                class="filter-header flex justify-between items-center w-full px-4 py-3 text-left">
+        <span class="text-white font-medium">Boblar</span>
+        <svg class="w-5 h-5 text-purple-400 transform transition-transform filter-arrow"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M19 9l-7 7-7-7"/>
+        </svg>
+        </button>
+        <div class="filter-content hidden px-4 pb-4 pt-2">
+        <div class="flex gap-2">
+            <div class="w-1/2 relative">
+            <span class="absolute text-xs text-gray-400 -top-5 left-1">Dan</span>
+            <input
+                type="number"
+                name="min_chapters"
+                placeholder="0"
+                value="{{ min_chapters }}"
+                class="w-full bg-gray-700 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            </div>
+            <div class="w-1/2 relative">
+            <span class="absolute text-xs text-gray-400 -top-5 left-1">Gacha</span>
+            <input
+                type="number"
+                name="max_chapters"
+                placeholder="999+"
+                value="{{ max_chapters }}"
+                class="w-full bg-gray-700 text-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            </div>
+        </div>
+        </div>
+    </div>
+
+    <!-- Кнопки фильтрации -->
+    <div class="sticky bottom-0 bg-gray-900/80 backdrop-blur-sm pt-4 -mx-4 px-4">
+      <button type="submit" 
+              class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-xl
+                     transition-all font-medium">
+        Filtrlarni qo'llash
+      </button>
+      <a href="{% url 'manga:manga_list' %}" 
+         class="block text-center text-gray-300 hover:text-white mt-3 mb-2 text-sm transition-colors">
+        Barcha filtrlarni tozalash
+      </a>
+    </div>
+  </form>
+</aside>

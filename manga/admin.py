@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Manga, Chapter, Genre, Page, Tag
+from .models import Manga, Chapter, Genre, Tag
 
 
 @admin.register(Manga)
@@ -22,10 +22,10 @@ class GenreAdmin(admin.ModelAdmin):
     search_fields = ("name",)
 
 
-@admin.register(Page)
-class PageAdmin(admin.ModelAdmin):
-    list_display = ("chapter", "page_number", "image")
-    list_filter  = ("chapter",)
+# @admin.register(Page)
+# class PageAdmin(admin.ModelAdmin):
+#     list_display = ("chapter", "page_number", "image")
+#     list_filter  = ("chapter",)
 
 
 @admin.register(Tag)

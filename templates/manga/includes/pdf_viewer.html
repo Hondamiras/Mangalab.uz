@@ -1,0 +1,67 @@
+{% if chapter.pdf %}
+    <div class="pdf-viewer-container">
+        <!-- Loader -->
+        <div id="pdf-loading" class="pdf-loading-overlay">
+            <div class="spinner"></div>
+        </div>
+        <!-- Pages container -->
+        <div id="pdf-pages" class="flex flex-col items-center"></div>
+    </div>
+
+    <style>
+        .pdf-viewer-container { 
+            position: relative; 
+            max-width: 100%; 
+            margin: 0 auto; 
+            padding: 0;
+        }
+        .pdf-page { 
+            display: block; 
+            background: white; 
+            margin: 0 !important; 
+            max-width: 100% !important;
+            height: auto !important;
+            transform-origin: top center;
+            transition: transform 0.2s ease;
+        }
+        #pdf-pages { gap: 0; }
+        @media (min-width: 768px) {
+            .pdf-viewer-container { padding: 0; }
+        }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingOverlay = document.getElementById('pdf-loading');
+            const container = document.getElementById('pdf-pages');
+
+            try {
+                const pdf = await pdfjsLib.getDocument("{{ chapter.pdf.url }}").promise;
+                // Calculate scale so pages fill container width
+                const firstPage = await pdf.getPage(1);
+                const viewport = firstPage.getViewport({ scale: 1 });
+                const containerWidth = container.clientWidth;
+                const scale = Math.min(containerWidth / viewport.width, 1);
+
+                // Render all pages without any margin or padding
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const vp = page.getViewport({ scale });
+                    const canvas = document.createElement('canvas');
+                    canvas.className = 'pdf-page';
+                    canvas.width = vp.width;
+                    canvas.height = vp.height;
+                    await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+                    container.appendChild(canvas);
+                }
+
+                // Hide loader
+                loadingOverlay.style.opacity = '0';
+                setTimeout(() => loadingOverlay.remove(), 300);
+
+            } catch (error) {
+                console.error('PDF load error:', error);
+            }
+        });
+    </script>
+{% endif %}
