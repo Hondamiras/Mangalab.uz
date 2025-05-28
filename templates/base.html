@@ -126,44 +126,46 @@
 
     <!-- Footer -->
     <footer class="py-12 bg-gray-900 border-t border-gray-800">
-        <div class="container mx-auto px-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-                
-                <!-- 1) Логотип и контакты -->
-                <div class="space-y-4">
-                    <h3 class="text-white font-bold text-xl">MangaLab</h3>
-                    <p class="text-gray-400 text-sm">
-                        Savollaringiz bo'lsa, yozing: 
-                        <a href="mailto:yordam@hondamir.uz" class="text-purple-400 hover:underline">
-                            yordam@mangalab.uz
-                        </a>
-                    </p>
-                    <div class="flex space-x-4">
-                        <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-300">
-                            <i class="fab fa-telegram-plane fa-lg"></i>
-                        </a>
-                        <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-300">
-                            <i class="fab fa-tiktok fa-lg"></i>
-                        </a>
-                        <a href="#" class="text-gray-400 hover:text-purple-300">
-                            <i class="fab fa-instagram fa-lg"></i>
-                        </a>
-                    </div>
-                </div>
+      <div class="container mx-auto px-6">
+        <div class="space-y-4">
+          <h3 class="text-white text-xl">
+            MangaLab - 
+            <span class="text-gray-600 text-sm">
+              Manga, manhwa va manhua - endi o'zbek tilida! Yangi o'qish platformasi
+            </span>
+          </h3>
+          <p class="text-gray-400 text-sm">
+            Savollaringiz bo'lsa, yozing:
+            <a href="mailto:yordam@mangalab.uz" class="text-purple-400 hover:underline">
+              yordam@mangalab.uz
+            </a>
+          </p>
+
+          <!-- Вот этот блок -->
+          <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
+            <!-- Социальные иконки -->
+            <div class="flex space-x-4">
+              <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-500">
+                <i class="fab fa-telegram-plane fa-lg"></i>
+              </a>
+              <a href="https://www.tiktok.com/@mangalabuz" class="text-gray-400 hover:text-purple-500">
+                <i class="fab fa-tiktok fa-lg"></i>
+              </a>
+              <a href="#" class="text-gray-400 hover:text-purple-500">
+                <i class="fab fa-instagram fa-lg"></i>
+              </a>
             </div>
 
             <!-- Копирайт -->
-            <div class="mt-12 pt-8 border-t border-gray-800 text-center">
-                <p class="text-gray-500 text-sm">
-                    © {% now "Y" %} MangaLab. Barcha huquqlar himoyalangan
-                </p>
-                <p class="text-xs text-gray-600 mt-1">
-                    O'zbek tilidagi eng yirik komikslar platformasi
-                </p>
-            </div>
-        </div>
-    </footer>
+            <p class="text-gray-500 text-sm">
+              © {% now "Y" %} MangaLab. Barcha huquqlar himoyalangan
+            </p>
+          </div>
+          <!-- /Конец блока -->
 
+        </div>
+      </div>
+    </footer>
 
   <script>
     // Smooth scroll for anchor links
