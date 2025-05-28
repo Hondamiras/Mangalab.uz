@@ -10,17 +10,37 @@
 
   <style>
     .pdf-viewer-container { 
-      position: relative; 
-      max-width: 100%; 
-      margin: 0 auto; 
+      position: relative;
+      max-width: 100%;
+      margin: 0 auto;
       padding: 0;
     }
-    .pdf-page { 
-      display: block; 
-      background: white; 
-      margin: 0 !important; 
+    .pdf-loading-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* прозрачный — только спиннер */
+      background-color: transparent;
+      z-index: 10;
+    }
+    .spinner {
+      width: 3rem;
+      height: 3rem;
+      border: 4px solid #e5e7eb;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .pdf-page {
+      display: block;
+      background: white;
+      margin: 0 !important;
       max-width: 100% !important;
-      height: auto !important;      /* оставляем, чтобы пропорции соблюдались */
+      height: auto !important;
       transform-origin: top center;
       transition: transform 0.2s ease;
     }
@@ -30,28 +50,29 @@
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const loadingOverlay = document.getElementById('pdf-loading');
-      const container      = document.getElementById('pdf-pages');
+      const container      = document.querySelector('.pdf-viewer-container');
+      const pagesWrapper   = document.getElementById('pdf-pages');
+      const navbar         = document.getElementById('navbar');
+
+      // Задаём min-height контейнеру, чтобы лоадер центрировался правильно
+      const navH = navbar?.offsetHeight || 0;
+      const availH = window.innerHeight - navH;
+      container.style.minHeight = availH + 'px';
 
       try {
-        // Загружаем PDF и первую страницу в не-масштабированном виде
-        const pdf          = await pdfjsLib.getDocument("{{ chapter.pdf.url }}").promise;
-        const firstPage    = await pdf.getPage(1);
-        const vpUnscaled   = firstPage.getViewport({ scale: 1 });
-        const containerW   = container.clientWidth;
-        // Базовый SCALE, чтобы страница вписалась по ширине
-        const baseScale    = Math.min(containerW / vpUnscaled.width, 1);
-        // Учитываем плотность экрана
-        const dpr          = window.devicePixelRatio || 1;
-        // Итоговый масштаб для рендера
-        const renderScale  = baseScale * dpr;
+        const pdf = await pdfjsLib.getDocument("{{ chapter.pdf.url }}").promise;
+        const firstPage  = await pdf.getPage(1);
+        const vpUnscaled = firstPage.getViewport({ scale: 1 });
+        const cw         = pagesWrapper.clientWidth;
+        const baseScale  = Math.min(cw / vpUnscaled.width, 1);
+        const dpr        = window.devicePixelRatio || 1;
+        const renderScale = baseScale * dpr;
 
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const vp   = page.getViewport({ scale: renderScale });
-
           const canvas = document.createElement('canvas');
           canvas.className = 'pdf-page';
-          // Физический размер для рендера
           canvas.width  = vp.width;
           canvas.height = vp.height;
 
@@ -59,15 +80,14 @@
           ctx.imageSmoothingEnabled = false;
 
           await page.render({ canvasContext: ctx, viewport: vp }).promise;
-          container.appendChild(canvas);
+          pagesWrapper.appendChild(canvas);
         }
-
-        // Убираем лоадер
-        loadingOverlay.style.opacity = '0';
-        setTimeout(() => loadingOverlay.remove(), 300);
-
       } catch (error) {
         console.error('PDF load error:', error);
+      } finally {
+        // Скрываем лоадер во всяком случае
+        loadingOverlay.style.opacity = '0';
+        setTimeout(() => loadingOverlay.remove(), 300);
       }
     });
   </script>
