@@ -7,45 +7,26 @@
     </h2>
   </div>
 
-  <!-- Кнопки навигации с пульсацией -->
-<!-- Прокачанные кнопки Prev/Next -->
-<button
-  id="prevBtn"
-  aria-label="Previous"
-  class="absolute left-3 top-1/2 z-10 -translate-y-1/2 w-10 h-10 rounded-full
-         bg-gradient-to-br from-purple-500 to-pink-500
-         shadow-xl hover:shadow-2xl
-         transform transition
-         hover:scale-110 active:scale-95
-         "
->
-  <svg class="w-5 h-5 text-white mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M15 19l-7-7 7-7" />
-  </svg>
-</button>
-
-<button
-  id="nextBtn"
-  aria-label="Next"
-  class="absolute right-3 top-1/2 z-10 -translate-y-1/2 w-10 h-10 rounded-full
-         bg-gradient-to-br from-purple-500 to-pink-500
-         shadow-xl hover:shadow-2xl
-         transform transition
-         hover:scale-110 active:scale-95
-         "
->
-  <svg class="w-5 h-5 text-white mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M9 5l7 7-7 7" />
-  </svg>
-</button>
-
+  <!-- Кнопки навигации -->
+  <button
+    id="prevBtn"
+    aria-label="Previous"
+    class="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 w-8 h-8 bg-purple-400 hover:bg-purple-500 transition-colors text-white rounded-full flex items-center justify-center"
+  >
+    ‹
+  </button>
+  <button
+    id="nextBtn"
+    aria-label="Next"
+    class="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 w-8 h-8 bg-purple-400 hover:bg-purple-500 transition-colors text-white rounded-full flex items-center justify-center"
+  >
+    ›
+  </button>
 
   <!-- Сама «лента» карточек -->
   <div
     id="slider"
-    class="hide-scrollbar flex gap-4 overflow-x-auto px-2 pb-6"
+    class="hide-scrollbar flex gap-4 overflow-x-auto pb-6"
   >
     {% for m in similar_mangas %}
       <div class="card flex-shrink-0 w-40 sm:w-48 md:w-56 transition-transform duration-300">
@@ -84,7 +65,6 @@
 </div>
 <!-- END: Similar Carousel -->
 
-<!-- Стили для пульсации, скрытия скроллбара и scroll-snap -->
 <style>
   /* Пульсация кнопок */
   @keyframes pulse {
@@ -107,23 +87,38 @@
   .card { scroll-snap-align: start; }
 </style>
 
-<!-- JS для Prev/Next -->
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const slider = document.getElementById('slider');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
+    const cards = slider.querySelectorAll('.card');
 
-    const card = slider.querySelector('.card');
-    const style = getComputedStyle(card);
+    // Вычисляем ширину одной карточки + gap
+    const style = getComputedStyle(cards[0]);
     const gap = parseInt(style.marginRight) || 0;
-    const step = card.getBoundingClientRect().width + gap;
+    const width = cards[0].getBoundingClientRect().width;
+    const step = width + gap;
 
+    // Кнопки прокрутки
     prevBtn.addEventListener('click', () => {
       slider.scrollBy({ left: -step, behavior: 'smooth' });
     });
     nextBtn.addEventListener('click', () => {
       slider.scrollBy({ left: step, behavior: 'smooth' });
     });
+
+    // Показать/скрыть кнопки в зависимости от ширины экрана и числа карточек
+    function updateNavButtons() {
+      const count = cards.length;
+      const w = window.innerWidth;
+      const threshold = w < 640 ? 2 : 4;
+      const show = count > threshold;
+      prevBtn.style.display = show ? 'flex' : 'none';
+      nextBtn.style.display = show ? 'flex' : 'none';
+    }
+
+    updateNavButtons();
+    window.addEventListener('resize', updateNavButtons);
   });
 </script>

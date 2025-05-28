@@ -8,8 +8,8 @@ User = get_user_model()
 
 READING_STATUSES = (
     ("reading", "O'qilyapti"),
-    ("planned", "Rejalashtirilgan"),
-    ("completed", "O'qib bo'lingan"),
+    ("planned", "O'qiyman"),
+    ("completed", "O'qilgan"),
     ("favorite", "Yoqtirganim"),
 )
 

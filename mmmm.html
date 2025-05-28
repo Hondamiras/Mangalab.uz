@@ -1,242 +1,129 @@
-{% comment %} Chapter Read {% endcomment %}
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ chapter.manga.title }} - Bob {{ chapter.chapter_number }}</title>
-  <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
-    <script>
-    // worker fayl manzilini ko‘rsatamiz
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
-    </script>
+<!-- BEGIN: Similar Carousel -->
+<div class="relative mb-12 mt-12">
+  <!-- Заголовок -->
+  <div class="flex items-center pb-6 gap-4">
+    <h2 class="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+      Janriga o'xshash tavsiyalar
+    </h2>
+  </div>
 
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Alpine.js -->
-  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <style>[x-cloak] { display: none !important; }</style>
-  <!-- Font Awesome -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js"></script>
-</head>
-<body class="bg-[#0F0F1E] text-gray-100">
-<div class="bg-[#0F0F1E] text-gray-100 min-h-screen">
-    <!-- Sticky Top Navigation -->
-    <div id="navbar" class="sticky top-0 z-50 transform transition-transform duration-300 bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm border-b border-purple-900/50">
-        <div class="container mx-auto px-4 py-3">
-            <div class="flex items-center justify-between">
-                <a href="{% url 'manga:manga_details' chapter.manga.slug %}" 
-                class="group flex items-center space-x-2 hover:text-purple-300 transition-colors">
-                <i class="fas fa-arrow-left text-purple-400 group-hover:text-purple-300 transition-colors"></i>
-                <span class="text-lg font-bold truncate max-w-[200px]">{{ chapter.manga.title }}</span>
-                </a>
+  <!-- Кнопки навигации с пульсацией -->
+<!-- Прокачанные кнопки Prev/Next -->
+<button
+  id="prevBtn"
+  aria-label="Previous"
+  class="absolute left-3 top-1/2 z-10 -translate-y-1/2 w-10 h-10 rounded-full
+         bg-gradient-to-br from-purple-500 to-pink-500
+         shadow-xl hover:shadow-2xl
+         transform transition
+         hover:scale-110 active:scale-95
+         "
+>
+  <svg class="w-5 h-5 text-white mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M15 19l-7-7 7-7" />
+  </svg>
+</button>
 
-                <!-- Chapter Selector -->
-                <div x-data="{ open: false }" class="relative">
-                <button @click="open = !open" 
-                        class="flex items-center space-x-3 px-4 py-2 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 rounded-lg 
-                                border border-purple-500/30 hover:border-purple-400/50 transition-all">
-                    <div class="text-left">
-                    <p class="font-semibold">
-                        Tom {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
-                    </p>
-                    </div>
-                    <i class="fas fa-chevron-down text-purple-300 transform transition-transform duration-200" 
-                    :class="{ 'rotate-180': open }"></i>
-                </button>
-
-                <!-- Chapter Dropdown -->
-                <div x-show="open" x-cloak @click.away="open = false"
-                    class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto 
-                            bg-[#1A1A2E] rounded-xl shadow-2xl border border-purple-900/50
-                            scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
-                    <ul class="divide-y divide-purple-900/50">
-                    {% for ch in all_chapters %}
-                        <li>
-                            <a href="{% url 'manga:chapter_read' ch.id %}"
-                            class="group flex items-center px-5 py-3.5 transition-all
-                                    {% if ch.id == chapter.id %}bg-gradient-to-r from-purple-900/30 to-transparent border-l-4 border-purple-400{% else %}hover:bg-purple-900/20{% endif %}">
-                                <div class="flex items-center min-w-0 flex-1 space-x-3.5">
-                                    <!-- Status Icons -->
-                                    <div class="relative w-5 h-5 flex items-center justify-center">
-                                    {% if reading_progress.last_read_chapter and ch.chapter_number < reading_progress.last_read_chapter.chapter_number %}
-                                        <!-- Прочитано -->
-                                        <i class="fas fa-check-circle text-emerald-400 text-base"></i>
-                                    {% elif reading_progress.last_read_chapter and ch.chapter_number == reading_progress.last_read_chapter.chapter_number %}
-                                        <!-- Текущая -->
-                                        <i class="fas fa-bookmark text-amber-400 text-lg
-                                                absolute left-1/2 top-1/2
-                                                transform -translate-x-1/2 -translate-y-1/2
-                                                rotate-12"></i>
-                                    {% endif %}
-                                    </div>
+<button
+  id="nextBtn"
+  aria-label="Next"
+  class="absolute right-3 top-1/2 z-10 -translate-y-1/2 w-10 h-10 rounded-full
+         bg-gradient-to-br from-purple-500 to-pink-500
+         shadow-xl hover:shadow-2xl
+         transform transition
+         hover:scale-110 active:scale-95
+         "
+>
+  <svg class="w-5 h-5 text-white mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 5l7 7-7 7" />
+  </svg>
+</button>
 
 
-                                    <!-- Chapter Info -->
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex items-baseline justify-between space-x-2">
-                                            <p class="text-sm truncate {% if ch.id == chapter.id %}font-semibold text-purple-100{% else %}text-purple-200{% endif %}">
-                                                Tom {{ ch.volume }} • Bob {{ ch.chapter_number }}
-                                            </p>
-                                            <span class="text-xs shrink-0 {% if ch.id == chapter.id %}text-purple-400/80{% else %}text-purple-500{% endif %}">
-                                                {{ ch.release_date|date:"d.m.Y" }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Current Chapter Indicator -->
-                                {% if ch.id == chapter.id %}
-                                <div class="ml-3">
-                                    <div class="h-2 w-2 rounded-full bg-purple-400 shadow-[0_0_8px_2px_rgba(168,85,247,0.3)]"></div>
-                                </div>
-                                {% endif %}
-                            </a>
-                        </li>
-                    {% endfor %}
-                    </ul>
-                </div>
-                
-                </div>
+  <!-- Сама «лента» карточек -->
+  <div
+    id="slider"
+    class="hide-scrollbar flex gap-4 overflow-x-auto px-2 pb-6"
+  >
+    {% for m in similar_mangas %}
+      <div class="card flex-shrink-0 w-40 sm:w-48 md:w-56 transition-transform duration-300">
+        <a
+          href="{% url 'manga:manga_details' m.slug %}"
+          class="block relative bg-gray-900/90 backdrop-blur-sm rounded-xl border border-purple-500/20 hover:border-purple-400/50 shadow-lg shadow-purple-900/10 overflow-hidden group"
+          aria-label="{{ m.title }}"
+        >
+          <div class="relative aspect-[2/3] overflow-hidden">
+            <img
+              src="{{ m.cover_image.url }}"
+              alt="{{ m.title }} cover"
+              class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+            />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+            <div class="absolute bottom-0 left-0 right-0 p-3 text-white space-y-1">
+              <h3
+                class="text-sm font-bold truncate drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] group-hover:text-purple-400 transition-colors"
+              >
+                {{ m.title }}
+              </h3>
             </div>
+          </div>
+        </a>
+      </div>
+    {% empty %}
+      <div class="w-full flex-shrink-0 py-8 text-center rounded-xl bg-gray-800/20 border-2 border-dashed border-gray-700">
+        <div class="max-w-xs mx-auto">
+          <i class="fa-regular fa-face-frown-open text-3xl mb-3 text-gray-500"></i>
+          <p class="text-gray-500 font-medium mb-2">O'xshash janrlar topilmadi</p>
         </div>
-    </div>
-
-    <!-- Chapter Content -->
-    {% include 'manga/pdf_viewer.html' with chapter=chapter %}
-
-
-    <!-- Thank Section -->
-    <div class="mt-12 text-center">
-      {% if user.is_authenticated %}
-        <button id="thankBtn"
-                class="inline-flex items-center px-6 py-3 space-x-3 bg-gradient-to-r from-purple-600/30 to-pink-600/30 rounded-full 
-                       border border-purple-500/30 hover:border-purple-400/50 transition-all group"
-                data-chapter-id="{{ chapter.id }}">
-          <i class="fas fa-heart text-red-400 transform transition-all 
-                    {% if user in chapter.thanks.all %}scale-125{% else %}group-hover:scale-110{% endif %}"></i>
-          <span id="thankText" class="font-medium">
-            {% if user in chapter.thanks.all %}Rahmat aytildi{% else %}Rahmat aytish{% endif %}
-          </span>
-          <span class="text-purple-300/70 text-sm" id="thankCount">({{ chapter.thanks_count }})</span>
-        </button>
-      {% else %}
-        <p class="text-purple-300/80">
-          <a href="{% url 'accounts:login' %}" class="text-purple-400 hover:text-purple-300 underline">Kiring</a>
-          rahmat aytish uchun
-        </p>
-      {% endif %}
-    </div>
-
-    <!-- Navigation Controls -->
-    {# Закройте контейнер до блока с навигацией, а вот этот кусочек вставьте внутрь него: #}
-    <div class="container mx-auto px-4 py-8">
-        <div class="flex justify-center items-center gap-2">
-            {# ← Previous or Manga #}
-            {% if previous_chapter %}
-            <a href="{% url 'manga:chapter_read' previous_chapter.id %}"
-                class="flex items-center px-4 py-2 space-x-2
-                        bg-gradient-to-r from-purple-600/30 to-indigo-600/30
-                        rounded-lg border border-purple-500/30 hover:border-purple-400/50
-                        transition"
-            >
-                <i class="fas fa-arrow-left text-purple-300"></i>
-                <span class="text-purple-100">Bob {{ previous_chapter.chapter_number }}</span>
-            </a>
-            {% else %}
-            <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
-                class="flex items-center px-4 py-2 space-x-2
-                        bg-[#1A1A2E] hover:bg-[#252542]
-                        rounded-lg border border-purple-500/30 transition"
-            >
-                <i class="fas fa-book-open text-purple-400/70"></i>
-                <span class="text-purple-400/70">Mangaga qaytish</span>
-            </a>
-            {% endif %}
-
-            {# → Next or Disabled #}
-            {% if next_chapter %}
-            <a href="{% url 'manga:chapter_read' next_chapter.id %}"
-                class="flex items-center px-4 py-2 space-x-2
-                        bg-gradient-to-l from-purple-600/30 to-indigo-600/30
-                        rounded-lg border border-purple-500/30 hover:border-purple-400/50
-                        transition"
-            >
-                <span class="text-purple-100">Bob {{ next_chapter.chapter_number }}</span>
-                <i class="fas fa-arrow-right text-purple-300"></i>
-            </a>
-            {% else %}
-            <div class="flex items-center px-4 py-2 space-x-2
-                        bg-[#1A1A2E] border border-purple-500/30 rounded-lg opacity-50 cursor-not-allowed">
-                <span class="text-purple-400/50">Tugadi</span>
-                <i class="fas fa-ban text-purple-400/50"></i>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-
+      </div>
+    {% endfor %}
+  </div>
 </div>
-<script>
-    document.getElementById('thankBtn')?.addEventListener('click', async function() {
-    const btn = this;
-    const chapterId = btn.dataset.chapterId;
-    const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${chapterId}/`);
-    
-    try {
-        const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-        });
-        
-        const data = await response.json();
-        
-        // Update button state
-        const heartIcon = btn.querySelector('.fa-heart');
-        const thankText = document.getElementById('thankText');
-        const thankCount = document.getElementById('thankCount');
-        
-        if (data.thanked) {
-        heartIcon.classList.add('scale-125', 'text-red-400');
-        thankText.textContent = 'Спасибо отправлено';
-        } else {
-        heartIcon.classList.remove('scale-125');
-        thankText.textContent = 'Поблагодарить автора';
-        }
-        
-        thankCount.textContent = `(${data.count})`;
-        
-        // Add animation
-        heartIcon.classList.add('animate-pulse');
-        setTimeout(() => heartIcon.classList.remove('animate-pulse'), 200);
-        
-    } catch (error) {
-        console.error('Error:', error);
-    }
-    });
-</script>
-<!-- Внизу страницы, перед </body> -->
-<script>
-  (function() {
-    let prevScroll = window.pageYOffset;
-    const nav = document.getElementById('navbar');
+<!-- END: Similar Carousel -->
 
-    window.addEventListener('scroll', () => {
-      const curr = window.pageYOffset;
-      if (curr < prevScroll) {
-        // скролл вверх — показываем
-        nav.classList.remove('-translate-y-full');
-      } else {
-        // скролл вниз — прячем
-        nav.classList.add('-translate-y-full');
-      }
-      prevScroll = curr;
+<!-- Стили для пульсации, скрытия скроллбара и scroll-snap -->
+<style>
+  /* Пульсация кнопок */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+  }
+  .pulse-animation {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Скрыть дефолтный скроллбар */
+  #slider::-webkit-scrollbar { display: none; }
+  #slider { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Scroll snap + плавная прокрутка */
+  #slider {
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+  }
+  .card { scroll-snap-align: start; }
+</style>
+
+<!-- JS для Prev/Next -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const slider = document.getElementById('slider');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    const card = slider.querySelector('.card');
+    const style = getComputedStyle(card);
+    const gap = parseInt(style.marginRight) || 0;
+    const step = card.getBoundingClientRect().width + gap;
+
+    prevBtn.addEventListener('click', () => {
+      slider.scrollBy({ left: -step, behavior: 'smooth' });
     });
-  })();
+    nextBtn.addEventListener('click', () => {
+      slider.scrollBy({ left: step, behavior: 'smooth' });
+    });
+  });
 </script>
-</body>
-</html>
