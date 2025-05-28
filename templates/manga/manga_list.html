@@ -16,119 +16,86 @@
       <div class="flex items-center space-x-4">
         <button class="toggle-filters flex items-center gap-2 text-purple-400 hover:text-purple-300">
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M4 6h16M4 12h16M4 18h16" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
           <span>Filtrlar</span>
         </button>
       </div>
       <div class="flex items-center space-x-4">
-    <!-- теперь без hidden: всегда flex -->
-    <div class="flex items-center space-x-2">
         <form method="get" id="filtersForm" class="flex items-center space-x-2">
-          <!-- здесь могут быть ваши чекбоксы, поиск и т. д. -->
-          <select name="sort"
-                  onchange="this.form.submit()"
-                  class="bg-gray-800 text-white text-sm px-2 py-1 rounded">
-            <option value="chapters" {% if sort == 'chapters' %}selected{% endif %}>
-              Bo'limlar soni bo'yicha
-            </option>
-            <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>
-              Nomi bo'yicha (A–Z)
-            </option>
-            <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>
-              Nomi bo'yicha (Z–A)
-            </option>
+          <select name="sort" onchange="this.form.submit()" class="bg-gray-800 text-white text-sm px-2 py-1 rounded">
+            <option value="chapters" {% if sort == 'chapters' %}selected{% endif %}>Bo'limlar soni bo'yicha</option>
+            <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Nomi bo'yicha (A–Z)</option>
+            <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Nomi bo'yicha (Z–A)</option>
           </select>
         </form>
-
-    </div>
-    </div>
+      </div>
     </div>
 
     <!-- Manga Grid -->
     <div class="p-2 grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3">
-    {% for manga in page_obj %}
-    <article class="group relative overflow-hidden rounded-xl bg-gray-900 shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 hover:z-10">
-    <a href="{% url 'manga:manga_details' manga.slug %}" class="block focus:outline-none focus-visible:ring-2 ring-purple-500">
-      <div class="relative aspect-[2/3]">
-        <!-- Image with optimized loading -->
-        <img
-          src="{{ manga.cover_image.url }}"
-          alt="{{ manga.title }} cover"
-          class="w-full h-full object-cover transform transition-transform duration-500 group-hover:scale-105 will-change-transform"
-          loading="lazy"
-        >
-        
-        <!-- Enhanced gradient overlay -->
-        <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
-        
-        <!-- Status badge -->
-        <div class="absolute top-1.5 left-1.5 flex items-center">
-            <span class="px-2 py-0.5 sm:px-2 sm:py-1 rounded-full text-xs font-medium transition-colors
-                {% if manga.user_status.0.status == 'planned' %} bg-blue-900/80 text-blue-300  
-                {% elif manga.user_status.0.status == 'reading' %} bg-purple-900/80 text-purple-300
-                {% elif manga.user_status.0.status == 'completed' %} bg-green-900/80 text-green-300 
-                {% elif manga.user_status.0.status == 'dropped' %} bg-red-900/80 text-red-300   
-                {% elif manga.user_status.0.status == 'favorite' %} bg-yellow-900/80 text-yellow-300
-                {% elif manga.user_status.0.status == 'ongoing' %} bg-pink-900/80 text-pink-300  
+      {% for manga in page_obj %}
+      <article class="group relative overflow-hidden rounded-xl bg-gray-900 shadow-md transition-shadow duration-300">
+        <a href="{% url 'manga:manga_details' manga.slug %}" class="block focus:outline-none focus-visible:ring-2 ring-purple-500">
+          <div class="relative aspect-[2/3]">
+            <!-- Image -->
+            <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }} cover" class="w-full h-full object-cover" loading="lazy">
+
+            <!-- Gradient overlay -->
+            <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
+
+            <!-- Status badge -->
+            <div class="absolute top-1.5 left-1.5 flex items-center">
+              <span class="px-2 py-0.5 sm:px-2 sm:py-1 rounded-full text-xs font-medium transition-colors
+                {% if manga.user_status.0.status == 'planned' %}bg-blue-900/80 text-blue-300
+                {% elif manga.user_status.0.status == 'reading' %}bg-purple-900/80 text-purple-300
+                {% elif manga.user_status.0.status == 'completed' %}bg-green-900/80 text-green-300
+                {% elif manga.user_status.0.status == 'dropped' %}bg-red-900/80 text-red-300
+                {% elif manga.user_status.0.status == 'favorite' %}bg-yellow-900/80 text-yellow-300
+                {% elif manga.user_status.0.status == 'ongoing' %}bg-pink-900/80 text-pink-300
                 {% endif %}">
                 {{ manga.user_status.0.get_status_display }}
-            </span>
-        </div>
+              </span>
+            </div>
 
-        <!-- Type badge -->
-        <div class="absolute top-1.5 right-1.5 flex items-center px-2 py-0.5 sm:px-2 sm:py-1 bg-gray-900/80 backdrop-blur-sm rounded-full text-xs font-medium text-purple-300 transition-all duration-300 group-hover:bg-gray-900/90">
-            {{ manga.type }}
-        </div>
-                  
-        <!-- Title with optimized text rendering -->
-        <div class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 space-y-0.5">
-            <h2 class="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-snug transition-colors duration-300 group-hover:text-purple-400 subpixel-antialiased">
+            <!-- Type badge -->
+            <div class="absolute top-1.5 right-1.5 flex items-center px-2 py-0.5 sm:px-2 sm:py-1 bg-gray-900/80 backdrop-blur-sm rounded-full text-xs font-medium text-purple-300 transition-all duration-300">
+              {{ manga.type }}
+            </div>
+
+            <!-- Title -->
+            <div class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 space-y-0.5">
+              <h2 class="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-snug transition-colors duration-300 group-hover:text-purple-400 subpixel-antialiased">
                 {{ manga.title }}
-            </h2>
-        </div>
-                </div>
-              </a>
-    </article>
-    {% empty %}
-    <div class="col-span-full text-center py-10">
-    <p class="text-gray-400 text-sm xs:text-sm mb-2">
-      <i class="fas fa-search-minus text-lg opacity-70"></i>
-    </p>
-    <p class="text-gray-400 text-sm xs:text-sm">Hech narsa topilmadi. Filtr sozlamalarini o'zgartirib ko'ring.</p>
+              </h2>
+            </div>
+          </div>
+        </a>
+      </article>
+      {% empty %}
+      <div class="col-span-full text-center py-10">
+        <p class="text-gray-400 text-sm xs:text-sm mb-2"><i class="fas fa-search-minus text-lg opacity-70"></i></p>
+        <p class="text-gray-400 text-sm xs:text-sm">Hech narsa topilmadi. Filtr sozlamalarini o'zgartirib ko'ring.</p>
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-    </div>
-
 
     <!-- Pagination -->
     {% if page_obj.has_other_pages %}
     <div class="py-6 mt-auto">
       <div class="flex justify-center items-center gap-1.5">
         {% if page_obj.has_previous %}
-          <a href="?page={{ page_obj.previous_page_number }}" 
-            class="px-5 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">
-            ←
-          </a>
+        <a href="?page={{ page_obj.previous_page_number }}" class="px-5 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">←</a>
         {% endif %}
-        
         {% for num in page_obj.paginator.page_range %}
-          {% if page_obj.number == num %}
-            <span class="px-4 py-2 bg-purple-600 text-white rounded-full shadow-md">{{ num }}</span>
-          {% elif num > page_obj.number|add:-2 and num < page_obj.number|add:2 %}
-            <a href="?page={{ num }}" 
-              class="px-4 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">
-              {{ num }}
-            </a>
-          {% endif %}
+        {% if page_obj.number == num %}
+        <span class="px-4 py-2 bg-purple-600 text-white rounded-full shadow-md">{{ num }}</span>
+        {% elif num > page_obj.number|add:-2 and num < page_obj.number|add:2 %}
+        <a href="?page={{ num }}" class="px-4 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">{{ num }}</a>
+        {% endif %}
         {% endfor %}
-        
         {% if page_obj.has_next %}
-          <a href="?page={{ page_obj.next_page_number }}" 
-            class="px-5 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">
-            →
-          </a>
+        <a href="?page={{ page_obj.next_page_number }}" class="px-5 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">→</a>
         {% endif %}
       </div>
     </div>

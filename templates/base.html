@@ -1,9 +1,15 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="description" content="MangaLab - O'zbek tilidagi eng yirik komikslar platformasi.">
+  <meta name="keywords" content="manga, komiks, o'zbek, platforma, manga lab, manga uzbek">
+  <meta name="author" content="MangaLab Team">
+  <link rel="icon" href="{% static 'images/logo.png' %}" type="image/x-icon">
   <title>{% block title %}MangaLab{% endblock %}</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
