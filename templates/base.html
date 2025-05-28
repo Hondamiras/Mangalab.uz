@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>{% block title %}HondaLib{% endblock %}</title>
+  <title>{% block title %}MangaLab{% endblock %}</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Alpine.js -->
@@ -86,26 +86,26 @@
     <div class="container mx-auto flex items-center justify-between px-6 py-4">
       <!-- Logo -->
       <a href="{% url 'manga:manga_list' %}" class="text-2xl font-bold hover:text-purple-400 transition-colors">
-        HondaLib
+        MangaLab
       </a>
       <!-- User Actions -->
       <div class="flex items-center space-x-3">
         {% if user.is_authenticated %}
           <!-- Profile Button -->
-          <a href="{% url 'accounts:my_profile' %}" class="p-2 rounded-full" title="Profile">
+          <a href="{% url 'accounts:my_profile' %}" class="p-2 rounded-full" title="Profil">
             {% if user.avatar_url %}
-              <img src="{{ user.avatar_url }}" alt="Profile" class="w-8 h-8 rounded-full border-2 border-transparent hover:border-purple-400 transition-all">
+              <img src="{{ user.avatar_url }}" alt="Profil" class="w-8 h-8 rounded-full border-2 border-transparent hover:border-purple-400 transition-all">
             {% else %}
               <i class="fas fa-user-circle text-2xl text-gray-300 hover:text-purple-400"></i>
             {% endif %}
           </a>
           <!-- Logout Button -->
-          <button @click="showLogoutModal = true" class="p-2 rounded-full" title="Logout">
+          <button @click="showLogoutModal = true" class="p-2 rounded-full" title="Chiqish">
             <i class="fas fa-sign-out-alt text-xl text-gray-300 hover:text-purple-400"></i>
           </button>
         {% else %}
           <!-- Login Button -->
-          <a href="{% url 'accounts:login' %}" class="p-2 rounded-full" title="Login">
+          <a href="{% url 'accounts:login' %}" class="p-2 rounded-full" title="Kirish">
             <i class="fas fa-sign-in-alt text-xl text-gray-300 hover:text-purple-400"></i>
           </a>
         {% endif %}
@@ -125,73 +125,34 @@
                 
                 <!-- 1) Логотип и контакты -->
                 <div class="space-y-4">
-                    <h3 class="text-white font-bold text-xl">Hondamir</h3>
+                    <h3 class="text-white font-bold text-xl">MangaLab</h3>
                     <p class="text-gray-400 text-sm">
                         Savollaringiz bo'lsa, yozing: 
                         <a href="mailto:yordam@hondamir.uz" class="text-purple-400 hover:underline">
-                            yordam@hondalib.uz
+                            yordam@mangalab.uz
                         </a>
                     </p>
                     <div class="flex space-x-4">
-                        <a href="https://t.me/hondalib" class="text-gray-400 hover:text-purple-300">
+                        <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-300">
                             <i class="fab fa-telegram-plane fa-lg"></i>
+                        </a>
+                        <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-300">
+                            <i class="fab fa-tiktok fa-lg"></i>
                         </a>
                         <a href="#" class="text-gray-400 hover:text-purple-300">
                             <i class="fab fa-instagram fa-lg"></i>
                         </a>
-                        <a href="#" class="text-gray-400 hover:text-purple-300">
-                            <i class="fab fa-youtube fa-lg"></i>
-                        </a>
                     </div>
-                </div>
-
-                <!-- 2) Biz haqimizda -->
-                <div class="space-y-4">
-                    <h4 class="text-white font-semibold">Biz haqimizda</h4>
-                    <ul class="space-y-2 text-gray-400 text-sm">
-                        <li><a href="#" class="hover:text-purple-300">Jamoa</a></li>
-                        <li><a href="#" class="hover:text-purple-300">Vakansiyalar</a></li>
-                        <li><a href="#" class="hover:text-purple-300">Reklama</a></li>
-                    </ul>
-                </div>
-
-                <!-- 3) Hamkorlar -->
-                <div class="space-y-4">
-                    <h4 class="text-white font-semibold">Hamkorlik</h4>
-                    <ul class="space-y-2 text-gray-400 text-sm">
-                        <li class="flex items-center">
-                            <i class="fas fa-broom text-purple-300 mr-2"></i>
-                            Tozalash mutaxassislari
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-keyboard text-purple-300 mr-2"></i>
-                            Matn teruvchilar
-                        </li>
-                        <li class="flex items-center">
-                            <i class="fas fa-language text-purple-300 mr-2"></i>
-                            Tarjimonlar
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- 4) Foydali havolalar -->
-                <div class="space-y-4">
-                    <h4 class="text-white font-semibold">Foydali</h4>
-                    <ul class="space-y-2 text-gray-400 text-sm">
-                        <li><a href="#" class="hover:text-purple-300">Qoidalar</a></li>
-                        <li><a href="#" class="hover:text-purple-300">Ko'p beriladigan savollar</a></li>
-                        <li><a href="#" class="hover:text-purple-300">Qo'llanma</a></li>
-                    </ul>
                 </div>
             </div>
 
             <!-- Копирайт -->
             <div class="mt-12 pt-8 border-t border-gray-800 text-center">
                 <p class="text-gray-500 text-sm">
-                    © {% now "Y" %} Hondamir. Barcha huquqlar himoyalangan
+                    © {% now "Y" %} MangaLab. Barcha huquqlar himoyalangan
                 </p>
                 <p class="text-xs text-gray-600 mt-1">
-                    "Manhva" - O'zbek tilidagi eng yirik komikslar platformasi
+                    O'zbek tilidagi eng yirik komikslar platformasi
                 </p>
             </div>
         </div>
