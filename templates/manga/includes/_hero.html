@@ -189,6 +189,7 @@
             {% endif %}
 
             {# Start Reading Button #}
+            {% if user.is_authenticated %}
             <div class="w-[200px]">
               <a
                 href="{% url 'manga:chapter_read' manga.slug first_chapter.chapter_number %}"
@@ -199,15 +200,23 @@
                 <span class="font-medium">O'qishni boshlash</span>
               </a>
             </div>
-
+            {% else %}
+            <div class="w-[300px]">
+              <a
+                href="{% url 'accounts:signup' %}?next={% url 'manga:chapter_read' manga.slug first_chapter.chapter_number %}"
+                class="w-full h-14 flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
+                      hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md"
+              >
+                <span class="font-medium">O'qish uchun ro'yxatdan o'ting</span>
+              </a>
+            </div>
+            {% endif %}
           </div>
         {% else %}
           <p class="mt-6 text-center sm:text-left text-gray-400 italic">
             Hozircha hech qanday bob mavjud emas.
           </p>
         {% endif %}
-
-
 
       </div>
     </div>

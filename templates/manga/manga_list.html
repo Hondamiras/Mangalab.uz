@@ -39,7 +39,7 @@
         <a href="{% url 'manga:manga_details' manga.slug %}" class="block focus:outline-none focus-visible:ring-2 ring-purple-500">
           <div class="relative aspect-[2/3]">
             <!-- Image -->
-            <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }} cover" class="w-full h-full object-cover" loading="lazy">
+            <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }} cover" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy">
 
             <!-- Gradient overlay -->
             <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>

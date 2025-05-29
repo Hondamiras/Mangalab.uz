@@ -23,7 +23,7 @@
 <body class="bg-[#0F0F1E] text-gray-100">
 <div class="bg-[#0F0F1E] text-gray-100 min-h-screen">
     <!-- Sticky Top Navigation -->
-    <div id="navbar" class="sticky top-0 z-50 transform transition-transform duration-700 ease-in-out bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm border-b border-purple-900/50">
+    <div id="navbar" class="sticky top-0 z-50 transform transition-transform duration-700 ease-in-out bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm">
         <div class="container mx-auto px-4 py-3">
             <div class="flex items-center justify-between">
                 <a href="{% url 'manga:manga_details' chapter.manga.slug %}" 
@@ -34,8 +34,7 @@
                 <!-- Chapter Selector -->
                 <div x-data="{ open: false }" class="relative">
                 <button @click="open = !open" 
-                        class="flex items-center space-x-3 px-4 py-2 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 rounded-lg 
-                                border border-purple-500/30 hover:border-purple-400/50 transition-all">
+                        class="flex items-center space-x-3 px-4 py-2 bg-purple-900 rounded-lg">
                     <div class="text-left">
                     <p class="font-semibold">
                         Tom {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
@@ -48,9 +47,9 @@
                 <!-- Chapter Dropdown -->
                 <div x-show="open" x-cloak @click.away="open = false"
                     class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto 
-                            bg-[#1A1A2E] rounded-xl shadow-2xl border border-purple-900/50
+                            bg-[#1A1A2E] rounded-xl shadow-2xl
                             scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
-                    <ul class="divide-y divide-purple-900/50">
+                    <ul class="divide-y divide-purple-800/50">
                     {% for ch in all_chapters %}
                         <li>
                             <a
@@ -114,8 +113,7 @@
     <div class="mt-12 text-center">
       {% if user.is_authenticated %}
         <button id="thankBtn"
-                class="inline-flex items-center px-6 py-3 space-x-3 bg-transparent rounded-full 
-                       border border-purple-500/30 hover:border-purple-400/50 transition-all group"
+                class="inline-flex items-center px-6 py-3 space-x-3 bg-purple-900 rounded-full"
                 data-chapter-id="{{ chapter.id }}">
           <i class="fas fa-heart text-red-400"></i>
           <span id="thankText" class="font-medium">
