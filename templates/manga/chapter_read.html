@@ -29,7 +29,6 @@
                 <a href="{% url 'manga:manga_details' chapter.manga.slug %}" 
                 class="group flex items-center space-x-2 hover:text-purple-300 transition-colors">
                 <i class="fas fa-arrow-left text-purple-400 group-hover:text-purple-300 transition-colors"></i>
-                <span class="text-lg font-bold truncate max-w-[200px]">{{ chapter.manga.title }}</span>
                 </a>
 
                 <!-- Chapter Selector -->
@@ -115,11 +114,10 @@
     <div class="mt-12 text-center">
       {% if user.is_authenticated %}
         <button id="thankBtn"
-                class="inline-flex items-center px-6 py-3 space-x-3 bg-gradient-to-r from-purple-600/30 to-pink-600/30 rounded-full 
+                class="inline-flex items-center px-6 py-3 space-x-3 bg-transparent rounded-full 
                        border border-purple-500/30 hover:border-purple-400/50 transition-all group"
                 data-chapter-id="{{ chapter.id }}">
-          <i class="fas fa-heart text-red-400 transform transition-all 
-                    {% if user in chapter.thanks.all %}scale-125{% else %}group-hover:scale-110{% endif %}"></i>
+          <i class="fas fa-heart text-red-400"></i>
           <span id="thankText" class="font-medium">
             {% if user in chapter.thanks.all %}Rahmat aytildi{% else %}Rahmat aytish{% endif %}
           </span>
@@ -186,60 +184,83 @@
     const btn = this;
     const chapterId = btn.dataset.chapterId;
     const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${chapterId}/`);
-    
+
     try {
-        const response = await fetch(url, {
+        const res = await fetch(url, {
         method: 'POST',
         headers: {
             'X-CSRFToken': '{{ csrf_token }}',
             'X-Requested-With': 'XMLHttpRequest'
         }
         });
-        
-        const data = await response.json();
-        
-        // Update button state
-        const heartIcon = btn.querySelector('.fa-heart');
-        const thankText = document.getElementById('thankText');
-        const thankCount = document.getElementById('thankCount');
-        
-        if (data.thanked) {
-        heartIcon.classList.add('scale-125', 'text-red-400');
-        thankText.textContent = 'Rahmat aytildi';
-        } else {
-        heartIcon.classList.remove('scale-125');
-        thankText.textContent = 'Rahmat aytish';
-        }
-        
-        thankCount.textContent = `(${data.count})`;
-        
-        // Add animation
-        heartIcon.classList.add('animate-pulse');
-        setTimeout(() => heartIcon.classList.remove('animate-pulse'), 200);
-        
-    } catch (error) {
-        console.error('Error:', error);
+        const { thanked, count } = await res.json();
+
+        // Иконка и тексты
+        const icon = btn.querySelector('.fa-heart');
+        const text = btn.querySelector('#thankText');
+        const countEl = btn.querySelector('#thankCount');
+
+        // Переключаем класс цвета на иконке
+        icon.classList.toggle('text-red-400', thanked);
+
+        // Обновляем подпись и счётчик
+        text.textContent = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
+        countEl.textContent = `(${count})`;
+    } catch (err) {
+        console.error('Thank error:', err);
     }
     });
 </script>
+
+
 <!-- Внизу страницы, перед </body> -->
 <script>
-  (function() {
-    let prevScroll = window.pageYOffset;
-    const nav = document.getElementById('navbar');
+(function() {
+  const nav = document.getElementById('navbar');
+  const navHeight = nav.offsetHeight;
+  let lastScroll = window.pageYOffset || document.documentElement.scrollTop;
+  let ticking = false;
 
-    window.addEventListener('scroll', () => {
-      const curr = window.pageYOffset;
-      if (curr < prevScroll) {
-        // скролл вверх — показываем
-        nav.classList.remove('-translate-y-full');
-      } else {
-        // скролл вниз — прячем
-        nav.classList.add('-translate-y-full');
+  // 1) Скролл-логика (только десктоп)
+  window.addEventListener('scroll', () => {
+    if (window.innerWidth < 768) return;    // на мобилках не трогаем
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(() => {
+      const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+      const delta = currentScroll - lastScroll;
+
+      if (Math.abs(delta) > 5) {
+        if (delta > 0 && currentScroll > navHeight) {
+          // скролл вниз — скрываем
+          nav.classList.add('-translate-y-full');
+        } else if (delta < 0) {
+          // скролл вверх — показываем
+          nav.classList.remove('-translate-y-full');
+        }
+        lastScroll = currentScroll;
       }
-      prevScroll = curr;
+
+      ticking = false;
     });
-  })();
+  }, { passive: true });
+
+  // 2) Тап-логика (мобильные устройства)
+  if ('ontouchstart' in window) {
+    let startY = 0;
+    document.addEventListener('touchstart', e => {
+      startY = e.changedTouches[0].clientY;
+    });
+    document.addEventListener('touchend', e => {
+      const endY = e.changedTouches[0].clientY;
+      // если вертикальный «дрож» менее 5px — считаем тапом
+      if (Math.abs(endY - startY) < 5) {
+        nav.classList.toggle('-translate-y-full');
+      }
+    });
+  }
+})();
 </script>
+
 </body>
 </html>
