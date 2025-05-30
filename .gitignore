@@ -1,0 +1,11 @@
+*.sqlite3
+*.log
+*.pid
+__pycache__/
+local_settings.py
+db.sqlite3
+.env
+.env.example
+migrations/
+static/dist/
+static/node_modules/

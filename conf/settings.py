@@ -1,4 +1,5 @@
 from pathlib import Path
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -8,12 +9,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-3*q1k1n4(uwo38_3pwmo05atz9+^fej07%i@xcfn3h8msvoyum'
+SECRET_KEY = config("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-# ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "165.227.148.96"
+    '127.0.0.1',
+    "mangaland.uz",
+    "www.mangaland.uz",
+]
 
 
 # Application definition
@@ -87,6 +93,17 @@ WSGI_APPLICATION = 'conf.wsgi.application'
 #     }
 # }
 
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASS'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT'),
+    }
+}
+
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
@@ -145,17 +162,17 @@ EMAIL_USE_TLS      = True
 DEFAULT_FROM_EMAIL = "MyManga <khondamiras@gmail.com>"
 
 # renderniki
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-import dj_database_url
-import os
+# import dj_database_url
+# import os
 
-SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
-# DEBUG = os.getenv("DEBUG", "False") == "True"
-ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
+# SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
+# # DEBUG = os.getenv("DEBUG", "False") == "True"
+# ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
 
-DATABASES = {
-    'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR}/db.sqlite3', conn_max_age=600)
-}
+# DATABASES = {
+#     'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR}/db.sqlite3', conn_max_age=600)
+# }
 
 # pipenv install gunicorn psycopg2-binary whitenoise dj-database-url
