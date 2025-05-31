@@ -15,7 +15,7 @@ SECRET_KEY = config("SECRET_KEY")
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = [
-    "165.227.148.96"
+    'localhost',
     '127.0.0.1',
     "mangaland.uz",
     "www.mangaland.uz",
