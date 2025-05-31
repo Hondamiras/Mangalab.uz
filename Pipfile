@@ -10,7 +10,7 @@ gunicorn = "*"
 psycopg2-binary = "*"
 whitenoise = "*"
 dj-database-url = "*"
-decouple = "*"
+python-decouple = "*"
 
 [dev-packages]
 
