@@ -267,15 +267,17 @@ def chapter_read(request, manga_slug, chapter_number):
         .first()
     )
 
-    # Обновляем или создаём прогресс чтения
-    progress, created = ReadingProgress.objects.get_or_create(
-        user=request.user,
-        manga=manga,
-        defaults={'last_read_chapter': chapter, 'last_read_page': 1}
-    )
-    if not created and chapter.chapter_number > (progress.last_read_chapter.chapter_number or 0):
-        progress.last_read_chapter = chapter
-        progress.save()
+    # Прогресс чтения — только для вошедших пользователей
+    progress = None
+    if request.user.is_authenticated:
+        progress, created = ReadingProgress.objects.get_or_create(
+            user=request.user,
+            manga=manga,
+            defaults={'last_read_chapter': chapter, 'last_read_page': 1}
+        )
+        if not created and chapter.chapter_number > (progress.last_read_chapter.chapter_number or 0):
+            progress.last_read_chapter = chapter
+            progress.save()
 
     return render(request, 'manga/chapter_read.html', {
         'manga': manga,
@@ -285,7 +287,7 @@ def chapter_read(request, manga_slug, chapter_number):
         'all_chapters': all_chapters,
         'reading_progress': progress,
     })
-
+    
 # ====== спасибо главе ========================================================
 @login_required
 def thank_chapter(request, chapter_id):
