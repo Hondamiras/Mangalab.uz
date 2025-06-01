@@ -236,7 +236,7 @@ def add_to_reading_list(request, manga_slug):
     return redirect('manga:manga_details', manga_slug=manga.slug)
 
 # ====== чтение главы ========================================================
-@login_required
+
 def chapter_read(request, manga_slug, chapter_number):
     # Получаем объект манги по слагу
     manga = get_object_or_404(Manga, slug=manga_slug)
