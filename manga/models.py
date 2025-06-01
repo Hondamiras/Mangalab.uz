@@ -99,9 +99,8 @@ class Chapter(models.Model):
         blank=True,
     )
     class Meta:
-        ordering = ("chapter_number",)
         indexes = [models.Index(fields=("manga", "chapter_number"))]
-        unique_together = ("manga", "chapter_number")
+        unique_together = ("manga", "chapter_number", "volume")
         verbose_name = "Bob"
         verbose_name_plural = "Boblar"
 

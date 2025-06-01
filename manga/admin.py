@@ -12,8 +12,8 @@ class MangaAdmin(admin.ModelAdmin):
 
 @admin.register(Chapter)
 class ChapterAdmin(admin.ModelAdmin):
-    list_display = ("manga", "chapter_number", "release_date")
-    list_filter  = ("release_date",)
+    list_display = ("manga", "chapter_number", "volume", "release_date")
+    list_filter  = ("release_date", "manga")
 
 
 @admin.register(Genre)
