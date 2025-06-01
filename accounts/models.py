@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from datetime import timedelta
-from django.conf import settings
+from django.contrib.auth.hashers import make_password
 
 User = get_user_model()
 
@@ -14,15 +14,16 @@ READING_STATUSES = (
 )
 
 class EmailVerificationCode(models.Model):
-    user      = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    code      = models.CharField(max_length=6)
-    created   = models.DateTimeField(auto_now_add=True)
+    user    = models.OneToOneField(User, on_delete=models.CASCADE)
+    code    = models.CharField(max_length=6)
+    created = models.DateTimeField(auto_now_add=True)
 
     def is_expired(self):
-        return timezone.now() > self.created + timedelta(minutes=15)  # код живёт 15 минут
+        return timezone.now() > self.created + timedelta(minutes=15)
 
     def __str__(self):
         return f"{self.user.email} → {self.code}"
+
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
@@ -45,6 +46,7 @@ class UserProfile(models.Model):
             manga=manga,
             defaults={"status": status}
         )
+
 
 class ReadingStatus(models.Model):
     user_profile = models.ForeignKey(
@@ -69,3 +71,17 @@ class ReadingStatus(models.Model):
 
     def __str__(self):
         return f"{self.user_profile.user.username} — {self.manga.title} ({self.status})"
+
+
+class PendingSignup(models.Model):
+    username      = models.CharField(max_length=150, unique=True)
+    email         = models.EmailField(unique=True)
+    password_hash = models.CharField(max_length=128)
+    code          = models.CharField(max_length=6)
+    created       = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        return timezone.now() > self.created + timedelta(minutes=15)
+
+    def save_password(self, raw_password):
+        self.password_hash = make_password(raw_password)

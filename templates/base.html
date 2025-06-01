@@ -11,6 +11,7 @@
   <meta name="author" content="MangaLab Team">
   <link rel="icon" href="{% static 'images/logo.png' %}">
   <title>{% block title %}MangaLab{% endblock %}</title>
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Alpine.js -->
@@ -19,6 +20,10 @@
   <style>[x-cloak] { display: none !important; }</style>
   <!-- Font Awesome -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js" defer></script>
+
+  <!-- Toastify CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+
   <style>
     :root {
       --bg-color: #1a202c;
@@ -124,49 +129,77 @@
     {% block content %}{% endblock %}
   </main>
 
-    <!-- Footer -->
-    <footer class="py-12 bg-gray-900 border-t border-gray-800">
-      <div class="container mx-auto px-6">
-        <div class="space-y-4">
-          <h3 class="text-white text-xl">
-            MangaLab - 
-            <span class="text-gray-600 text-sm">
-              Manga, manhwa va manhua - endi o'zbek tilida! Yangi o'qish platformasi
-            </span>
-          </h3>
-          <p class="text-gray-400 text-sm">
-            Savollaringiz bo'lsa, yozing:
-            <a href="mailto:yordam@mangalab.uz" class="text-purple-400 hover:underline">
-              yordam@mangalab.uz
+  <!-- Footer -->
+  <footer class="py-12 bg-gray-900 border-t border-gray-800">
+    <div class="container mx-auto px-6">
+      <div class="space-y-4">
+        <h3 class="text-white text-xl">
+          MangaLab - 
+          <span class="text-gray-600 text-sm">
+            Manga, manhwa va manhua - endi o'zbek tilida! Yangi o'qish platformasi
+          </span>
+        </h3>
+        <p class="text-gray-400 text-sm">
+          Savollaringiz bo'lsa, yozing:
+          <a href="mailto:yordam@mangalab.uz" class="text-purple-400 hover:underline">
+            yordam@mangalab.uz
+          </a>
+        </p>
+
+        <!-- Социальные иконки и копирайт -->
+        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
+          <div class="flex space-x-4">
+            <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-500">
+              <i class="fab fa-telegram-plane fa-lg"></i>
             </a>
-          </p>
-
-          <!-- Вот этот блок -->
-          <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
-            <!-- Социальные иконки -->
-            <div class="flex space-x-4">
-              <a href="https://t.me/mangalabuz" class="text-gray-400 hover:text-purple-500">
-                <i class="fab fa-telegram-plane fa-lg"></i>
-              </a>
-              <a href="https://www.tiktok.com/@mangalabuz" class="text-gray-400 hover:text-purple-500">
-                <i class="fab fa-tiktok fa-lg"></i>
-              </a>
-              <a href="#" class="text-gray-400 hover:text-purple-500">
-                <i class="fab fa-instagram fa-lg"></i>
-              </a>
-            </div>
-
-            <!-- Копирайт -->
-            <p class="text-gray-500 text-sm">
-              © {% now "Y" %} MangaLab. Barcha huquqlar himoyalangan
-            </p>
+            <a href="https://www.tiktok.com/@mangalabuz" class="text-gray-400 hover:text-purple-500">
+              <i class="fab fa-tiktok fa-lg"></i>
+            </a>
+            <a href="#" class="text-gray-400 hover:text-purple-500">
+              <i class="fab fa-instagram fa-lg"></i>
+            </a>
           </div>
-          <!-- /Конец блока -->
 
+          <p class="text-gray-500 text-sm">
+            © {% now "Y" %} MangaLab. Barcha huquqlar himoyalangan
+          </p>
         </div>
       </div>
-    </footer>
+    </div>
+  </footer>
 
+  <!-- Toastify JS -->
+  <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+  {% if messages %}
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        {% for message in messages %}
+          Toastify({
+            text: "{{ message|escapejs }}",
+            duration: 5000,
+            close: true,
+            gravity: "top",
+            position: "center",
+            stopOnFocus: true,
+            style: {
+              background: "rgba(58, 53, 65, 0.95)",
+              color: "#f7f7f7",
+              borderRadius: "0.5rem",
+              boxShadow: "0 8px 16px rgba(0,0,0,0.3)",
+              fontSize: "1rem",
+              padding: "0.75rem 1.25rem",
+              fontFamily: "Inter, system-ui, -apple-system"
+            },
+            backgroundColor: "#8b5cf6"
+          }).showToast();
+        {% endfor %}
+      });
+    </script>
+  {% endif %}
+
+
+
+  <!-- Скрипт для плавной прокрутки (взято из вашего примера) -->
   <script>
     // Smooth scroll for anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -176,5 +209,6 @@
       });
     });
   </script>
+
 </body>
 </html>

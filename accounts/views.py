@@ -8,7 +8,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from manga.models import ReadingProgress
 
 from .forms import SignupForm
-from .models import UserProfile, ReadingStatus
+from .models import PendingSignup, UserProfile, ReadingStatus
 
 User = get_user_model()
 
@@ -29,60 +29,72 @@ from .models import EmailVerificationCode
 def signup_view(request):
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        # 1) Сохраняем пользователя неактивным
-        user = form.save(commit=False)
-        user.is_active = False
-        user.save()
+        username    = form.cleaned_data["username"]
+        email       = form.cleaned_data["email"]
+        raw_password = form.cleaned_data["password1"]
 
-        # 2) Генерируем код (6 цифр)
-        code = f"{secrets.randbelow(10**6):06d}"
+        # Удаляем старые PendingSignup с тем же username/email
+        PendingSignup.objects.filter(username=username).delete()
+        PendingSignup.objects.filter(email=email).delete()
 
-        # 3) Сохраняем/перезаписываем код
-        EmailVerificationCode.objects.update_or_create(
-            user=user,
-            defaults={"code": code, "created": timezone.now()}
+        # Создаём новую PendingSignup и хэшируем пароль
+        pending = PendingSignup(
+            username=username,
+            email=email,
+            code=f"{secrets.randbelow(10**6):06d}"
         )
+        pending.save_password(raw_password)
+        pending.save()
 
-        # 4) Отправляем письмо
-        subject = "Ваш код подтверждения MyManga"
+        # Отправляем письмо с кодом
+        subject = "Akkountingizni faollashtirish kodi - MangaLab"
         message = (
-            f"Привет, {user.username}!\n\n"
-            f"Ваш код для активации аккаунта: {code}\n\n"
-            "Он действителен 15 минут."
+            f"Salom, {username}!\n\n"
+            f"Akkountingizni faollashtirish uchun kodingiz: {pending.code}\n\n"
+            "15 daqiqa davomida amal qiladi."
         )
-        send_mail(subject, message,
-                  settings.DEFAULT_FROM_EMAIL,
-                  [user.email],
-                  fail_silently=False)
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [email],
+            fail_silently=False
+        )
 
-        # 5) Редиректим на ввод кода
-        return redirect(reverse("accounts:verify_code") + f"?uid={user.pk}")
+        return redirect(reverse("accounts:verify_code") + f"?pid={pending.pk}")
+
     return render(request, "accounts/signup.html", {"form": form})
 
 def verify_code_view(request):
     error = None
-    uid = request.GET.get("uid")
-    if request.method == "POST":
-        uid = request.POST.get("uid")
-        code = request.POST.get("code", "").strip()
-        try:
-            user = User.objects.get(pk=uid)
-            ev = EmailVerificationCode.objects.get(user=user)
-        except (User.DoesNotExist, EmailVerificationCode.DoesNotExist):
-            user = ev = None
+    pid = request.GET.get("pid")
 
-        if not user or ev.is_expired() or ev.code != code:
-            error = "Неверный или просроченный код."
+    if request.method == "POST":
+        pid = request.POST.get("pid")
+        code_entered = request.POST.get("code", "").strip()
+
+        try:
+            pending = PendingSignup.objects.get(pk=pid)
+        except PendingSignup.DoesNotExist:
+            pending = None
+
+        if not pending or pending.is_expired() or pending.code != code_entered:
+            error = "Kod noto'g'ri yoki amal qilish muddati tugagan."
         else:
-            user.is_active = True
-            user.save()
-            ev.delete()                  # удаляем уже использованный код
+            # Создаём реального пользователя с готовым хэшем пароля
+            user = User.objects.create(
+                username=pending.username,
+                email=pending.email,
+                password=pending.password_hash,
+                is_active=True
+            )
+            pending.delete()
             login(request, user)
-            messages.success(request, "Аккаунт активирован, вы вошли в систему.")
+            messages.success(request, "Hisobingiz faollashtirildi, tizimga kirdingiz.")
             return redirect("manga:manga_list")
 
     return render(request, "accounts/verify_code.html", {
-        "uid": uid,
+        "pid": pid,
         "error": error
     })
 
@@ -90,6 +102,7 @@ def login_view(request):
     form = AuthenticationForm(data=request.POST or None)
     if form.is_valid():
         login(request, form.get_user())
+        messages.success(request, "Tizimga muvaffaqiyatli kirdingiz")  # «Вы успешно вошли»
         return redirect("manga:manga_list")
     return render(request, "accounts/login.html", {"form": form})
 
@@ -97,8 +110,8 @@ def login_view(request):
 @login_required
 def logout_view(request):
     logout(request)
+    messages.info(request, "Siz tizimdan chiqdingiz")  # «Вы вышли из системы»
     return redirect("manga:manga_list")
-
 
 # ------------------------------------------------------------------#
 #                           ПРОФИЛИ                                 #

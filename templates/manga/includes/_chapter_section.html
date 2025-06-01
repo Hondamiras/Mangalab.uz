@@ -8,7 +8,7 @@
              bg-gradient-to-r from-purple-400 to-pink-400
              bg-clip-text text-transparent"
     >
-      Boblar ro'yxati - <span>[ {{ chapters|length }} ]</span>
+      Boblar ro'yxati - <span>{{ chapters|length }}</span>
     </h2>
     
     <div class="flex items-center space-x-2">
@@ -45,7 +45,7 @@
           class="flex items-center justify-between py-2 px-3 hover:bg-gray-800/50 transition-colors"
         >
           <span class="text-gray-200">
-            {{ chapter.title }}
+           Tom {{ chapter.volume }} Bob {{ chapter.chapter_number }}
           </span>
           <span class="text-sm text-gray-500">
             {{ chapter.release_date|date:"d.m.Y" }}

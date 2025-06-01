@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="max-w-md mx-auto p-6 bg-gray-800 rounded-lg text-gray-100">
-  <h2 class="text-2xl mb-4">Введите код из письма</h2>
+  <h2 class="text-2xl mb-4">Elektron pochtangizga yuborilgan kodni kiriting</h2>
 
   {% if error %}
     <div class="mb-4 p-3 bg-red-700 text-red-200 rounded">{{ error }}</div>
@@ -10,16 +10,16 @@
 
   <form method="post" class="space-y-4">
     {% csrf_token %}
-    <input type="hidden" name="uid" value="{{ uid }}">
+    <input type="hidden" name="pid" value="{{ pid }}">
     <div>
-      <label for="code" class="block text-sm font-medium mb-1">Код подтверждения</label>
+      <label for="code" class="block text-sm font-medium mb-1">Tasdiqlash kodi</label>
       <input id="code" name="code" maxlength="6" required
              class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg
                     focus:ring-2 focus:ring-purple-500 text-gray-100" />
     </div>
     <button type="submit"
             class="w-full py-2 bg-purple-600 hover:bg-purple-500 rounded-lg text-gray-100">
-      Подтвердить и войти
+      Tasdiqlash va tizimga kirish
     </button>
   </form>
 </div>

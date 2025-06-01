@@ -12,7 +12,7 @@ class MangaAdmin(admin.ModelAdmin):
 
 @admin.register(Chapter)
 class ChapterAdmin(admin.ModelAdmin):
-    list_display = ("manga", "chapter_number", "title", "release_date")
+    list_display = ("manga", "chapter_number", "release_date")
     list_filter  = ("release_date",)
 
 
@@ -20,13 +20,6 @@ class ChapterAdmin(admin.ModelAdmin):
 class GenreAdmin(admin.ModelAdmin):
     list_display  = ("name",)
     search_fields = ("name",)
-
-
-# @admin.register(Page)
-# class PageAdmin(admin.ModelAdmin):
-#     list_display = ("chapter", "page_number", "image")
-#     list_filter  = ("chapter",)
-
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):

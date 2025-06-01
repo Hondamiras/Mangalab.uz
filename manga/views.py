@@ -12,18 +12,18 @@ from .models import Manga, Chapter, Genre, ReadingProgress, Tag
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 
 # ====== списки ==============================================================
+
 def manga_list(request):
-    # Показывает список манги с фильтрами и сортировкой.
-    # Если пользователь авторизован — подтягивает его статус чтения и закладки.
+    # 1) Получаем профиль пользователя
     if request.user.is_authenticated:
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
     else:
         user_profile = None
-    
+
+    # 2) Базовый queryset
     qs = Manga.objects.all()
 
-    # ———————————————————
-    # 0) Поиск
+    # 0) Поиск по ключевому слову
     search_query = request.GET.get('search', '').strip()
     if search_query:
         qs = qs.filter(
@@ -31,16 +31,14 @@ def manga_list(request):
             Q(author__icontains=search_query) |
             Q(description__icontains=search_query)
         ).distinct()
-    # ———————————————————
 
-    # 1) Multi‐checkbox filters
+    # 1) Фильтры‐чекбоксы
     genre_filter_list      = request.GET.getlist('genre')
     age_rating_filter_list = request.GET.getlist('age_rating')
     type_filter_list       = request.GET.getlist('type')
-    tag_filter_list = request.GET.getlist('tag')
-    status_filter_list = request.GET.getlist('status')
+    tag_filter_list        = request.GET.getlist('tag')
+    status_filter_list     = request.GET.getlist('status')
     translation_filter_list = request.GET.getlist('translation_status')
-
 
     if genre_filter_list:
         qs = qs.filter(genres__name__in=genre_filter_list).distinct()
@@ -55,107 +53,105 @@ def manga_list(request):
     if translation_filter_list:
         qs = qs.filter(translation_status__in=translation_filter_list)
 
-
-    # 2) Range filters
+    # 2) Диапазон по количеству глав
     min_chap = request.GET.get('min_chapters')
     max_chap = request.GET.get('max_chapters')
     if min_chap or max_chap:
         qs = qs.annotate(chap_count=Count('chapters'))
+        # проверяем, что min_chap не пустая строка и int(min_chap) > 0
         if min_chap:
-            qs = qs.filter(chap_count__gte=int(min_chap))
+            try:
+                iv = int(min_chap)
+                if iv > 0:
+                    qs = qs.filter(chap_count__gte=iv)
+            except ValueError:
+                pass
+        # аналогично для max_chap
         if max_chap:
-            qs = qs.filter(chap_count__lte=int(max_chap))
+            try:
+                iv = int(max_chap)
+                if iv > 0:
+                    qs = qs.filter(chap_count__lte=iv)
+            except ValueError:
+                pass
 
+    # 3) Диапазон по году публикации
     min_year = request.GET.get('min_year')
     max_year = request.GET.get('max_year')
     if min_year:
-        qs = qs.filter(publication_date__year__gte=int(min_year))
+        try:
+            iy = int(min_year)
+            # фильтруем ТОЛЬКО если год >= 1
+            if iy >= 1:
+                qs = qs.filter(publication_date__year__gte=iy)
+        except ValueError:
+            pass
     if max_year:
-        qs = qs.filter(publication_date__year__lte=int(max_year))
+        try:
+            iy = int(max_year)
+            if iy >= 1:
+                qs = qs.filter(publication_date__year__lte=iy)
+        except ValueError:
+            pass
 
-    # … add other ranges the same way …
-
-    # 2) Сортировка
-    sort = request.GET.get('sort', 'chapters')  # значение по умолчанию
+    # 4) Сортировка
+    sort = request.GET.get('sort', 'chapters')
     if sort == 'chapters':
-        # сортируем по количеству глав (аннотируем, если ещё не делали)
+        # Если не аннотировали выше, аннотируем и сортируем
         qs = qs.annotate(chap_count=Count('chapters')).order_by('-chap_count', 'title')
     elif sort == 'title_asc':
         qs = qs.order_by('title')
     elif sort == 'title_desc':
         qs = qs.order_by('-title')
     else:
-        # на всякий случай — чтобы не сломать вьюху
         qs = qs.order_by('title')
 
-    # подгружаем для каждого Manga его ReadingStatus (0 или 1 запись)
+    # 5) Подгрузка ReadingStatus текущего пользователя
     qs = qs.prefetch_related(
         Prefetch(
             'readingstatus_set',
             queryset=ReadingStatus.objects.filter(user_profile=user_profile),
-            to_attr='user_status'  # будет доступно как manga.user_status
+            to_attr='user_status'
         )
     )
 
-    # Pagination
-    paginator  = Paginator(qs, 10)
-    page_obj   = paginator.get_page(request.GET.get('page'))
+    # 6) Пагинация
+    paginator = Paginator(qs, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
 
-    # Prepare choices for template
+    # 7) Подготовка справочников для шаблона
     status_choices      = Manga._meta.get_field('status').choices
-    age_choices         = Manga._meta.get_field('age_rating').choices
+    age_rating_choices  = Manga._meta.get_field('age_rating').choices
     type_choices        = Manga._meta.get_field('type').choices
+    translation_choices = Manga._meta.get_field('translation_status').choices
 
     return render(request, 'manga/manga_list.html', {
-    'genres': Genre.objects.all(),
-    'tags': Tag.objects.all(),
-    'page_obj': page_obj,
-    'search': search_query,
+        'genres': Genre.objects.all(),
+        'tags': Tag.objects.all(),
+        'page_obj': page_obj,
+        'search': search_query,
+        'sort': sort,
 
-    # сортировка
-    'sort': sort,
+        # выбранные фильтры
+        'genre_filter_list': genre_filter_list,
+        'tag_filter_list': tag_filter_list,
+        'age_rating_filter_list': age_rating_filter_list,
+        'type_filter_list': type_filter_list,
+        'status_filter_list': status_filter_list,
+        'translation_filter_list': translation_filter_list,
 
-    # список выбранных фильтров для чекбоксов
-    'genre_filter_list': request.GET.getlist('genre'),
-    'tag_filter_list':    request.GET.getlist('tag'),
-    'age_rating_filter_list': request.GET.getlist('age_rating'),
-    'type_filter_list': request.GET.getlist('type'),
-    'format_filter_list': request.GET.getlist('format'),
-    'status_filter_list': request.GET.getlist('status'),
-    'translation_filter_list': request.GET.getlist('translation_status'),
-    'other_filter_list': request.GET.getlist('other'),
-    'mylist_filter_list': request.GET.getlist('mylist'),
+        # диапазоны
+        'min_chapters': request.GET.get('min_chapters', ''),
+        'max_chapters': request.GET.get('max_chapters', ''),
+        'min_year':     request.GET.get('min_year', ''),
+        'max_year':     request.GET.get('max_year', ''),
 
-    # диапазоны
-    'min_chapters': request.GET.get('min_chapters',''),
-    'max_chapters': request.GET.get('max_chapters',''),
-    'min_year':     request.GET.get('min_year',''),
-    'max_year':     request.GET.get('max_year',''),
-    'min_score':    request.GET.get('min_score',''),
-    'max_score':    request.GET.get('max_score',''),
-    'min_votes':    request.GET.get('min_votes',''),
-    'max_votes':    request.GET.get('max_votes',''),
-
-    # сами списки выбора
-    'age_rating_choices': Manga._meta.get_field('age_rating').choices,
-    'type_choices':        Manga._meta.get_field('type').choices,
-    # 'format_choices':      Manga._meta.get_field('format').choices,
-    'status_choices':      Manga._meta.get_field('status').choices,
-    'translation_choices': Manga._meta.get_field('translation_status').choices,
-    'other_choices': [      # пример
-        ('no_translation_3m','Нет перевода >3 мес'),
-        ('licensed','Лицензирован'),
-        ('for_sale','Можно приобрести'),
-    ],
-    'mylist_choices': [     # пример
-        ('reading','Читаю'),
-        ('planned','В планах'),
-        ('dropped','Брошено'),
-        ('completed','Прочитано'),
-        ('favorite','Любимые'),
-        ('ongoing','Продолжается'),
-    ],
-})
+        # выборки для чекбоксов
+        'status_choices':      status_choices,
+        'age_rating_choices':  age_rating_choices,
+        'type_choices':        type_choices,
+        'translation_choices': translation_choices,
+    })
 
 # ====== детали манги ========================================================
 def manga_details(request, manga_slug):

@@ -1,3 +1,4 @@
+from datetime import date
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -9,8 +10,8 @@ class Tag(models.Model):
 
     class Meta:
         ordering = ("name",)
-        verbose_name = "Тег"
-        verbose_name_plural = "Теги"
+        verbose_name = "Teg"
+        verbose_name_plural = "Teglar"
 
     def __str__(self):
         return self.name
@@ -71,8 +72,8 @@ class Genre(models.Model):
 
     class Meta:
         ordering = ("name",)
-        verbose_name = "Жанр"
-        verbose_name_plural = "Жанры"
+        verbose_name = "Janr"
+        verbose_name_plural = "Janrlar"
 
     def __str__(self) -> str:
         return self.name
@@ -81,10 +82,9 @@ from django.core.validators import FileExtensionValidator
 
 class Chapter(models.Model):
     manga = models.ForeignKey(Manga, on_delete=models.CASCADE, related_name="chapters")
-    title = models.CharField(max_length=255)
     volume = models.PositiveIntegerField(default=1)
     chapter_number = models.PositiveIntegerField()
-    release_date = models.DateField()
+    release_date = models.DateField(default=date.today)
 
     pdf = models.FileField(
         upload_to='chapters/pdfs/',
@@ -106,27 +106,12 @@ class Chapter(models.Model):
         verbose_name_plural = "Boblar"
 
     def __str__(self) -> str:
-        return f"{self.manga.title} — Ch. {self.chapter_number}: {self.title}"
+        return f"{self.manga.title} — Ch. {self.chapter_number}"
     
     @property
     def thanks_count(self):
         """Возвращает число пользователей, нажавших «Спасибо»."""
         return self.thanks.count()
-
-
-# class Page(models.Model):
-#     chapter = models.ForeignKey(Chapter, on_delete=models.CASCADE, related_name="pages")
-#     page_number = models.PositiveIntegerField()
-#     image = models.ImageField(upload_to="pages/")
-
-#     class Meta:
-#         ordering = ("page_number",)
-#         unique_together = ("chapter", "page_number")
-#         verbose_name = "Страница"
-#         verbose_name_plural = "Страницы"
-
-#     def __str__(self) -> str:
-#         return f"{self.chapter} — p.{self.page_number}"
 
 
 class ReadingProgress(models.Model):

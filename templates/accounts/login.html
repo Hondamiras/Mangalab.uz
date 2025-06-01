@@ -35,20 +35,39 @@
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-100 text-center mb-6">
                 <i class="fa-solid fa-sign-in-alt mr-2 text-purple-400"></i>Kirish
             </h1>
+
+            {# Блок для ошибок формы (например, "Неверное имя пользователя или пароль") #}
+            {% if form.non_field_errors %}
+                <div class="mb-4 p-3 bg-red-700 text-red-200 rounded">
+                    {% for error in form.non_field_errors %}
+                        <p><i class="fas fa-times-circle mr-2"></i>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
             <form method="post" class="space-y-6" autocomplete="off">
                 {% csrf_token %}
-                
-                <!-- Email Field -->
+
+                <!-- Username Field -->
                 <div class="group relative">
                     <label class="block text-sm font-medium mb-2 text-gray-400">
                         Username
                     </label>
                     <div class="relative">
-                        <input type="text" name="username"
-                               class="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg 
-                                      text-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 
-                                      transition-all duration-150 placeholder-gray-500"
-                               required>
+                        <input 
+                            type="text" 
+                            name="username"
+                            value="{{ form.username.value|default:'' }}"
+                            class="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg 
+                                   text-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 
+                                   transition-all duration-150 placeholder-gray-500"
+                            required
+                        >
+                        {% if form.username.errors %}
+                            <p class="text-red-400 text-sm mt-2">
+                                <i class="fas fa-times-circle mr-1"></i>{{ form.username.errors.0 }}
+                            </p>
+                        {% endif %}
                         <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
                             <i class="far fa-envelope text-gray-500"></i>
                         </div>
@@ -61,19 +80,30 @@
                         Parol
                     </label>
                     <div class="relative">
-                        <input type="password" name="password" 
-                               class="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg 
-                                      text-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 
-                                      transition-all duration-150"
-                               required>
+                        <input 
+                            type="password" 
+                            name="password"
+                            class="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-lg 
+                                   text-gray-300 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 
+                                   transition-all duration-150"
+                            required
+                        >
+                        {% if form.password.errors %}
+                            <p class="text-red-400 text-sm mt-2">
+                                <i class="fas fa-times-circle mr-1"></i>{{ form.password.errors.0 }}
+                            </p>
+                        {% endif %}
                         <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
                             <i class="fas fa-key text-gray-500"></i>
                         </div>
                     </div>
                 </div>
 
-                <button type="submit" class="w-full px-6 py-3 font-semibold bg-purple-600 text-white rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors duration-200">
+                <button 
+                    type="submit" 
+                    class="w-full px-6 py-3 font-semibold bg-purple-600 text-white rounded-lg
+                           focus:outline-none focus:ring-2 focus:ring-purple-500 transition-colors duration-200"
+                >
                     <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Kirish
                 </button>
             </form>
