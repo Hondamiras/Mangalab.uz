@@ -107,14 +107,19 @@
                   </a>
                 {% endfor %}
               </div>
-              <button
+              <button type="button"
                 onclick="
-                  document.getElementById('extra-genres-{{ manga.id }}').classList.remove('hidden');
-                  this.style.display = 'none';
+                  const extra = document.getElementById('extra-genres-{{ manga.id }}');
+                  if (extra.classList.contains('hidden')) {
+                    extra.classList.remove('hidden');
+                    this.textContent = 'Yashirish';
+                  } else {
+                    extra.classList.add('hidden');
+                    this.textContent = 'Davomi…';
+                  }
                 "
-                class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center gap-2"
-              >
-                Davomi...
+                class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center gap-2">
+                Davomi…
               </button>
             {% endif %}
           {% endwith %}
