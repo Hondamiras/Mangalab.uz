@@ -149,31 +149,13 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Default primary key field type
-# https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 EMAIL_BACKEND      = "django.core.mail.backends.smtp.EmailBackend"
-EMAIL_HOST         = "smtp.gmail.com"
-EMAIL_PORT         = 587
-EMAIL_HOST_USER    = "khondamiras@gmail.com"
-EMAIL_HOST_PASSWORD= "ggwe echm phgt atfh"
+EMAIL_HOST         = "smtp-relay.brevo.com"
+EMAIL_PORT         = 2525  
 EMAIL_USE_TLS      = True
-DEFAULT_FROM_EMAIL = "MyManga <khondamiras@gmail.com>"
-
-# renderniki
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-# import dj_database_url
-# import os
-
-# SECRET_KEY = os.getenv("SECRET_KEY", "default-secret-key")
-# # DEBUG = os.getenv("DEBUG", "False") == "True"
-# ALLOWED_HOSTS = ["*"]  # Лучше указать домен render
-
-# DATABASES = {
-#     'default': dj_database_url.config(default=f'sqlite:///{BASE_DIR}/db.sqlite3', conn_max_age=600)
-# }
-
-# pipenv install gunicorn psycopg2-binary whitenoise dj-database-url
+EMAIL_HOST_USER    = "8c290c001@smtp-brevo.com"
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL  = "no-reply@mangalab.uz"
+EMAIL_TIMEOUT      = 10            # чтобы воркер не зависал
