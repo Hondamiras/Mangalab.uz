@@ -18,8 +18,8 @@ ALLOWED_HOSTS = [
     '164.92.253.187',    
     'localhost',
     '127.0.0.1',
-    "mangaland.uz",
-    "www.mangaland.uz",
+    "mangalab.uz",
+    "www.mangalab.uz",
 ]
 
 
