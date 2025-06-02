@@ -203,10 +203,18 @@
                   </div>
                 </form>
               </div>
+            {% else %}
+              <div class="w-[300px]">
+                <a href="{% url 'accounts:login' %}?next={% url 'manga:add_to_reading_list' manga.slug %}"
+                   class="w-full h-14 flex items-center justify-center text-sm px-4 gap-2 bg-gray-900 text-purple-300 rounded-2xl
+                         hover:bg-gray-800 transition-colors duration-200 shadow-sm hover:shadow-md">
+                  <span class="font-medium">Ro'yxatga qo'shish uchun akkountingizga kiring.</span>
+                </a>
+              </div>
             {% endif %}
 
             {# Start Reading Button #}
-            {% if user.is_authenticated %}
+            {% comment %} {% if user.is_authenticated %} {% endcomment %}
             <div class="w-[200px]">
               <a
                 href="{% url 'manga:chapter_read' manga.slug first_chapter.chapter_number %}"
@@ -217,7 +225,7 @@
                 <span class="font-medium">O'qishni boshlash</span>
               </a>
             </div>
-            {% else %}
+            {% comment %} {% else %}
             <div class="w-[300px]">
               <a
                 href="{% url 'accounts:signup' %}?next={% url 'manga:chapter_read' manga.slug first_chapter.chapter_number %}"
@@ -227,7 +235,7 @@
                 <span class="font-medium">O'qish uchun ro'yxatdan o'ting</span>
               </a>
             </div>
-            {% endif %}
+            {% endif %} {% endcomment %}
           </div>
         {% else %}
           <p class="mt-6 text-center sm:text-left text-gray-400 italic">

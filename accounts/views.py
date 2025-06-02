@@ -90,7 +90,7 @@ def verify_code_view(request):
             )
             pending.delete()
             login(request, user)
-            messages.success(request, "Hisobingiz faollashtirildi, tizimga kirdingiz.")
+            messages.success(request, "Akkountingiz faollashtirildi, tizimga kirdingiz.")
             return redirect("manga:manga_list")
 
     return render(request, "accounts/verify_code.html", {
