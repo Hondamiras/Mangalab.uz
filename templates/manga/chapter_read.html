@@ -3,113 +3,133 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ chapter.manga.title }} - Bob {{ chapter.chapter_number }}</title>
+  <title>{{ chapter.manga.title }} – Tom {{ chapter.volume }} • Bob {{ chapter.chapter_number }}</title>
   <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
-    <script>
-    // worker fayl manzilini ko‘rsatamiz
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
-    </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
+  </script>
 
-  <!-- Tailwind CSS CDN -->
+  <!-- Tailwind CDN, Alpine.js, Font Awesome -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Alpine.js -->
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <style>[x-cloak] { display: none !important; }</style>
-  <!-- Font Awesome -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js"></script>
 </head>
 <body class="bg-[#0F0F1E] text-gray-100">
-<div class="bg-[#0F0F1E] text-gray-100 min-h-screen">
-    <!-- Sticky Top Navigation -->
-    <div id="navbar" class="sticky top-0 z-50 transform transition-transform duration-700 ease-in-out bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm">
-        <div class="container mx-auto px-4 py-3">
-            <div class="flex items-center justify-between">
-                <a href="{% url 'manga:manga_details' chapter.manga.slug %}" 
-                class="group flex items-center space-x-2 hover:text-purple-300 transition-colors">
-                <i class="fas fa-arrow-left text-purple-400 group-hover:text-purple-300 transition-colors"></i>
-                </a>
+  <div class="bg-[#0F0F1E] text-gray-100 min-h-screen">
 
-                <!-- Chapter Selector -->
-                <div x-data="{ open: false }" class="relative">
-                <button @click="open = !open" 
-                        class="flex items-center space-x-3 px-4 py-2 bg-purple-900 rounded-lg">
-                    <div class="text-left">
-                    <p class="font-semibold">
-                        Tom {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
-                    </p>
-                    </div>
-                    <i class="fas fa-chevron-down text-purple-300 transform transition-transform duration-200" 
-                    :class="{ 'rotate-180': open }"></i>
-                </button>
+    <!-- ► Sticky Top Navigation -->
+    <div id="navbar"
+         class="sticky top-0 z-50 transform transition-transform duration-700 ease-in-out
+                bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm">
+      <div class="container mx-auto px-4 py-3">
+        <div class="flex items-center justify-between">
+          <!-- ← Back to Manga Details -->
+          <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
+             class="group flex items-center space-x-2 hover:text-purple-300 transition-colors">
+            <i class="fas fa-arrow-left text-purple-400 group-hover:text-purple-300 transition-colors"></i>
+          </a>
 
-                <!-- Chapter Dropdown -->
-                <div x-show="open" x-cloak @click.away="open = false"
-                    class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto 
-                            bg-[#1A1A2E] rounded-xl shadow-2xl
-                            scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
-                    <ul class="divide-y divide-purple-800/50">
-                    {% for ch in all_chapters %}
-                        <li>
-                            <a
-                                href="{% url 'manga:chapter_read' manga.slug ch.chapter_number %}"
-                                class="group flex items-center px-5 py-3.5 transition-all
-                                    {% if ch.id == chapter.id %}
-                                        bg-gradient-to-r from-purple-900/30 to-transparent border-l-4 border-purple-400
-                                    {% else %}
-                                        hover:bg-purple-900/20
-                                    {% endif %}"
-                            >
-                                <div class="flex items-center min-w-0 flex-1 space-x-3.5">
-                                    <!-- Status Icons -->
-                                    <div class="relative w-5 h-5 flex items-center justify-center">
-                                        {% if reading_progress.last_read_chapter and ch.chapter_number < reading_progress.last_read_chapter.chapter_number %}
-                                            <i class="fas fa-check-circle text-emerald-400 text-base"></i>
-                                        {% elif reading_progress.last_read_chapter and ch.chapter_number == reading_progress.last_read_chapter.chapter_number %}
-                                            <i class="fas fa-bookmark text-amber-400 text-lg
-                                                absolute left-1/2 top-1/2
-                                                transform -translate-x-1/2 -translate-y-1/2
-                                                rotate-12"></i>
-                                        {% endif %}
-                                    </div>
+          <!-- ► Chapter Selector -->
+          <div x-data="{ open: false }" class="relative">
+            <button @click="open = !open"
+                    class="flex items-center space-x-3 px-4 py-2 bg-purple-900 rounded-lg">
+              <div class="text-left">
+                <p class="font-semibold">
+                  Tom {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
+                </p>
+              </div>
+              <i class="fas fa-chevron-down text-purple-300 transform transition-transform duration-200"
+                 :class="{ 'rotate-180': open }"></i>
+            </button>
 
-                                    <!-- Chapter Info -->
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex items-baseline justify-between space-x-2">
-                                            <p class="text-sm truncate {% if ch.id == chapter.id %}font-semibold text-purple-100{% else %}text-purple-200{% endif %}">
-                                                Tom {{ ch.volume }} • Bob {{ ch.chapter_number }}
-                                            </p>
-                                            <span class="text-xs shrink-0 {% if ch.id == chapter.id %}text-purple-400/80{% else %}text-purple-500{% endif %}">
-                                                {{ ch.release_date|date:"d.m.Y" }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
+            <!-- ► Chapter Dropdown -->
+            <div x-show="open" x-cloak @click.away="open = false"
+                 class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto
+                        bg-[#1A1A2E] rounded-xl shadow-2xl
+                        scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
+              <ul class="divide-y divide-purple-800/50">
+                {% for ch in all_chapters %}
+                  <li>
+                    <a href="{% url 'manga:chapter_read' manga.slug ch.volume ch.chapter_number %}"
+                       class="group flex items-center px-5 py-3.5 transition-all
+                              {% if ch.id == chapter.id %}
+                                bg-gradient-to-r from-purple-900/30 to-transparent border-l-4 border-purple-400
+                              {% else %}
+                                hover:bg-purple-900/20
+                              {% endif %}">
+                      
+                      <div class="flex items-center min-w-0 flex-1 space-x-3.5">
+                        <!-- ► Status Icon: галочка/закладка или пусто -->
+                        <div class="relative w-5 h-5 flex items-center justify-center">
+                          {% if reading_progress and reading_progress.last_read_chapter %}
+                            {% if ch.volume < reading_progress.last_read_chapter.volume %}
+                              <i class="fas fa-check-circle text-emerald-400 text-base"></i>
+                            {% elif ch.volume == reading_progress.last_read_chapter.volume and ch.chapter_number < reading_progress.last_read_chapter.chapter_number %}
+                              <i class="fas fa-check-circle text-emerald-400 text-base"></i>
+                            {% elif ch.id == reading_progress.last_read_chapter.id %}
+                              <i class="fas fa-bookmark text-amber-400 text-lg
+                                     absolute left-1/2 top-1/2
+                                     transform -translate-x-1/2 -translate-y-1/2
+                                     rotate-12"></i>
+                            {% else %}
+                              <div class="w-4 h-4"></div>
+                            {% endif %}
+                          {% else %}
+                            <div class="w-4 h-4"></div>
+                          {% endif %}
+                        </div>
 
-                                <!-- Current Chapter Indicator -->
-                                {% if ch.id == chapter.id %}
-                                    <div class="ml-3">
-                                        <div class="h-2 w-2 rounded-full bg-purple-400 shadow-[0_0_8px_2px_rgba(168,85,247,0.3)]"></div>
-                                    </div>
-                                {% endif %}
-                            </a>
-                        </li>
-                    {% endfor %}
+                        <!-- ► Chapter Info -->
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-baseline justify-between space-x-2">
+                            <p class="text-sm truncate
+                                       {% if ch.id == chapter.id %}
+                                         font-semibold text-purple-100
+                                       {% else %}
+                                         text-purple-200
+                                       {% endif %}">
+                              Tom {{ ch.volume }} • Bob {{ ch.chapter_number }}
+                            </p>
+                            <span class="text-xs shrink-0
+                                         {% if ch.id == chapter.id %}
+                                           text-purple-400/80
+                                         {% else %}
+                                           text-purple-500
+                                         {% endif %}">
+                              {{ ch.release_date|date:"d.m.Y" }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
 
-                    </ul>
-                </div>
-                
-                </div>
+                      <!-- ► Current Chapter Indicator (точка справа) -->
+                      {% if ch.id == chapter.id %}
+                        <div class="ml-3">
+                          <div class="h-2 w-2 rounded-full bg-purple-400
+                                      shadow-[0_0_8px_2px_rgba(168,85,247,0.3)]"></div>
+                        </div>
+                      {% endif %}
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
             </div>
-        </div>
-    </div>
+            <!-- /► Chapter Dropdown -->
+          </div>
+          <!-- /► Chapter Selector -->
 
-    <!-- Chapter Content -->
+        </div>
+      </div>
+    </div>
+    <!-- /► Sticky Top Navigation -->
+
+    <!-- ► Chapter Content (PDF.js) -->
     {% include 'manga/includes/pdf_viewer.html' with chapter=chapter %}
 
-
-    <!-- Thank Section -->
+    <!-- ► Thank Section -->
     <div class="mt-12 text-center">
       {% if user.is_authenticated %}
         <button id="thankBtn"
@@ -129,136 +149,125 @@
       {% endif %}
     </div>
 
-    <!-- Navigation Controls -->
-    {# Закройте контейнер до блока с навигацией, а вот этот кусочек вставьте внутрь него: #}
+    <!-- ► Navigation Controls (Prev/Next) -->
     <div class="container mx-auto px-4 py-8">
-        <div class="flex justify-center items-center gap-2">
-            {# ← Previous or Manga #}
-            {% if previous_chapter %}
-            <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.chapter_number %}"
-                class="flex items-center px-4 py-2 space-x-2
-                        bg-gradient-to-r from-purple-600/30 to-indigo-600/30
-                        rounded-lg border border-purple-500/30 hover:border-purple-400/50
-                        transition"
-            >
-                <i class="fas fa-arrow-left text-purple-300"></i>
-                <span class="text-purple-100">Bob {{ previous_chapter.chapter_number }}</span>
-            </a>
-            {% else %}
-            <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
-                class="flex items-center px-4 py-2 space-x-2
-                        bg-[#1A1A2E] hover:bg-[#252542]
-                        rounded-lg border border-purple-500/30 transition"
-            >
-                <i class="fas fa-book-open text-purple-400/70"></i>
-                <span class="text-purple-400/70">Mangaga qaytish</span>
-            </a>
-            {% endif %}
+      <div class="flex justify-center items-center gap-2">
+        {% if previous_chapter %}
+          <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.volume previous_chapter.chapter_number %}"
+             class="flex items-center px-4 py-2 space-x-2
+                    bg-gradient-to-r from-purple-600/30 to-indigo-600/30
+                    rounded-lg border border-purple-500/30 hover:border-purple-400/50
+                    transition">
+            <i class="fas fa-arrow-left text-purple-300"></i>
+            <span class="text-purple-100">
+              Tom {{ previous_chapter.volume }} • Bob {{ previous_chapter.chapter_number }}
+            </span>
+          </a>
+        {% else %}
+          <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
+             class="flex items-center px-4 py-2 space-x-2
+                    bg-[#1A1A2E] hover:bg-[#252542]
+                    rounded-lg border border-purple-500/30 transition">
+            <i class="fas fa-book-open text-purple-400/70"></i>
+            <span class="text-purple-400/70">Mangaga qaytish</span>
+          </a>
+        {% endif %}
 
-            {# → Next or Disabled #}
-            {% if next_chapter %}
-            <a href="{% url 'manga:chapter_read' manga.slug next_chapter.chapter_number %}"
-                class="flex items-center px-4 py-2 space-x-2
-                        bg-gradient-to-l from-purple-600/30 to-indigo-600/30
-                        rounded-lg border border-purple-500/30 hover:border-purple-400/50
-                        transition"
-            >
-                <span class="text-purple-100">Bob {{ next_chapter.chapter_number }}</span>
-                <i class="fas fa-arrow-right text-purple-300"></i>
-            </a>
-            {% else %}
-            <div class="flex items-center px-4 py-2 space-x-2
-                        bg-[#1A1A2E] border border-purple-500/30 rounded-lg opacity-50 cursor-not-allowed">
-                <span class="text-purple-400/50">Tugadi</span>
-                <i class="fas fa-ban text-purple-400/50"></i>
-            </div>
-            {% endif %}
-        </div>
+        {% if next_chapter %}
+          <a href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
+             class="flex items-center px-4 py-2 space-x-2
+                    bg-gradient-to-l from-purple-600/30 to-indigo-600/30
+                    rounded-lg border border-purple-500/30 hover:border-purple-400/50
+                    transition">
+            <span class="text-purple-100">
+              Tom {{ next_chapter.volume }} • Bob {{ next_chapter.chapter_number }}
+            </span>
+            <i class="fas fa-arrow-right text-purple-300"></i>
+          </a>
+        {% else %}
+          <div class="flex items-center px-4 py-2 space-x-2
+                      bg-[#1A1A2E] border border-purple-500/30 rounded-lg opacity-50 cursor-not-allowed">
+            <span class="text-purple-400/50">Tugadi</span>
+            <i class="fas fa-ban text-purple-400/50"></i>
+          </div>
+        {% endif %}
+      </div>
     </div>
 
-</div>
-<script>
-    document.getElementById('thankBtn')?.addEventListener('click', async function() {
-    const btn = this;
-    const chapterId = btn.dataset.chapterId;
-    const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${chapterId}/`);
+  </div>
 
-    try {
+  <!-- ► Thank Button AJAX -->
+  <script>
+    document.getElementById('thankBtn')?.addEventListener('click', async function() {
+      const btn = this;
+      const chapterId = btn.dataset.chapterId;
+      const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${chapterId}/`);
+
+      try {
         const res = await fetch(url, {
-        method: 'POST',
-        headers: {
+          method: 'POST',
+          headers: {
             'X-CSRFToken': '{{ csrf_token }}',
             'X-Requested-With': 'XMLHttpRequest'
-        }
+          }
         });
         const { thanked, count } = await res.json();
 
-        // Иконка и тексты
-        const icon = btn.querySelector('.fa-heart');
-        const text = btn.querySelector('#thankText');
+        const icon   = btn.querySelector('.fa-heart');
+        const text   = btn.querySelector('#thankText');
         const countEl = btn.querySelector('#thankCount');
 
-        // Переключаем класс цвета на иконке
         icon.classList.toggle('text-red-400', thanked);
-
-        // Обновляем подпись и счётчик
-        text.textContent = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
+        text.textContent   = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
         countEl.textContent = `(${count})`;
-    } catch (err) {
+      } catch (err) {
         console.error('Thank error:', err);
-    }
-    });
-</script>
-
-
-<!-- Внизу страницы, перед </body> -->
-<script>
-(function() {
-  const nav = document.getElementById('navbar');
-  const navHeight = nav.offsetHeight;
-  let lastScroll = window.pageYOffset || document.documentElement.scrollTop;
-  let ticking = false;
-
-  // 1) Скролл-логика (только десктоп)
-  window.addEventListener('scroll', () => {
-    if (window.innerWidth < 768) return;    // на мобилках не трогаем
-    if (ticking) return;
-    ticking = true;
-    window.requestAnimationFrame(() => {
-      const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
-      const delta = currentScroll - lastScroll;
-
-      if (Math.abs(delta) > 5) {
-        if (delta > 0 && currentScroll > navHeight) {
-          // скролл вниз — скрываем
-          nav.classList.add('-translate-y-full');
-        } else if (delta < 0) {
-          // скролл вверх — показываем
-          nav.classList.remove('-translate-y-full');
-        }
-        lastScroll = currentScroll;
-      }
-
-      ticking = false;
-    });
-  }, { passive: true });
-
-  // 2) Тап-логика (мобильные устройства)
-  if ('ontouchstart' in window) {
-    let startY = 0;
-    document.addEventListener('touchstart', e => {
-      startY = e.changedTouches[0].clientY;
-    });
-    document.addEventListener('touchend', e => {
-      const endY = e.changedTouches[0].clientY;
-      // если вертикальный «дрож» менее 5px — считаем тапом
-      if (Math.abs(endY - startY) < 5) {
-        nav.classList.toggle('-translate-y-full');
       }
     });
-  }
-})();
-</script>
+  </script>
+
+  <!-- ► Navbar Hide/Show on Scroll -->
+  <script>
+    (function() {
+      const nav = document.getElementById('navbar');
+      const navHeight = nav.offsetHeight;
+      let lastScroll = window.pageYOffset || document.documentElement.scrollTop;
+      let ticking = false;
+
+      window.addEventListener('scroll', () => {
+        if (window.innerWidth < 768) return; // только на десктоп
+        if (ticking) return;
+        ticking = true;
+        window.requestAnimationFrame(() => {
+          const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
+          const delta = currentScroll - lastScroll;
+          if (Math.abs(delta) > 5) {
+            if (delta > 0 && currentScroll > navHeight) {
+              nav.classList.add('-translate-y-full');
+            } else if (delta < 0) {
+              nav.classList.remove('-translate-y-full');
+            }
+            lastScroll = currentScroll;
+          }
+          ticking = false;
+        });
+      }, { passive: true });
+
+      // Тап-навигация на мобилках
+      if ('ontouchstart' in window) {
+        let startY = 0;
+        document.addEventListener('touchstart', e => {
+          startY = e.changedTouches[0].clientY;
+        });
+        document.addEventListener('touchend', e => {
+          const endY = e.changedTouches[0].clientY;
+          if (Math.abs(endY - startY) < 5) {
+            nav.classList.toggle('-translate-y-full');
+          }
+        });
+      }
+    })();
+  </script>
 
 </body>
 </html>
