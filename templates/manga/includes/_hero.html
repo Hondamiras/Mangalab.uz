@@ -131,7 +131,7 @@
           {% for tag in manga.tags.all|slice:":4" %}
             <a href="{% url 'manga:manga_list' %}?tag={{ tag.name|urlencode }}"
               class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 
-                      hover:bg-green-500/30 hover:shadow-green-500/20 transition-all flex items-center gap-2">
+                      hover:bg-green-500/30 hover:shadow-green-500/20 transition-all flex items-center">
               <i class="fas fa-hashtag text-xs opacity-70"></i>
               {{ tag.name }}
             </a>
@@ -208,7 +208,7 @@
                 <a href="{% url 'accounts:login' %}?next={% url 'manga:add_to_reading_list' manga.slug %}"
                    class="w-full h-14 flex items-center justify-center text-sm px-4 gap-2 bg-gray-900 text-purple-300 rounded-2xl
                          hover:bg-gray-800 transition-colors duration-200 shadow-sm hover:shadow-md">
-                  <span class="font-medium">Ro'yxatga qo'shish uchun akkountingizga kiring.</span>
+                  <span class="font-medium">Ro'yxatga qo'shish uchun kiring.</span>
                 </a>
               </div>
             {% endif %}
