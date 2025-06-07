@@ -127,7 +127,24 @@
     <!-- /► Sticky Top Navigation -->
 
     <!-- ► Chapter Content (PDF.js) -->
-    {% include 'manga/includes/pdf_viewer.html' with chapter=chapter %}
+    {% if page_images %}
+      <div class="pages-container flex flex-col items-center">
+        {% for url in page_images %}
+          <img
+            src="{{ url }}"
+            loading="lazy"
+            alt="Страница {{ forloop.counter }}"
+            class="block max-w-full mx-auto mb-4"
+          />
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="italic text-gray-400 text-center">
+        Ushbu bob uchun sahifalar mavjud emas. Ehtimol, bu PDF fayl hali yuklanmagan yoki
+        bu bobda rasm yo'q.
+      </p>
+    {% endif %}
+
 
     <!-- ► Thank Section -->
     <div class="mt-12 text-center">

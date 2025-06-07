@@ -7,7 +7,8 @@ from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from django.urls import reverse
 from django.db.models import Prefetch
-
+import os
+from django.conf import settings
 from .models import ChapterContributor, Manga, Chapter, Genre, ReadingProgress, Tag
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 
@@ -241,14 +242,11 @@ def add_to_reading_list(request, manga_slug):
 
 def chapter_read(request, manga_slug, volume, chapter_number):
     """
-    Отображает страницу чтения указанной главы (том + номер) для конкретной манги.
-    Предполагается, что URL передаёт и volume, и chapter_number.
+    Отображает страницу чтения указанной главы.
+    Если PDF был сконвертирован в WebP-страницы — отдаём их как <img loading="lazy">.
     """
-
-    # 1. Получаем саму мангу по слагу
+    # 1. Получаем мангу и главу
     manga = get_object_or_404(Manga, slug=manga_slug)
-
-    # 2. Находим нужную главу по параметрам (манга, том, номер главы)
     chapter = get_object_or_404(
         Chapter,
         manga=manga,
@@ -256,57 +254,40 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         chapter_number=chapter_number
     )
 
-    # 3. Формируем список всех глав этой манги (отсортирован по убыванию тома, затем по возрастанию номера)
-    all_chapters = Chapter.objects.filter(
-        manga=manga
-    ).order_by('volume', 'chapter_number')
+    # 2. Список всех глав (для выпадающего меню, навигации)
+    all_chapters = Chapter.objects.filter(manga=manga) \
+                                  .order_by('volume', 'chapter_number')
 
-    # 4. Вычисляем «предыдущую» и «следующую» главу **в рамках того же тома**
+    # 3. Вычисляем previous/next в рамках тома и между томами
     previous_chapter = (
         Chapter.objects
-        .filter(
-            manga=manga,
-            volume=volume,
-            chapter_number__lt=chapter.chapter_number
-        )
+        .filter(manga=manga, volume=volume, chapter_number__lt=chapter_number)
         .order_by('-chapter_number')
         .first()
     )
+    if not previous_chapter and volume > 1:
+        previous_chapter = (
+            Chapter.objects
+            .filter(manga=manga, volume=volume-1)
+            .order_by('-chapter_number')
+            .first()
+        )
+
     next_chapter = (
         Chapter.objects
-        .filter(
-            manga=manga,
-            volume=volume,
-            chapter_number__gt=chapter.chapter_number
-        )
+        .filter(manga=manga, volume=volume, chapter_number__gt=chapter_number)
         .order_by('chapter_number')
         .first()
     )
-
-    # 5. Если у пользователя нет следующей/предыдущей в этом томе, можно попытаться подгрузить из соседнего тома.
-    #    Например, если предыдущей нет в этом томе, выбираем последнюю главу из тома-1 (по убыванию).
-    if not previous_chapter:
-        # Ищём самый большой chapter_number в томе volume-1 (только если том > 1)
-        if volume > 1:
-            prev_volume_last = (
-                Chapter.objects
-                .filter(manga=manga, volume=volume - 1)
-                .order_by('-chapter_number')
-                .first()
-            )
-            previous_chapter = prev_volume_last
-
     if not next_chapter:
-        # Ищём самую первую главу в томе volume+1 (только если том+1 существует)
-        next_volume_first = (
+        next_chapter = (
             Chapter.objects
-            .filter(manga=manga, volume=volume + 1)
+            .filter(manga=manga, volume=volume+1)
             .order_by('chapter_number')
             .first()
         )
-        next_chapter = next_volume_first
 
-    # 6. Обновляем прогресс чтения (для залогиненных пользователей)
+    # 4. Обновляем прогресс чтения
     progress = None
     if request.user.is_authenticated:
         progress, created = ReadingProgress.objects.get_or_create(
@@ -314,44 +295,52 @@ def chapter_read(request, manga_slug, volume, chapter_number):
             manga=manga,
             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
         )
-        # Если прогресс уже был, и пользователь сейчас открыл главу с большим номером,
-        # чем последний отмеченный, — обновляем.
         if not created:
-            last_read = progress.last_read_chapter
-            # сравниваем сначала том, а потом номер
-            if (
-                volume > (last_read.volume or 0) or
-                (volume == (last_read.volume or 0) and chapter_number > (last_read.chapter_number or 0))
+            last = progress.last_read_chapter or chapter
+            if (volume > getattr(last, 'volume', 0)
+                or (volume == getattr(last, 'volume', 0)
+                    and chapter_number > getattr(last, 'chapter_number', 0))
             ):
                 progress.last_read_chapter = chapter
                 progress.save()
 
-    # Получим косметические списки по ролям:
+    # 5. Собираем URL всех WebP-страниц
+    page_images = []
+    pages_dir = os.path.join(
+        settings.MEDIA_ROOT,
+        'chapters', 'pages', str(chapter.id)
+    )
+    if os.path.isdir(pages_dir):
+        for fname in sorted(os.listdir(pages_dir)):
+            if fname.lower().endswith('.webp'):
+                page_images.append(
+                    settings.MEDIA_URL + f'chapters/pages/{chapter.id}/{fname}'
+                )
+
+    # 6. Списки по ролям
     translators = ChapterContributor.objects.filter(
         chapter=chapter, role='translator'
     ).select_related('contributor')
-    cleaners    = ChapterContributor.objects.filter(
+    cleaners = ChapterContributor.objects.filter(
         chapter=chapter, role='cleaner'
     ).select_related('contributor')
-    typers      = ChapterContributor.objects.filter(
+    typers = ChapterContributor.objects.filter(
         chapter=chapter, role='typer'
     ).select_related('contributor')
 
-    # 7. Отдаём шаблон с контекстом
+    # 7. Рендерим шаблон
     return render(request, 'manga/chapter_read.html', {
         'manga': manga,
         'chapter': chapter,
+        'all_chapters': all_chapters,
         'previous_chapter': previous_chapter,
         'next_chapter': next_chapter,
-        'all_chapters': all_chapters,
         'reading_progress': progress,
-
-        # Списки по ролям
+        'page_images': page_images,
         'translators': translators,
         'cleaners': cleaners,
-        'typers': typers
-    })  
-   
+        'typers': typers,
+    })   
 # ====== спасибо главе ========================================================
 @login_required
 def thank_chapter(request, chapter_id):
