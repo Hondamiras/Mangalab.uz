@@ -52,7 +52,7 @@ class GenreAdmin(OwnMixin, admin.ModelAdmin):
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
     list_display        = ("title", "author", "status", "publication_date", "created_by")
     search_fields       = ("title", "author")
-    list_filter         = ("status", "genres", "manga_type", "age_rating")
+    list_filter         = ("status", "genres")
     prepopulated_fields = {"slug": ("title",)}
 
 
