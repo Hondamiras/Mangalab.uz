@@ -2,16 +2,26 @@ from datetime import date
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 
 User = get_user_model()
 
 class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
 
+    created_by = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.CASCADE,
+    editable=False,
+    related_name="tags_created",
+    null=True,
+    blank=True,
+    )
+
     class Meta:
         ordering = ("name",)
-        verbose_name = "Teg"
-        verbose_name_plural = "Teglar"
+        verbose_name = "Teg "
+        verbose_name_plural = "Teglar "
 
     def __str__(self):
         return self.name
@@ -57,10 +67,19 @@ class Manga(models.Model):
     )
     slug = models.SlugField(max_length=255, unique=True, blank=True)
 
+    created_by = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.CASCADE,
+    editable=False,
+    related_name="mangas_created",
+    null=True,
+    blank=True,
+    )
+
     class Meta:
         ordering = ("title",)
-        verbose_name = "Taytl"
-        verbose_name_plural = "Taytlar"
+        verbose_name = "Taytl "
+        verbose_name_plural = "Taytlar "
         indexes = [models.Index(fields=("title",))]
 
     def __str__(self) -> str:
@@ -69,16 +88,34 @@ class Manga(models.Model):
 
 class Genre(models.Model):
     name = models.CharField(max_length=50, unique=True)
+    
+    created_by = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.CASCADE,
+    editable=False,
+    related_name="genres_created",
+    null=True,
+    blank=True,
+    )
 
     class Meta:
         ordering = ("name",)
-        verbose_name = "Janr"
-        verbose_name_plural = "Janrlar"
+        verbose_name = "Janr "
+        verbose_name_plural = "Janrlar "
 
     def __str__(self) -> str:
         return self.name
+    
+class Contributor(models.Model):
+    name = models.CharField(max_length=100, unique=True)
 
-from django.core.validators import FileExtensionValidator
+    class Meta:
+        ordering = ("name",)
+        verbose_name = "Hissa qo'shuvchi "
+        verbose_name_plural = "Hissa qo'shuvchilar "
+
+    def __str__(self):
+        return self.name
 
 class Chapter(models.Model):
     manga = models.ForeignKey(Manga, on_delete=models.CASCADE, related_name="chapters")
@@ -93,16 +130,32 @@ class Chapter(models.Model):
         validators=[FileExtensionValidator(allowed_extensions=['pdf'])]
     )
 
+    # благодаря through-модели, переводчики/клинеры/тайперы хранятся здесь:
+    contributors = models.ManyToManyField(
+        Contributor,
+        through='ChapterContributor',
+        related_name='chapters'
+    )
+
     thanks = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="thanked_chapters",
         blank=True,
     )
+
+    created_by = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.CASCADE,
+    editable=False,
+    related_name="chapters_created",
+    null=True,
+    blank=True,
+    )
     class Meta:
         indexes = [models.Index(fields=("manga", "chapter_number"))]
         unique_together = ("manga", "chapter_number", "volume")
-        verbose_name = "Bob"
-        verbose_name_plural = "Boblar"
+        verbose_name = "Bob "
+        verbose_name_plural = "Boblar "
 
     def __str__(self) -> str:
         return f"{self.manga.title} — Ch. {self.chapter_number}"
@@ -111,6 +164,27 @@ class Chapter(models.Model):
     def thanks_count(self):
         """Возвращает число пользователей, нажавших «Спасибо»."""
         return self.thanks.count()
+
+
+class ChapterContributor(models.Model):
+    ROLE_CHOICES = [
+        ('translator', 'Tarjimon'),
+        ('cleaner', 'Cleaner'),
+        ('typer', 'Typer'),
+        # при необходимости можно добавить: ('letterer','Letterer'), и т.д.
+    ]
+
+    chapter     = models.ForeignKey(Chapter,     on_delete=models.CASCADE)
+    contributor = models.ForeignKey(Contributor, on_delete=models.CASCADE)
+    role        = models.CharField(max_length=12, choices=ROLE_CHOICES)
+
+    class Meta:
+        unique_together = ('chapter', 'contributor', 'role')
+        verbose_name = "Bobga hissa qo'shuvchi "
+        verbose_name_plural = "Bobga hissa qo'shuvchilar "
+
+    def __str__(self):
+        return f"{self.contributor.name}  {self.get_role_display()}"
 
 
 class ReadingProgress(models.Model):
@@ -124,8 +198,8 @@ class ReadingProgress(models.Model):
 
     class Meta:
         unique_together = ("user", "manga")
-        verbose_name = "Прогресс чтения"
-        verbose_name_plural = "Прогресс чтения"
+        verbose_name = "O'qish jarayoni "
+        verbose_name_plural = "O'qish jarayonlari "
 
     @property
     def last_read_chapter_pk(self):

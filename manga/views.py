@@ -8,7 +8,7 @@ from django.http import JsonResponse
 from django.urls import reverse
 from django.db.models import Prefetch
 
-from .models import Manga, Chapter, Genre, ReadingProgress, Tag
+from .models import ChapterContributor, Manga, Chapter, Genre, ReadingProgress, Tag
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 
 # ====== списки ==============================================================
@@ -326,6 +326,17 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                 progress.last_read_chapter = chapter
                 progress.save()
 
+    # Получим косметические списки по ролям:
+    translators = ChapterContributor.objects.filter(
+        chapter=chapter, role='translator'
+    ).select_related('contributor')
+    cleaners    = ChapterContributor.objects.filter(
+        chapter=chapter, role='cleaner'
+    ).select_related('contributor')
+    typers      = ChapterContributor.objects.filter(
+        chapter=chapter, role='typer'
+    ).select_related('contributor')
+
     # 7. Отдаём шаблон с контекстом
     return render(request, 'manga/chapter_read.html', {
         'manga': manga,
@@ -334,6 +345,11 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'next_chapter': next_chapter,
         'all_chapters': all_chapters,
         'reading_progress': progress,
+
+        # Списки по ролям
+        'translators': translators,
+        'cleaners': cleaners,
+        'typers': typers
     })  
    
 # ====== спасибо главе ========================================================
