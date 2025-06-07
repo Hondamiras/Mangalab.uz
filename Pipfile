@@ -11,6 +11,7 @@ psycopg2-binary = "*"
 whitenoise = "*"
 dj-database-url = "*"
 python-decouple = "*"
+pdf2image = "*"
 
 [dev-packages]
 
