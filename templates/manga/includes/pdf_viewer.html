@@ -9,12 +9,11 @@
   </div>
 
   <style>
-    .pdf-viewer-container { 
+    .pdf-viewer-container {
       position: relative;
       max-width: 100%;
       margin: 0 auto;
       padding: 0;
-      /* вот это спасёт спиннер от первоначального «обрушения» контейнера */
       min-height: calc(100vh - var(--navbar-height, 56px));
     }
     .pdf-loading-overlay {
@@ -23,7 +22,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      /* прозрачный — только спиннер */
       background-color: transparent;
       z-index: 10;
     }
@@ -52,42 +50,72 @@
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const loadingOverlay = document.getElementById('pdf-loading');
-      const container      = document.querySelector('.pdf-viewer-container');
       const pagesWrapper   = document.getElementById('pdf-pages');
       const navbar         = document.getElementById('navbar');
+      const container      = document.querySelector('.pdf-viewer-container');
 
-      // Задаём min-height контейнеру, чтобы лоадер центрировался правильно
+      // Устанавливаем минимальную высоту контейнера
       const navH = navbar?.offsetHeight || 0;
-      const availH = window.innerHeight - navH;
-      container.style.minHeight = availH + 'px';
+      container.style.minHeight = (window.innerHeight - navH) + 'px';
 
       try {
         const pdf = await pdfjsLib.getDocument("{{ chapter.pdf.url }}").promise;
-        const firstPage  = await pdf.getPage(1);
+        const firstPage = await pdf.getPage(1);
         const vpUnscaled = firstPage.getViewport({ scale: 1 });
-        const cw         = pagesWrapper.clientWidth;
-        const baseScale  = Math.min(cw / vpUnscaled.width, 1);
-        const dpr        = window.devicePixelRatio || 1;
-        const renderScale = baseScale * dpr;
+        const cw = pagesWrapper.clientWidth;
+        const dpr = window.devicePixelRatio || 1;
+        const baseScale = Math.min(cw / vpUnscaled.width, 1);
+        const renderScale = Math.min(baseScale * dpr, 1.5);
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const vp   = page.getViewport({ scale: renderScale });
+        // Рендерим первую страницу сразу
+        {
+          const viewport = firstPage.getViewport({ scale: renderScale });
           const canvas = document.createElement('canvas');
           canvas.className = 'pdf-page';
-          canvas.width  = vp.width;
-          canvas.height = vp.height;
-
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
           const ctx = canvas.getContext('2d');
           ctx.imageSmoothingEnabled = false;
-
-          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          await firstPage.render({ canvasContext: ctx, viewport }).promise;
           pagesWrapper.appendChild(canvas);
         }
-      } catch (error) {
-        console.error('PDF load error:', error);
+
+        // Настраиваем ленивую загрузку остальных страниц
+        const observer = new IntersectionObserver(async entries => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const pageNumber = +entry.target.dataset.page;
+              const page = await pdf.getPage(pageNumber);
+              const viewport = page.getViewport({ scale: renderScale });
+              const canvas = document.createElement('canvas');
+              canvas.className = 'pdf-page';
+              canvas.width = viewport.width;
+              canvas.height = viewport.height;
+              const context = canvas.getContext('2d');
+              context.imageSmoothingEnabled = false;
+              await page.render({ canvasContext: context, viewport }).promise;
+
+              observer.unobserve(entry.target);
+              entry.target.replaceWith(canvas);
+            }
+          }
+        }, { rootMargin: '500px' });
+
+        // Генерируем placeholder'ы для страниц со 2 до последней
+        const placeholderHeight = vpUnscaled.height * baseScale + 'px';
+        for (let i = 2; i <= pdf.numPages; i++) {
+          const ph = document.createElement('div');
+          ph.dataset.page = i;
+          ph.style.width  = '100%';
+          ph.style.height = placeholderHeight;
+          pagesWrapper.appendChild(ph);
+          observer.observe(ph);
+        }
+
+      } catch (err) {
+        console.error("PDF loading error:", err);
+        loadingOverlay.innerText = "Pdf yuklanishda xatolik yuz berdi. Sahifani yangilang.";
       } finally {
-        // Скрываем лоадер во всяком случае
         loadingOverlay.style.opacity = '0';
         setTimeout(() => loadingOverlay.remove(), 300);
       }
