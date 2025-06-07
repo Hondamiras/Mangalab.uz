@@ -126,22 +126,8 @@
     </div>
     <!-- /► Sticky Top Navigation -->
 
-    <div class="pages-container flex flex-col items-center">
-      {% if page_images %}
-      {% for img_url in page_images %}
-        <img
-          src="{{ img_url }}"
-          loading="lazy"
-          alt="Страница {{ forloop.counter }}"
-          class="block max-w-full mx-auto mb-4 shadow-lg rounded"
-        />
-      {% endfor %}
-      {% else %}
-      <p class="italic text-gray-400 text-center">
-        Ushbu bob uchun sahifalar mavjud emas. Iltimos, keyinroq qaytib keling.
-      </p>
-      {% endif %}
-    </div>
+    <!-- ► Chapter Content (PDF.js) -->
+    {% include 'manga/includes/pdf_viewer.html' with chapter=chapter %}
 
     <!-- ► Thank Section -->
     <div class="mt-12 text-center">

@@ -1,40 +1,38 @@
-# your_app/signals.py
+# manga/signals.py
+
 import os
-from pdf2image import convert_from_path
+import subprocess
+from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.conf import settings
 
 from .models import Chapter
 
 @receiver(post_save, sender=Chapter)
-def pdf_to_webp_pages(sender, instance, **kwargs):
+def optimize_pdf(sender, instance, **kwargs):
     """
-    При каждом сохранении Chapter:
-      - Если есть PDF, конвертируем его в WebP-страницы.
-      - dpi=150, quality=85 (компромисс скорость/качество).
-      - Файлы сохраняем в media/chapters/pages/<chapter_id>/page_<n>.webp.
+    После сохранения Chapter:
+      1) Проверяем, есть ли PDF.
+      2) Сжимаем его через Ghostscript с профилем /ebook (150–200 dpi).
+      3) Заменяем исходник на сжатый файл.
     """
     if not instance.pdf:
         return
 
-    pdf_path = instance.pdf.path
-    # Директория для выверенных картинок
-    out_dir = os.path.join(
-        settings.MEDIA_ROOT,
-        'chapters', 'pages',
-        str(instance.id)
-    )
-    os.makedirs(out_dir, exist_ok=True)
+    orig_path = instance.pdf.path
+    tmp_path = orig_path.replace('.pdf', '_cmp.pdf')
 
-    # Конвертация PDF → список PIL.Image
-    images = convert_from_path(
-        pdf_path,
-        dpi=150,
-        fmt='webp'
-    )
+    # Запускаем Ghostscript
+    subprocess.run([
+        'gs',
+        '-sDEVICE=pdfwrite',
+        '-dPDFSETTINGS=/ebook',   # или '/screen' для ещё более агрессивного сжатия
+        '-dNOPAUSE',
+        '-dBATCH',
+        '-dQUIET',
+        f'-sOutputFile={tmp_path}',
+        orig_path
+    ], check=True)
 
-    # Сохраняем каждую страницу
-    for idx, img in enumerate(images, start=1):
-        img_path = os.path.join(out_dir, f'page_{idx}.webp')
-        img.save(img_path, 'WEBP', quality=85)
+    # Заменяем оригинал на сжатую версию
+    os.replace(tmp_path, orig_path)
