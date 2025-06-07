@@ -38,7 +38,7 @@
                     class="flex items-center space-x-3 px-4 py-2 bg-purple-900 rounded-lg">
               <div class="text-left">
                 <p class="font-semibold">
-                  Tom {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
+                  Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
                 </p>
               </div>
               <i class="fas fa-chevron-down text-purple-300 transform transition-transform duration-200"
@@ -91,7 +91,7 @@
                                        {% else %}
                                          text-purple-200
                                        {% endif %}">
-                              Tom {{ ch.volume }} • Bob {{ ch.chapter_number }}
+                              Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}
                             </p>
                             <span class="text-xs shrink-0
                                          {% if ch.id == chapter.id %}
@@ -213,7 +213,7 @@
                     transition">
             <i class="fas fa-arrow-left text-purple-300"></i>
             <span class="text-purple-100">
-              Tom {{ previous_chapter.volume }} • Bob {{ previous_chapter.chapter_number }}
+              Jild {{ previous_chapter.volume }} • Bob {{ previous_chapter.chapter_number }}
             </span>
           </a>
         {% else %}
@@ -233,7 +233,7 @@
                     rounded-lg border border-purple-500/30 hover:border-purple-400/50
                     transition">
             <span class="text-purple-100">
-              Tom {{ next_chapter.volume }} • Bob {{ next_chapter.chapter_number }}
+              Jild {{ next_chapter.volume }} • Bob {{ next_chapter.chapter_number }}
             </span>
             <i class="fas fa-arrow-right text-purple-300"></i>
           </a>

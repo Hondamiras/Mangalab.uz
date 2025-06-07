@@ -47,12 +47,12 @@ class Manga(models.Model):
     )
     type = models.CharField(
         max_length=50,
-        choices=[("Manga", "Manga"), ("Manhwa", "Manhwa"), ("Manhua", "Manhua")],
+        choices=[("Manga", "Manga"), ("Manhwa", "Manhwa"), ("Manhua", "Manhua"), ("Komiks", "Komiks")],
         default="Manga",
     )
     age_rating = models.CharField(
         max_length=50,
-        choices=[("None", "None"), ("6+", "6+"), ("12+", "12+"), ("16+", "16+"), ("18+", "18+")],
+        choices=[("Belgilanmagan", "Belgilanmagan"), ("6+", "6+"), ("12+", "12+"), ("16+", "16+"), ("18+", "18+")],
         default="None",
     )
     translation_status = models.CharField(
