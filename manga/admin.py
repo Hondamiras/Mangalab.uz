@@ -52,7 +52,7 @@ class GenreAdmin(OwnMixin, admin.ModelAdmin):
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
     list_display        = ("title", "author", "status", "publication_date", "created_by")
     search_fields       = ("title", "author")
-    list_filter         = ("status", "genres")
+    list_filter         = ("status", "genres", "manga_type", "age_rating")
     prepopulated_fields = {"slug": ("title",)}
 
 
@@ -68,7 +68,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         "thanks_count",
     )
     list_filter    = ("release_date", "manga")
-    list_per_page  = 10
+    list_per_page  = 30
 
     def get_exclude(self, request, obj=None):
         # скрыть поле thanks для всех, кроме суперпользователя
