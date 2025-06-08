@@ -1,19 +1,22 @@
 {% if chapter.preview or chapter.pdf %}
   <div class="pdf-viewer-container relative">
+    <!-- Контейнер для страниц: по умолчанию вертикально, на desktop — горизонтальная прокрутка -->
     <div
       id="pdf-pages"
-      class="flex flex-col lg:flex-row lg:overflow-x-auto lg:space-x-4 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-200"
+      class="flex flex-col lg:flex-row lg:overflow-x-auto lg:space-x-4 scrollbar-thin scrollbar-thumb-gray-500 scrollbar-track-gray-200"
     >
+      {# 1) Моментальное превью #}
       {% if chapter.preview %}
         <img
           id="pdf-preview"
           src="{{ chapter.preview.url }}"
           alt="Preview страницы {{ chapter.chapter_number }}"
           class="pdf-page flex-shrink-0 w-full lg:w-auto"
-        />
+        >
       {% endif %}
     </div>
 
+    <!-- Спиннер поверх всего -->
     <div id="pdf-loading" class="absolute inset-0 flex items-center justify-center z-10">
       <div class="spinner"></div>
     </div>
@@ -22,12 +25,13 @@
   <style>
     .pdf-viewer-container {
       position: relative;
-      max-width: 100%;
+      width: 100%;
       margin: 0 auto;
       padding: 0;
-      min-height: calc(100vh - var(--navbar-height, 56px));
       background: #fff;
+      min-height: calc(100vh - var(--navbar-height, 56px));
     }
+
     .spinner {
       width: 3rem;
       height: 3rem;
@@ -42,12 +46,12 @@
       display: block;
       height: auto;
     }
-    /* На desktop фиксируем ширину страниц по высоте экрана для удобства горизонтальной прокрутки */
+    /* На desktop: все страницы в одной строке, высота под размер экрана */
     @media (min-width: 1024px) {
       .pdf-page {
         flex: 0 0 auto;
-        width: auto;
         max-height: calc(100vh - var(--navbar-height, 56px));
+        width: auto;
       }
     }
   </style>
@@ -61,29 +65,36 @@
       const navbar       = document.getElementById('navbar');
       const container    = document.querySelector('.pdf-viewer-container');
 
-      // Подгоняем высоту под navbar
+      // Учитываем высоту navbar
       const navH = navbar?.offsetHeight || 0;
       container.style.minHeight = (window.innerHeight - navH) + 'px';
 
       async function renderFirstPage() {
-        const loadingTask = pdfjsLib.getDocument({ url, disableStream: false, disableRange: false });
+        const loadingTask = pdfjsLib.getDocument({ url, disableRange: false });
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
 
-        // Вычисляем масштаб по высоте контейнера
-        const vh          = window.innerHeight - navH;
-        const vpUnscaled  = page.getViewport({ scale: 1 });
-        const baseScale   = Math.min(vh / vpUnscaled.height, 1);
-        const dpr         = Math.min(window.devicePixelRatio || 1, 2);
-        const scale       = baseScale * dpr;
-        const viewport    = page.getViewport({ scale });
+        // Вычисляем масштаб по высоте экрана (desktop) или по ширине (mobile)
+        let scale;
+        const vp1 = page.getViewport({ scale: 1 });
+        if (window.innerWidth >= 1024) {
+          // desktop: высота под экран
+          const maxH = window.innerHeight - navH;
+          scale = Math.min(maxH / vp1.height, 1);
+        } else {
+          // mobile/tablet: ширина под контейнер
+          const cw = pagesWrapper.clientWidth;
+          scale = Math.min(cw / vp1.width, 1);
+        }
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const viewport = page.getViewport({ scale: scale * dpr });
 
-        // Рендерим первую страницу в canvas
+        // Рендерим первую страницу
         const canvas = document.createElement('canvas');
         canvas.className = 'pdf-page';
         canvas.width     = viewport.width;
         canvas.height    = viewport.height;
-        const ctx = canvas.getContext('2d');
+        const ctx        = canvas.getContext('2d');
         await page.render({ canvasContext: ctx, viewport }).promise;
         pagesWrapper.appendChild(canvas);
 
@@ -91,38 +102,42 @@
         if (preview) preview.remove();
         loader.style.display = 'none';
 
-        // Ленивая загрузка остальных страниц
-        lazyLoadRemaining(pdf, scale, baseScale);
+        // Подгружаем остальные страницы лениво
+        lazyLoadRemaining(pdf, scale * dpr);
       }
 
-      function lazyLoadRemaining(pdf, scale, baseScale) {
+      function lazyLoadRemaining(pdf, fullScale) {
         const observer = new IntersectionObserver(async entries => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              const num = +entry.target.dataset.page;
-              const pg  = await pdf.getPage(num);
-              const vp  = pg.getViewport({ scale });
-              const cn  = document.createElement('canvas');
-              cn.className = 'pdf-page';
-              cn.width     = vp.width;
-              cn.height    = vp.height;
-              const ctx    = cn.getContext('2d');
-              await pg.render({ canvasContext: ctx, viewport: vp }).promise;
-              entry.target.replaceWith(cn);
-              observer.unobserve(entry.target);
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              const num = +e.target.dataset.page;
+              const page = await pdf.getPage(num);
+              const vp = page.getViewport({ scale: fullScale });
+              const canvas = document.createElement('canvas');
+              canvas.className = 'pdf-page';
+              canvas.width  = vp.width;
+              canvas.height = vp.height;
+              const ctx = canvas.getContext('2d');
+              await page.render({ canvasContext: ctx, viewport: vp }).promise;
+              e.target.replaceWith(canvas);
+              observer.unobserve(e.target);
             }
           }
         }, { rootMargin: '200px' });
 
-        // Генерируем placeholder’ы
-        for (let i = 2; i <= pdf.numPages; i++) {
-          const ph = document.createElement('div');
-          ph.dataset.page = i;
-          ph.className    = 'pdf-page';
-          ph.style.height = (viewportUnscaledHeight * baseScale) + 'px';
-          pagesWrapper.appendChild(ph);
-          observer.observe(ph);
-        }
+        // Добавляем плейсхолдеры для всех последующих страниц
+        pdf.getPage(1).then(first => {
+          const vp1 = first.getViewport({ scale: 1 });
+          for (let i = 2; i <= pdf.numPages; i++) {
+            const ph = document.createElement('div');
+            ph.dataset.page = i;
+            ph.className    = 'pdf-page';
+            // задаём высоту как для первой, ширину auto
+            ph.style.height = `${vp1.height * fullScale}px`;
+            pagesWrapper.appendChild(ph);
+            observer.observe(ph);
+          }
+        });
       }
 
       renderFirstPage().catch(err => {
