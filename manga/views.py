@@ -279,9 +279,13 @@ def chapter_read(request, manga_slug, volume, chapter_number):
             manga=manga,
             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
         )
-        if not created and chapter.chapter_number > (progress.last_read_chapter.chapter_number or 0):
-            progress.last_read_chapter = chapter
-            progress.save()
+        # Если прогресс уже был, и в нём либо нет last_read_chapter,
+        # либо он меньше текущей главы — обновляем
+        if not created:
+            last = progress.last_read_chapter
+            if last is None or chapter.chapter_number > last.chapter_number:
+                progress.last_read_chapter = chapter
+                progress.save()
 
     # Получаем список переводчиков, чистеров и тайперов для этой главы
     # Получим косметические списки по ролям:
