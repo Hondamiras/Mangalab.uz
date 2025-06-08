@@ -53,7 +53,7 @@
                     {% for ch in all_chapters %}
                         <li>
                             <a
-                                href="{% url 'manga:chapter_read' manga.slug ch.chapter_number %}"
+                                href="{% url 'manga:chapter_read' manga.slug ch.volume ch.chapter_number %}"
                                 class="group flex items-center px-5 py-3.5 transition-all
                                     {% if ch.id == chapter.id %}
                                         bg-gradient-to-r from-purple-900/30 to-transparent border-l-4 border-purple-400
@@ -188,7 +188,7 @@
         <div class="flex justify-center items-center gap-2">
             {# ← Previous or Manga #}
             {% if previous_chapter %}
-            <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.chapter_number %}"
+            <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.volume previous_chapter.chapter_number %}"
                 class="flex items-center px-4 py-2 space-x-2
                         bg-gradient-to-r from-purple-600/30 to-indigo-600/30
                         rounded-lg border border-purple-500/30 hover:border-purple-400/50
@@ -198,19 +198,19 @@
                 <span class="text-purple-100">Bob {{ previous_chapter.chapter_number }}</span>
             </a>
             {% else %}
-            <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
+            <a href="{% url 'manga:chapter_read' manga.slug chapter.volume chapter.chapter_number %}"
                 class="flex items-center px-4 py-2 space-x-2
                         bg-[#1A1A2E] hover:bg-[#252542]
                         rounded-lg border border-purple-500/30 transition"
             >
                 <i class="fas fa-book-open text-purple-400/70"></i>
-                <span class="text-purple-400/70">Mangaga qaytish</span>
+                <span class="text-purple-400/70">Qaytish</span>
             </a>
             {% endif %}
 
             {# → Next or Disabled #}
             {% if next_chapter %}
-            <a href="{% url 'manga:chapter_read' manga.slug next_chapter.chapter_number %}"
+            <a href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
                 class="flex items-center px-4 py-2 space-x-2
                         bg-gradient-to-l from-purple-600/30 to-indigo-600/30
                         rounded-lg border border-purple-500/30 hover:border-purple-400/50
