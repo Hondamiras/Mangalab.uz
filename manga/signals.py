@@ -1,29 +1,64 @@
 # manga/signals.py
 import os
-from pdf2image import convert_from_path
+import subprocess
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
+from PIL import Image
+import fitz
 from .models import Chapter
 
 @receiver(post_save, sender=Chapter)
-def pdf_to_webp_pages(sender, instance, **kwargs):
+def convert_pdf_to_webp(sender, instance, **kwargs):
     """
-    При сохранении Chapter конвертирует его PDF в WebP-страницы:
-      - dpi=150, fmt='webp', quality=85
-      - сохраняет в MEDIA_ROOT/chapters/pages/<chapter.id>/page_<n>.webp
+    После сохранения Chapter:
+      — если загружен PDF, он будет постранично конвертирован в WebP.
+      — сохраняет страницы в chapters/pages/v{том}_c{глава}_{id}/
     """
     if not instance.pdf:
         return
 
     pdf_path = instance.pdf.path
-    out_dir = os.path.join(settings.MEDIA_ROOT, 'chapters', 'pages', str(instance.id))
+
+    try:
+        doc = fitz.open(pdf_path)
+        page_count = doc.page_count
+        doc.close()
+    except Exception as e:
+        print(f"Ошибка чтения PDF: {e}")
+        return
+
+    out_dir = os.path.join(
+        settings.MEDIA_ROOT,
+        'chapters', 'pages',
+        f'v{instance.volume}_c{instance.chapter_number}_{instance.id}'
+    )
     os.makedirs(out_dir, exist_ok=True)
 
-    images = convert_from_path(pdf_path, dpi=150, fmt='webp')
-    for idx, img in enumerate(images, start=1):
-        img.save(
-            os.path.join(out_dir, f'page_{idx}.webp'),
-            'WEBP',
-            quality=85
+    for p in range(1, page_count + 1):
+        png_base = os.path.join(out_dir, f'_p{p}')
+        subprocess.run([
+            'pdftoppm',
+            '-f', str(p), '-l', str(p),
+            '-png',
+            pdf_path,
+            png_base
+        ], check=True)
+
+        png_fn = next(
+            fn for fn in os.listdir(out_dir)
+            if fn.startswith(f'_p{p}-') and fn.endswith('.png')
         )
+        png_path = os.path.join(out_dir, png_fn)
+
+        with Image.open(png_path) as img:
+            max_w = 1080
+            if img.width > max_w:
+                new_h = int(max_w * img.height / img.width)
+                img = img.resize((max_w, new_h), Image.LANCZOS)
+
+            webp_fn = f'page_{p:04d}.webp'
+            webp_path = os.path.join(out_dir, webp_fn)
+            img.save(webp_path, 'WEBP', quality=80, method=6)
+
+        os.remove(png_path)
