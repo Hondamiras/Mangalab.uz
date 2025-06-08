@@ -1,6 +1,6 @@
 {% if chapter.preview or chapter.pdf %}
   <div class="pdf-viewer-container relative">
-    <div id="pdf-pages" class="flex flex-col items-center space-y-4">
+    <div id="pdf-pages" class="grid grid-cols-1 lg:grid-cols-2 gap-0">
       {% if chapter.preview %}
         <img
           id="pdf-preview"
@@ -33,6 +33,8 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Блочная верстка без отступов между страницами */
     .pdf-page {
       display: block;
       width: 100%;
@@ -54,7 +56,6 @@
       container.style.minHeight = (window.innerHeight - navH) + 'px';
 
       async function renderFirstPage() {
-        // Инициализируем PDF.js с Range-запросами
         const loadingTask = pdfjsLib.getDocument({ url, disableStream: false, disableRange: false });
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
@@ -80,7 +81,7 @@
         if (preview) preview.remove();
         loader.style.display = 'none';
 
-        // Запускаем ленивую подгрузку остальных страниц
+        // Ленивая загрузка остальных страниц
         lazyLoadRemaining(pdf, scale, baseScale, vpUnscaled.height);
       }
 
@@ -88,14 +89,14 @@
         const observer = new IntersectionObserver(async entries => {
           for (const entry of entries) {
             if (entry.isIntersecting) {
-              const pageNum = +entry.target.dataset.page;
-              const pg      = await pdf.getPage(pageNum);
-              const vp      = pg.getViewport({ scale });
-              const cn      = document.createElement('canvas');
-              cn.className  = 'pdf-page';
-              cn.width      = vp.width;
-              cn.height     = vp.height;
-              const ctx     = cn.getContext('2d');
+              const num = +entry.target.dataset.page;
+              const pg  = await pdf.getPage(num);
+              const vp  = pg.getViewport({ scale });
+              const cn  = document.createElement('canvas');
+              cn.className = 'pdf-page';
+              cn.width     = vp.width;
+              cn.height    = vp.height;
+              const ctx    = cn.getContext('2d');
               await pg.render({ canvasContext: ctx, viewport: vp }).promise;
               entry.target.replaceWith(cn);
               observer.unobserve(entry.target);
@@ -103,12 +104,12 @@
           }
         }, { rootMargin: '200px' });
 
-        const placeholderHeight = originalHeight * baseScale + 'px';
+        const placeholderH = originalHeight * baseScale + 'px';
         for (let i = 2; i <= pdf.numPages; i++) {
           const ph = document.createElement('div');
           ph.dataset.page = i;
           ph.style.width  = '100%';
-          ph.style.height = placeholderHeight;
+          ph.style.height = placeholderH;
           ph.className    = 'pdf-page';
           pagesWrapper.appendChild(ph);
           observer.observe(ph);
