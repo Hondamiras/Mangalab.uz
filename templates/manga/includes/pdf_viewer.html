@@ -47,78 +47,90 @@
     #pdf-pages { gap: 0; }
   </style>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-      const loadingOverlay = document.getElementById('pdf-loading');
-      const pagesWrapper   = document.getElementById('pdf-pages');
-      const navbar         = document.getElementById('navbar');
-      const container      = document.querySelector('.pdf-viewer-container');
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const url = "{{ chapter.pdf.url }}";  // URL вашего PDF-файла
+    const loadingOverlay = document.getElementById('pdf-loading');
+    const pagesWrapper   = document.getElementById('pdf-pages');
+    const navbar         = document.getElementById('navbar');
+    const container      = document.querySelector('.pdf-viewer-container');
 
-      // Устанавливаем минимальную высоту контейнера
-      const navH = navbar?.offsetHeight || 0;
-      container.style.minHeight = (window.innerHeight - navH) + 'px';
+    // Устанавливаем минимальную высоту контейнера под навбар
+    const navH = navbar?.offsetHeight || 0;
+    container.style.minHeight = (window.innerHeight - navH) + 'px';
 
+    // Функция рендера одной страницы
+    async function renderPage(page, scale) {
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.className = 'pdf-page';
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      pagesWrapper.appendChild(canvas);
+    }
+
+    (async () => {
       try {
-        const pdf = await pdfjsLib.getDocument("{{ chapter.pdf.url }}").promise;
-        const firstPage = await pdf.getPage(1);
-        const vpUnscaled = firstPage.getViewport({ scale: 1 });
-        const cw = pagesWrapper.clientWidth;
-        const dpr = window.devicePixelRatio || 1;
-        const baseScale = Math.min(cw / vpUnscaled.width, 1);
-        const renderScale = Math.min(baseScale * dpr, 1.5);
+        // Задаём, чтобы PDF.js использовал HTTP Range-запросы
+        const loadingTask = pdfjsLib.getDocument({
+          url,
+          disableStream: false,
+          disableRange: false
+        });
+        const pdf = await loadingTask.promise;
 
-        // Рендерим первую страницу сразу
-        {
-          const viewport = firstPage.getViewport({ scale: renderScale });
-          const canvas = document.createElement('canvas');
-          canvas.className = 'pdf-page';
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext('2d');
-          ctx.imageSmoothingEnabled = false;
-          await firstPage.render({ canvasContext: ctx, viewport }).promise;
-          pagesWrapper.appendChild(canvas);
+        // Вычисляем масштаб: не больше 1× при DPR ≤ 2
+        const cw  = pagesWrapper.clientWidth;
+        const first = await pdf.getPage(1);
+        const vp1 = first.getViewport({ scale: 1 });
+        const baseScale = Math.min(cw / vp1.width, 1);
+        const dpr       = Math.min(window.devicePixelRatio || 1, 2);
+        const renderScale = baseScale * dpr;
+
+        // Отрисовываем сразу первые 3 страницы
+        const initialCount = Math.min(3, pdf.numPages);
+        for (let i = 1; i <= initialCount; i++) {
+          const page = await pdf.getPage(i);
+          await renderPage(page, renderScale);
         }
 
-        // Настраиваем ленивую загрузку остальных страниц
+        // Ленивый рендеринг остальных страниц
         const observer = new IntersectionObserver(async entries => {
           for (const entry of entries) {
             if (entry.isIntersecting) {
-              const pageNumber = +entry.target.dataset.page;
-              const page = await pdf.getPage(pageNumber);
-              const viewport = page.getViewport({ scale: renderScale });
-              const canvas = document.createElement('canvas');
-              canvas.className = 'pdf-page';
-              canvas.width = viewport.width;
-              canvas.height = viewport.height;
-              const context = canvas.getContext('2d');
-              context.imageSmoothingEnabled = false;
-              await page.render({ canvasContext: context, viewport }).promise;
-
+              const pageNum = +entry.target.dataset.page;
+              const page = await pdf.getPage(pageNum);
+              await renderPage(page, renderScale);
               observer.unobserve(entry.target);
-              entry.target.replaceWith(canvas);
+              entry.target.remove();
             }
           }
-        }, { rootMargin: '500px' });
+        }, { rootMargin: '200px' });
 
-        // Генерируем placeholder'ы для страниц со 2 до последней
-        const placeholderHeight = vpUnscaled.height * baseScale + 'px';
-        for (let i = 2; i <= pdf.numPages; i++) {
+        // Создаём плейсхолдеры для страниц 4…N
+        const placeholderHeight = vp1.height * baseScale + 'px';
+        for (let i = initialCount + 1; i <= pdf.numPages; i++) {
           const ph = document.createElement('div');
           ph.dataset.page = i;
           ph.style.width  = '100%';
           ph.style.height = placeholderHeight;
+          ph.className    = 'pdf-page';
           pagesWrapper.appendChild(ph);
           observer.observe(ph);
         }
 
       } catch (err) {
         console.error("PDF loading error:", err);
-        loadingOverlay.innerText = "Pdf yuklanishda xatolik yuz berdi. Sahifani yangilang.";
+        loadingOverlay.innerText = "Xatolik yuz berdi. Sahifani yangilang.";
       } finally {
+        // Скрываем спиннер
         loadingOverlay.style.opacity = '0';
         setTimeout(() => loadingOverlay.remove(), 300);
       }
-    });
-  </script>
+    })();
+  });
+</script>
 {% endif %}
