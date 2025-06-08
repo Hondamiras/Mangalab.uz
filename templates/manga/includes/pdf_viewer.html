@@ -1,4 +1,3 @@
-<!-- PDF Viewer -->
 {% if chapter.preview or chapter.pdf %}
   <div class="pdf-viewer-container relative">
     <div id="pdf-pages" class="flex flex-col items-center space-y-4">
@@ -16,7 +15,6 @@
     </div>
   </div>
 
-  {# CSS (можно вынести в отдельный файл) #}
   <style>
     .pdf-viewer-container {
       position: relative;
@@ -35,25 +33,21 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-  .pdf-page {
-    display: block;
-    width: 100%;
-    height: auto;
-    margin-bottom: 1rem;   /* небольшой отступ между страницами */
-    transition: transform 0.2s ease;
-  }
-
+    .pdf-page {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
   </style>
 
-  {# JS: сначала показываем превью, затем подгружаем и рендерим первую страницу Canvas #}
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const url       = "{{ chapter.pdf.url }}";
-      const preview   = document.getElementById('pdf-preview');
-      const canvasWrap= document.getElementById('pdf-canvas-wrapper');
-      const loader    = document.getElementById('pdf-loading');
-      const navbar    = document.getElementById('navbar');
-      const container = document.querySelector('.pdf-viewer-container');
+      const url          = "{{ chapter.pdf.url }}";
+      const preview      = document.getElementById('pdf-preview');
+      const pagesWrapper = document.getElementById('pdf-pages');
+      const loader       = document.getElementById('pdf-loading');
+      const navbar       = document.getElementById('navbar');
+      const container    = document.querySelector('.pdf-viewer-container');
 
       // Подгоняем высоту под navbar
       const navH = navbar?.offsetHeight || 0;
@@ -65,66 +59,62 @@
         const pdf = await loadingTask.promise;
         const page = await pdf.getPage(1);
 
-        // Подбираем масштаб по ширине превью
-        const cw = (preview?.clientWidth) || container.clientWidth;
-        const vp = page.getViewport({ scale: 1 });
-        const baseScale = Math.min(cw / vp.width, 1);
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const scale = baseScale * dpr;
-        const viewport = page.getViewport({ scale });
+        // Вычисляем масштаб
+        const cw          = pagesWrapper.clientWidth;
+        const vpUnscaled  = page.getViewport({ scale: 1 });
+        const baseScale   = Math.min(cw / vpUnscaled.width, 1);
+        const dpr         = Math.min(window.devicePixelRatio || 1, 2);
+        const scale       = baseScale * dpr;
+        const viewport    = page.getViewport({ scale });
 
-        // Создаём canvas и рендерим
+        // Рендерим первую страницу
         const canvas = document.createElement('canvas');
-        canvas.width  = viewport.width;
-        canvas.height = viewport.height;
         canvas.className = 'pdf-page';
+        canvas.width     = viewport.width;
+        canvas.height    = viewport.height;
         const ctx = canvas.getContext('2d');
         await page.render({ canvasContext: ctx, viewport }).promise;
+        pagesWrapper.appendChild(canvas);
 
-        // Заменяем превью на canvas
+        // Убираем превью и спиннер
         if (preview) preview.remove();
-        canvasWrap.appendChild(canvas);
-        canvasWrap.classList.remove('hidden');
-
-        // Скрываем спиннер
         loader.style.display = 'none';
 
-        // Опционально: продолжить ленивую подгрузку остальных страниц
-        lazyLoadRemaining(pdf, scale, baseScale);
+        // Запускаем ленивую подгрузку остальных страниц
+        lazyLoadRemaining(pdf, scale, baseScale, vpUnscaled.height);
       }
 
-      function lazyLoadRemaining(pdf, scale, baseScale) {
+      function lazyLoadRemaining(pdf, scale, baseScale, originalHeight) {
         const observer = new IntersectionObserver(async entries => {
-          for (const e of entries) {
-            if (e.isIntersecting) {
-              const num = +e.target.dataset.page;
-              const pg = await pdf.getPage(num);
-              const vp = pg.getViewport({ scale });
-              const cn = document.createElement('canvas');
-              cn.width  = vp.width;
-              cn.height = vp.height;
-              cn.className = 'pdf-page';
-              const ctx = cn.getContext('2d');
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              const pageNum = +entry.target.dataset.page;
+              const pg      = await pdf.getPage(pageNum);
+              const vp      = pg.getViewport({ scale });
+              const cn      = document.createElement('canvas');
+              cn.className  = 'pdf-page';
+              cn.width      = vp.width;
+              cn.height     = vp.height;
+              const ctx     = cn.getContext('2d');
               await pg.render({ canvasContext: ctx, viewport: vp }).promise;
-              e.target.replaceWith(cn);
-              observer.unobserve(e.target);
+              entry.target.replaceWith(cn);
+              observer.unobserve(entry.target);
             }
           }
         }, { rootMargin: '200px' });
 
-        const placeholderH = (pdf.getPage(1).then(p => p.getViewport({ scale: 1 }).height * baseScale)) + 'px';
+        const placeholderHeight = originalHeight * baseScale + 'px';
         for (let i = 2; i <= pdf.numPages; i++) {
           const ph = document.createElement('div');
           ph.dataset.page = i;
           ph.style.width  = '100%';
-          ph.style.height = placeholderH;
+          ph.style.height = placeholderHeight;
           ph.className    = 'pdf-page';
-          canvasWrap.parentNode.appendChild(ph);
+          pagesWrapper.appendChild(ph);
           observer.observe(ph);
         }
       }
 
-      // Стартуем фоновый рендер первой страницы
       renderFirstPage().catch(err => {
         console.error("PDF.js error:", err);
         loader.innerText = "Не удалось загрузить PDF. Обновите страницу.";
