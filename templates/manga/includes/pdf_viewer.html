@@ -30,6 +30,7 @@
       min-height: calc(100vh - var(--navbar-height, 56px));
       background: #fff;
     }
+
     .spinner {
       width: 3rem;
       height: 3rem;
@@ -40,12 +41,22 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Все страницы подряд, без наложения */
+    /* Базовый стиль для всех страниц */
     .pdf-page {
       display: block;
       width: 100%;
       height: auto;
       margin-bottom: 1rem;
+    }
+
+    /* На десктопе ограничиваем ширину и центрируем */
+    @media (min-width: 1024px) {
+      .pdf-page {
+        width: 70%;            /* можно заменить на 60%, 800px или 60vw */
+        max-width: 900px;       /* или любое фиксированное значение */
+        margin-left: auto;
+        margin-right: auto;
+      }
     }
   </style>
 
