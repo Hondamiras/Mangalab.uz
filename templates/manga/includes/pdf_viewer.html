@@ -1,21 +1,16 @@
-
 <!-- PDF Viewer -->
 {% if chapter.preview or chapter.pdf %}
   <div class="pdf-viewer-container relative">
-    {# 1) Моментальное превью #}
-    {% if chapter.preview %}
-      <img
-        id="pdf-preview"
-        src="{{ chapter.preview.url }}"
-        alt="Preview страницы {{ chapter.chapter_number }}"
-        class="block w-full h-auto"
-      >
-    {% endif %}
-
-    {# 2) Контейнер для canvas (скрыт до готовности) #}
-    <div id="pdf-canvas-wrapper" class="absolute inset-0 hidden"></div>
-
-    {# 3) Спиннер #}
+    <div id="pdf-pages" class="flex flex-col items-center space-y-4">
+      {% if chapter.preview %}
+        <img
+          id="pdf-preview"
+          src="{{ chapter.preview.url }}"
+          alt="Preview страницы {{ chapter.chapter_number }}"
+          class="w-full h-auto"
+        />
+      {% endif %}
+    </div>
     <div id="pdf-loading" class="absolute inset-0 flex items-center justify-center z-10">
       <div class="spinner"></div>
     </div>
@@ -40,13 +35,14 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .pdf-page {
-      position: absolute;
-      top: 0; left: 50%;
-      transform: translateX(-50%);
-      max-width: 100%;
-      height: auto;
-    }
+  .pdf-page {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-bottom: 1rem;   /* небольшой отступ между страницами */
+    transition: transform 0.2s ease;
+  }
+
   </style>
 
   {# JS: сначала показываем превью, затем подгружаем и рендерим первую страницу Canvas #}
