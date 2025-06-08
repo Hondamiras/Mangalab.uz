@@ -240,7 +240,7 @@ def add_to_reading_list(request, manga_slug):
 
 # ====== чтение главы ========================================================
 
-def chapter_read(request, manga_slug, chapter_number):
+def chapter_read(request, manga_slug, volume, chapter_number):
     # Получаем объект манги по слагу
     manga = get_object_or_404(Manga, slug=manga_slug)
 
@@ -248,6 +248,7 @@ def chapter_read(request, manga_slug, chapter_number):
     chapter = get_object_or_404(
         Chapter,
         manga=manga,
+        volume=volume,
         chapter_number=chapter_number
     )
 
