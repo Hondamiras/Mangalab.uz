@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from wand.image import Image  # pip install Wand
 import subprocess
 import os
 
@@ -122,7 +123,11 @@ class Contributor(models.Model):
         return self.name
 
 class Chapter(models.Model):
-    manga = models.ForeignKey(Manga, on_delete=models.CASCADE, related_name="chapters")
+    manga = models.ForeignKey(
+        Manga,
+        on_delete=models.CASCADE,
+        related_name="chapters"
+    )
     volume = models.PositiveIntegerField(default=1)
     chapter_number = models.PositiveIntegerField()
     release_date = models.DateField(default=date.today)
@@ -131,44 +136,72 @@ class Chapter(models.Model):
         upload_to='chapters/pdfs/',
         blank=True,
         null=True,
-        validators=[FileExtensionValidator(allowed_extensions=['pdf'])]
+        validators=[FileExtensionValidator(['pdf'])]
+    )
+    preview = models.ImageField(
+        upload_to='chapters/previews/',
+        blank=True,
+        null=True,
     )
 
-    # благодаря through-модели, переводчики/клинеры/тайперы хранятся здесь:
     contributors = models.ManyToManyField(
         Contributor,
         through='ChapterContributor',
         related_name='chapters'
     )
-
     thanks = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="thanked_chapters",
         blank=True,
     )
-
     created_by = models.ForeignKey(
-    settings.AUTH_USER_MODEL,
-    on_delete=models.CASCADE,
-    editable=False,
-    related_name="chapters_created",
-    null=True,
-    blank=True,
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        editable=False,
+        related_name="chapters_created",
+        null=True,
+        blank=True,
     )
-    class Meta:
-        indexes = [models.Index(fields=("manga", "chapter_number"))]
-        unique_together = ("manga", "chapter_number", "volume")
-        verbose_name = "Bob "
-        verbose_name_plural = "Boblar "
 
-    def __str__(self) -> str:
+    class Meta:
+        unique_together = ("manga", "chapter_number", "volume")
+        indexes = [models.Index(fields=("manga", "chapter_number"))]
+
+    def __str__(self):
         return f"{self.manga.title} — Ch. {self.chapter_number}"
-    
+
     @property
     def thanks_count(self):
-        """Возвращает число пользователей, нажавших «Спасибо»."""
         return self.thanks.count()
-    
+
+    def save(self, *args, **kwargs):
+        # Сначала сохраняем PDF (и возможно прошлое preview)
+        super().save(*args, **kwargs)
+
+        # Если PDF есть, а preview ещё не создано — генерируем
+        if self.pdf and not self.preview:
+            try:
+                # Открываем первую страницу PDF
+                with Image(filename=f"{self.pdf.path}[0]", resolution=150) as img:
+                    img.format = 'jpeg'
+                    # Формируем путь для превью внутри MEDIA_ROOT
+                    # Например: MEDIA_ROOT/chapters/previews/manga-1-ch1.jpg
+                    preview_path = self.pdf.path \
+                        .replace('/pdfs/', '/previews/') \
+                        .rsplit('.', 1)[0] + '.jpg'
+                    img.save(filename=preview_path)
+
+                # Сохраняем относительный путь в поле preview
+                self.preview.name = preview_path.split(settings.MEDIA_ROOT + '/', 1)[1]
+                # Только обновляем поле preview, чтобы не зациклить save()
+                super().save(update_fields=['preview'])
+
+            except Exception as e:
+                # Логируем, но не падаем с ошибкой
+                import logging
+                logging.getLogger(__name__).error(
+                    f"Failed to generate preview for Chapter {self.pk}: {e}"
+                )   
 @receiver(post_save, sender=Chapter)
 def optimize_pdf_after_upload(sender, instance, **kwargs):
     if instance.pdf:

@@ -1,13 +1,27 @@
-{% if chapter.pdf %}
-  <div class="pdf-viewer-container">
-    <!-- Loader -->
-    <div id="pdf-loading" class="pdf-loading-overlay">
+<link rel="icon" href="{% static 'images/logo.png' %}">
+<!-- PDF Viewer -->
+{% if chapter.preview or chapter.pdf %}
+  <div class="pdf-viewer-container relative">
+    {# 1) Моментальное превью #}
+    {% if chapter.preview %}
+      <img
+        id="pdf-preview"
+        src="{{ chapter.preview.url }}"
+        alt="Preview страницы {{ chapter.chapter_number }}"
+        class="block w-full h-auto"
+      >
+    {% endif %}
+
+    {# 2) Контейнер для canvas (скрыт до готовности) #}
+    <div id="pdf-canvas-wrapper" class="absolute inset-0 hidden"></div>
+
+    {# 3) Спиннер #}
+    <div id="pdf-loading" class="absolute inset-0 flex items-center justify-center z-10">
       <div class="spinner"></div>
     </div>
-    <!-- Pages container -->
-    <div id="pdf-pages" class="flex flex-col items-center"></div>
   </div>
 
+  {# CSS (можно вынести в отдельный файл) #}
   <style>
     .pdf-viewer-container {
       position: relative;
@@ -15,15 +29,7 @@
       margin: 0 auto;
       padding: 0;
       min-height: calc(100vh - var(--navbar-height, 56px));
-    }
-    .pdf-loading-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: transparent;
-      z-index: 10;
+      background: #fff;
     }
     .spinner {
       width: 3rem;
@@ -34,103 +40,99 @@
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .pdf-page {
-      display: block;
-      background: white;
-      margin: 0 !important;
-      max-width: 100% !important;
-      height: auto !important;
-      transform-origin: top center;
-      transition: transform 0.2s ease;
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      max-width: 100%;
+      height: auto;
     }
-    #pdf-pages { gap: 0; }
   </style>
 
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const url = "{{ chapter.pdf.url }}";  // URL вашего PDF-файла
-    const loadingOverlay = document.getElementById('pdf-loading');
-    const pagesWrapper   = document.getElementById('pdf-pages');
-    const navbar         = document.getElementById('navbar');
-    const container      = document.querySelector('.pdf-viewer-container');
+  {# JS: сначала показываем превью, затем подгружаем и рендерим первую страницу Canvas #}
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const url       = "{{ chapter.pdf.url }}";
+      const preview   = document.getElementById('pdf-preview');
+      const canvasWrap= document.getElementById('pdf-canvas-wrapper');
+      const loader    = document.getElementById('pdf-loading');
+      const navbar    = document.getElementById('navbar');
+      const container = document.querySelector('.pdf-viewer-container');
 
-    // Устанавливаем минимальную высоту контейнера под навбар
-    const navH = navbar?.offsetHeight || 0;
-    container.style.minHeight = (window.innerHeight - navH) + 'px';
+      // Подгоняем высоту под navbar
+      const navH = navbar?.offsetHeight || 0;
+      container.style.minHeight = (window.innerHeight - navH) + 'px';
 
-    // Функция рендера одной страницы
-    async function renderPage(page, scale) {
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.className = 'pdf-page';
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
-      ctx.imageSmoothingEnabled = false;
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      pagesWrapper.appendChild(canvas);
-    }
-
-    (async () => {
-      try {
-        // Задаём, чтобы PDF.js использовал HTTP Range-запросы
-        const loadingTask = pdfjsLib.getDocument({
-          url,
-          disableStream: false,
-          disableRange: false
-        });
+      async function renderFirstPage() {
+        // Инициализируем PDF.js с Range-запросами
+        const loadingTask = pdfjsLib.getDocument({ url, disableStream: false, disableRange: false });
         const pdf = await loadingTask.promise;
+        const page = await pdf.getPage(1);
 
-        // Вычисляем масштаб: не больше 1× при DPR ≤ 2
-        const cw  = pagesWrapper.clientWidth;
-        const first = await pdf.getPage(1);
-        const vp1 = first.getViewport({ scale: 1 });
-        const baseScale = Math.min(cw / vp1.width, 1);
-        const dpr       = Math.min(window.devicePixelRatio || 1, 2);
-        const renderScale = baseScale * dpr;
+        // Подбираем масштаб по ширине превью
+        const cw = (preview?.clientWidth) || container.clientWidth;
+        const vp = page.getViewport({ scale: 1 });
+        const baseScale = Math.min(cw / vp.width, 1);
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const scale = baseScale * dpr;
+        const viewport = page.getViewport({ scale });
 
-        // Отрисовываем сразу первые 3 страницы
-        const initialCount = Math.min(3, pdf.numPages);
-        for (let i = 1; i <= initialCount; i++) {
-          const page = await pdf.getPage(i);
-          await renderPage(page, renderScale);
-        }
+        // Создаём canvas и рендерим
+        const canvas = document.createElement('canvas');
+        canvas.width  = viewport.width;
+        canvas.height = viewport.height;
+        canvas.className = 'pdf-page';
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
 
-        // Ленивый рендеринг остальных страниц
+        // Заменяем превью на canvas
+        if (preview) preview.remove();
+        canvasWrap.appendChild(canvas);
+        canvasWrap.classList.remove('hidden');
+
+        // Скрываем спиннер
+        loader.style.display = 'none';
+
+        // Опционально: продолжить ленивую подгрузку остальных страниц
+        lazyLoadRemaining(pdf, scale, baseScale);
+      }
+
+      function lazyLoadRemaining(pdf, scale, baseScale) {
         const observer = new IntersectionObserver(async entries => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              const pageNum = +entry.target.dataset.page;
-              const page = await pdf.getPage(pageNum);
-              await renderPage(page, renderScale);
-              observer.unobserve(entry.target);
-              entry.target.remove();
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              const num = +e.target.dataset.page;
+              const pg = await pdf.getPage(num);
+              const vp = pg.getViewport({ scale });
+              const cn = document.createElement('canvas');
+              cn.width  = vp.width;
+              cn.height = vp.height;
+              cn.className = 'pdf-page';
+              const ctx = cn.getContext('2d');
+              await pg.render({ canvasContext: ctx, viewport: vp }).promise;
+              e.target.replaceWith(cn);
+              observer.unobserve(e.target);
             }
           }
         }, { rootMargin: '200px' });
 
-        // Создаём плейсхолдеры для страниц 4…N
-        const placeholderHeight = vp1.height * baseScale + 'px';
-        for (let i = initialCount + 1; i <= pdf.numPages; i++) {
+        const placeholderH = (pdf.getPage(1).then(p => p.getViewport({ scale: 1 }).height * baseScale)) + 'px';
+        for (let i = 2; i <= pdf.numPages; i++) {
           const ph = document.createElement('div');
           ph.dataset.page = i;
           ph.style.width  = '100%';
-          ph.style.height = placeholderHeight;
+          ph.style.height = placeholderH;
           ph.className    = 'pdf-page';
-          pagesWrapper.appendChild(ph);
+          canvasWrap.parentNode.appendChild(ph);
           observer.observe(ph);
         }
-
-      } catch (err) {
-        console.error("PDF loading error:", err);
-        loadingOverlay.innerText = "Xatolik yuz berdi. Sahifani yangilang.";
-      } finally {
-        // Скрываем спиннер
-        loadingOverlay.style.opacity = '0';
-        setTimeout(() => loadingOverlay.remove(), 300);
       }
-    })();
-  });
-</script>
+
+      // Стартуем фоновый рендер первой страницы
+      renderFirstPage().catch(err => {
+        console.error("PDF.js error:", err);
+        loader.innerText = "Не удалось загрузить PDF. Обновите страницу.";
+      });
+    });
+  </script>
 {% endif %}
