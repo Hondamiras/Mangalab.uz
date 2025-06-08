@@ -240,54 +240,37 @@ def add_to_reading_list(request, manga_slug):
 
 # ====== чтение главы ========================================================
 
-def chapter_read(request, manga_slug, volume, chapter_number):
-    """
-    Отображает страницу чтения указанной главы.
-    Если PDF был сконвертирован в WebP-страницы — отдаём их как <img loading="lazy">.
-    """
-    # 1. Получаем мангу и главу
+def chapter_read(request, manga_slug, chapter_number):
+    # Получаем объект манги по слагу
     manga = get_object_or_404(Manga, slug=manga_slug)
+
+    # Получаем нужную главу по манге и её номеру
     chapter = get_object_or_404(
         Chapter,
         manga=manga,
-        volume=volume,
         chapter_number=chapter_number
     )
 
-    # 2. Список всех глав (для выпадающего меню, навигации)
-    all_chapters = Chapter.objects.filter(manga=manga) \
-                                  .order_by('volume', 'chapter_number')
+    # Все главы этой манги
+    all_chapters = Chapter.objects.filter(
+        manga=manga
+    ).order_by('-volume', 'chapter_number')
 
-    # 3. Вычисляем previous/next в рамках тома и между томами
+    # Предыдущая и следующая главы
     previous_chapter = (
-        Chapter.objects
-        .filter(manga=manga, volume=volume, chapter_number__lt=chapter_number)
+        all_chapters
+        .filter(chapter_number__lt=chapter.chapter_number)
         .order_by('-chapter_number')
         .first()
     )
-    if not previous_chapter and volume > 1:
-        previous_chapter = (
-            Chapter.objects
-            .filter(manga=manga, volume=volume-1)
-            .order_by('-chapter_number')
-            .first()
-        )
-
     next_chapter = (
-        Chapter.objects
-        .filter(manga=manga, volume=volume, chapter_number__gt=chapter_number)
+        all_chapters
+        .filter(chapter_number__gt=chapter.chapter_number)
         .order_by('chapter_number')
         .first()
     )
-    if not next_chapter:
-        next_chapter = (
-            Chapter.objects
-            .filter(manga=manga, volume=volume+1)
-            .order_by('chapter_number')
-            .first()
-        )
 
-    # 4. Обновляем прогресс чтения
+    # Прогресс чтения — только для вошедших пользователей
     progress = None
     if request.user.is_authenticated:
         progress, created = ReadingProgress.objects.get_or_create(
@@ -295,52 +278,36 @@ def chapter_read(request, manga_slug, volume, chapter_number):
             manga=manga,
             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
         )
-        if not created:
-            last = progress.last_read_chapter or chapter
-            if (volume > getattr(last, 'volume', 0)
-                or (volume == getattr(last, 'volume', 0)
-                    and chapter_number > getattr(last, 'chapter_number', 0))
-            ):
-                progress.last_read_chapter = chapter
-                progress.save()
+        if not created and chapter.chapter_number > (progress.last_read_chapter.chapter_number or 0):
+            progress.last_read_chapter = chapter
+            progress.save()
 
-    # 5. Собираем URL всех WebP-страниц
-    page_images = []
-    pages_dir = os.path.join(
-        settings.MEDIA_ROOT,
-        'chapters', 'pages', str(chapter.id)
-    )
-    if os.path.isdir(pages_dir):
-        for fname in sorted(os.listdir(pages_dir)):
-            if fname.lower().endswith('.webp'):
-                page_images.append(
-                    settings.MEDIA_URL + f'chapters/pages/{chapter.id}/{fname}'
-                )
-
-    # 6. Списки по ролям
+    # Получаем список переводчиков, чистеров и тайперов для этой главы
+    # Получим косметические списки по ролям:
     translators = ChapterContributor.objects.filter(
         chapter=chapter, role='translator'
     ).select_related('contributor')
-    cleaners = ChapterContributor.objects.filter(
+    cleaners    = ChapterContributor.objects.filter(
         chapter=chapter, role='cleaner'
     ).select_related('contributor')
-    typers = ChapterContributor.objects.filter(
+    typers      = ChapterContributor.objects.filter(
         chapter=chapter, role='typer'
     ).select_related('contributor')
 
-    # 7. Рендерим шаблон
     return render(request, 'manga/chapter_read.html', {
         'manga': manga,
         'chapter': chapter,
-        'all_chapters': all_chapters,
         'previous_chapter': previous_chapter,
         'next_chapter': next_chapter,
+        'all_chapters': all_chapters,
         'reading_progress': progress,
-        'page_images': page_images,
+
+        # новые переменные
         'translators': translators,
         'cleaners': cleaners,
         'typers': typers,
     })
+  
 # ====== спасибо главе ========================================================
 @login_required
 def thank_chapter(request, chapter_id):
