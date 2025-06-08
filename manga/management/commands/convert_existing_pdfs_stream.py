@@ -1,64 +1,86 @@
 # manga/management/commands/convert_existing_pdfs_stream.py
 import os
 import subprocess
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from PIL import Image
-import fitz  # PyMuPDF, чтобы узнать page_count
+import fitz
 from manga.models import Chapter
 
+def convert_chapter(chapter_id):
+    ch = Chapter.objects.get(id=chapter_id)
+    pdf_path = ch.pdf.path
+
+    # сколько страниц
+    doc = fitz.open(pdf_path)
+    page_count = doc.page_count
+    doc.close()
+
+    # структура: …/pages/<volume>/<chapter_id>/
+    out_dir = os.path.join(
+        settings.MEDIA_ROOT, 'chapters', 'pages',
+        str(ch.volume), str(ch.id)
+    )
+    os.makedirs(out_dir, exist_ok=True)
+
+    for p in range(1, page_count+1):
+        # промежуточный PNG
+        base = os.path.join(out_dir, f'_p{p}')
+        subprocess.run([
+            'pdftoppm', '-f', str(p), '-l', str(p),
+            '-png', pdf_path, base
+        ], check=True)
+
+        # найти файл _p{p}-1.png
+        png_fn = next(fn for fn in os.listdir(out_dir)
+                      if fn.startswith(f'_p{p}-') and fn.endswith('.png'))
+        png_path = os.path.join(out_dir, png_fn)
+
+        # конвертировать + ресайз
+        with Image.open(png_path) as img:
+            max_w = 1080
+            if img.width > max_w:
+                new_h = int(max_w * img.height / img.width)
+                img = img.resize((max_w, new_h), Image.LANCZOS)
+
+            webp_fn = f'page_{p:04d}.webp'
+            img.save(os.path.join(out_dir, webp_fn),
+                     'WEBP', quality=80, method=6)
+
+        os.remove(png_path)
+
+    return chapter_id
+
 class Command(BaseCommand):
-    help = "Постранично конвертирует все PDF глав в WebP без OOM и с правильной сортировкой"
-
+    help = "Параллельно конвертирует PDF→WebP по томам и главам (page-by-page)"
     def handle(self, *args, **options):
-        chapters = Chapter.objects.exclude(pdf__exact='')
-        total = chapters.count()
-        self.stdout.write(f"Найдено {total} глав для конвертации")
-        for idx, ch in enumerate(chapters, 1):
-            self.stdout.write(f"({idx}/{total}) Глава {ch.id}: {ch.pdf.name}")
-            pdf_path = ch.pdf.path
+        qs = Chapter.objects.exclude(pdf__exact='')
+        total = qs.count()
+        self.stdout.write(f"Всего глав: {total}")
 
-            # Узнаём число страниц через PyMuPDF
-            doc = fitz.open(pdf_path)
-            page_count = doc.page_count
-            doc.close()
+        # отбираем только новые или ещё не конвертированные
+        to_do = []
+        for ch in qs:
+            out_dir = os.path.join(
+                settings.MEDIA_ROOT, 'chapters', 'pages',
+                str(ch.volume), str(ch.id)
+            )
+            if not (os.path.isdir(out_dir)
+                    and any(f.endswith('.webp') for f in os.listdir(out_dir))):
+                to_do.append(ch.id)
 
-            out_dir = os.path.join(settings.MEDIA_ROOT, 'chapters', 'pages', str(ch.id))
-            os.makedirs(out_dir, exist_ok=True)
+        self.stdout.write(f"Будем конвертировать {len(to_do)} глав…")
 
-            for p in range(1, page_count + 1):
-                # Генерируем PNG для страницы p
-                png_base = os.path.join(out_dir, f'_p{p}')
-                subprocess.run([
-                    'pdftoppm',
-                    '-f', str(p), '-l', str(p),
-                    '-png',
-                    pdf_path,
-                    png_base
-                ], check=True)
+        workers = min(len(to_do), os.cpu_count() or 2)
+        with ProcessPoolExecutor(max_workers=workers) as exe:
+            futures = {exe.submit(convert_chapter, cid): cid for cid in to_do}
+            for fut in as_completed(futures):
+                cid = futures[fut]
+                try:
+                    fut.result()
+                    self.stdout.write(self.style.SUCCESS(f"Глава {cid} готова"))
+                except Exception as e:
+                    self.stderr.write(f"Ошибка главы {cid}: {e}")
 
-                # Находим файл вида _p{p}-1.png
-                png_fn = next(
-                    fn for fn in os.listdir(out_dir)
-                    if fn.startswith(f'_p{p}-') and fn.endswith('.png')
-                )
-                png_path = os.path.join(out_dir, png_fn)
-
-                # Конвертируем PNG в WebP с ресайзом и лидирующими нулями
-                with Image.open(png_path) as img:
-                    # Опциональный ресайз по ширине
-                    max_w = 1080
-                    if img.width > max_w:
-                        new_h = int(max_w * img.height / img.width)
-                        img = img.resize((max_w, new_h), Image.LANCZOS)
-
-                    # Сохраняем с лидирующими нулями в имени
-                    webp_fn = f'page_{p:04d}.webp'
-                    webp_path = os.path.join(out_dir, webp_fn)
-                    img.save(webp_path, 'WEBP', quality=80, method=6)
-
-                # Удаляем временный PNG
-                os.remove(png_path)
-
-            self.stdout.write(self.style.SUCCESS(f"  → Глава {ch.id} готова!"))
-        self.stdout.write(self.style.SUCCESS("Все главы обработаны."))
+        self.stdout.write(self.style.SUCCESS("Готово!"))

@@ -340,7 +340,7 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'translators': translators,
         'cleaners': cleaners,
         'typers': typers,
-    })   
+    })
 # ====== спасибо главе ========================================================
 @login_required
 def thank_chapter(request, chapter_id):

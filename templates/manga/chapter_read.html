@@ -128,21 +128,16 @@
 
     <!-- ► Chapter Content (PDF.js) -->
     {% if page_images %}
-      <div class="pages-container flex flex-col items-center">
+      <div class="pages-container">
         {% for url in page_images %}
-          <img
-            src="{{ url }}"
-            loading="lazy"
-            alt="Страница {{ forloop.counter }}"
-            class="block max-w-full mx-auto"
-          />
+          <img src="{{ url }}"
+              loading="lazy"
+              alt="Jild {{ chapter.volume }} Bob {{ chapter.chapter_number }} p{{ forloop.counter }}"
+              class="max-w-full mx-auto"/>
         {% endfor %}
       </div>
     {% else %}
-      <p class="italic text-gray-400 text-center">
-        Ushbu bob uchun sahifalar mavjud emas. Ehtimol, bu PDF fayl hali yuklanmagan yoki
-        bu bobda rasm yo'q.
-      </p>
+      <p>Sahifa mavjud emas...</p>
     {% endif %}
 
 

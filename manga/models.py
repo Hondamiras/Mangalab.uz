@@ -168,19 +168,6 @@ class Chapter(models.Model):
     def thanks_count(self):
         """Возвращает число пользователей, нажавших «Спасибо»."""
         return self.thanks.count()
-    
-@receiver(post_save, sender=Chapter)
-def optimize_pdf_after_upload(sender, instance, **kwargs):
-    if instance.pdf:
-        input_path = instance.pdf.path
-        optimized_path = input_path.replace('.pdf', '_opt.pdf')
-
-        # Linearize через qpdf (без потери качества)
-        subprocess.run([
-            "qpdf", "--linearize", input_path, optimized_path
-        ], check=True)
-
-        os.replace(optimized_path, input_path)
 
 
 class ChapterContributor(models.Model):
