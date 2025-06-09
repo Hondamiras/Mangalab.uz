@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
+from .models import Page, Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
 
 
 class OwnMixin:
@@ -64,29 +64,18 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         "volume",
         "release_date",
         "created_by",
-        "pdf_size",
         "thanks_count",
     )
     list_filter    = ("release_date", "manga")
-    list_per_page  = 30
+    list_per_page  = 25
 
-    def get_exclude(self, request, obj=None):
-        # скрыть поле thanks для всех, кроме суперпользователя
-        excludes = super().get_exclude(request, obj) or []
-        if not request.user.is_superuser:
-            excludes = list(excludes) + ['thanks']
-        return excludes
-
-    def pdf_size(self, obj):
-        if not obj.pdf:
-            return "-"
-        try:
-            mb = obj.pdf.size / (1024 * 1024)
-            return f"{mb:.2f} MB"
-        except (ValueError, OSError):
-            return "-"
-    pdf_size.short_description = "Размер PDF"
-
+@admin.register(Page)
+class PageAdmin(OwnMixin, admin.ModelAdmin):
+    list_display   = ("chapter", "page_number")
+    list_filter    = ("chapter", "page_number", "chapter__manga__title")
+    raw_id_fields  = ("chapter",)
+    search_fields  = ("chapter__manga__title", "chapter__chapter_number")
+    ordering       = ("chapter", "page_number")
 
 # 3. Контрибьюторы
 # -----------------

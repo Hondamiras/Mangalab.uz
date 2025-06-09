@@ -3,11 +3,6 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from wand.image import Image  # pip install Wand
-import subprocess
-import os
 
 User = get_user_model()
 
@@ -32,13 +27,13 @@ class Tag(models.Model):
         return self.name
 
 class Manga(models.Model):
-    title = models.CharField(max_length=255)
-    author = models.CharField(max_length=255)
-    description = models.TextField()
-    cover_image = models.ImageField(upload_to="covers/")
-    genres = models.ManyToManyField("Genre", related_name="mangas", blank=True)
-    tags = models.ManyToManyField("Tag", related_name="mangas", blank=True)
-    publication_date = models.DateField(null=True, blank=True)
+    title = models.CharField(max_length=255, verbose_name="Nomi")
+    author = models.CharField(max_length=255, verbose_name="Muallifi")
+    description = models.TextField(verbose_name="Ta'rifi")
+    cover_image = models.ImageField(upload_to="covers/", verbose_name="Poster rasmi")
+    genres = models.ManyToManyField("Genre", related_name="mangas", blank=True, verbose_name="Janrlar")
+    tags = models.ManyToManyField("Tag", related_name="mangas", blank=True, verbose_name="Teglar")
+    publication_date = models.DateField(null=True, blank=True, verbose_name="Chiqarilgan sana yani Manga qichon chiqgan?")
     status = models.CharField(
         max_length=50,
         choices=[
@@ -49,6 +44,7 @@ class Manga(models.Model):
             ("Announced", "E'lon qilingan"),
         ],
         default="Ongoing",
+        verbose_name="Manga holati"
     )
     type = models.CharField(
         max_length=50,
@@ -58,7 +54,8 @@ class Manga(models.Model):
     age_rating = models.CharField(
         max_length=50,
         choices=[("Belgilanmagan", "Belgilanmagan"), ("6+", "6+"), ("12+", "12+"), ("16+", "16+"), ("18+", "18+")],
-        default="None",
+        default="Belgilanmagan",
+        verbose_name="Yosh chegarasi"
     )
     translation_status = models.CharField(
         max_length=50,
@@ -69,6 +66,7 @@ class Manga(models.Model):
             ("Dropped", "Tashlab qo'yilgan"),
         ],
         default="Not Translated",
+        verbose_name="Tarjima holati"
     )
     slug = models.SlugField(max_length=255, unique=True, blank=True)
 
@@ -92,7 +90,7 @@ class Manga(models.Model):
 
 
 class Genre(models.Model):
-    name = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=50, unique=True, verbose_name="Janr nomi")
     
     created_by = models.ForeignKey(
     settings.AUTH_USER_MODEL,
@@ -112,7 +110,7 @@ class Genre(models.Model):
         return self.name
     
 class Contributor(models.Model):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100, unique=True, verbose_name="Ismi")
 
     class Meta:
         ordering = ("name",)
@@ -126,23 +124,12 @@ class Chapter(models.Model):
     manga = models.ForeignKey(
         Manga,
         on_delete=models.CASCADE,
-        related_name="chapters"
+        related_name="chapters",
+        verbose_name="Manga",
     )
-    volume = models.PositiveIntegerField(default=1)
-    chapter_number = models.PositiveIntegerField()
-    release_date = models.DateField(default=date.today)
-
-    pdf = models.FileField(
-        upload_to='chapters/pdfs/',
-        blank=True,
-        null=True,
-        validators=[FileExtensionValidator(['pdf'])]
-    )
-    preview = models.ImageField(
-        upload_to='chapters/previews/',
-        blank=True,
-        null=True,
-    )
+    volume = models.PositiveIntegerField(default=1, verbose_name="Jild")
+    chapter_number = models.PositiveIntegerField(verbose_name="Bob")
+    release_date = models.DateField(default=date.today, verbose_name="Chiqarilgan sana (Tegilmasin!)")
 
     contributors = models.ManyToManyField(
         Contributor,
@@ -167,54 +154,47 @@ class Chapter(models.Model):
         unique_together = ("manga", "chapter_number", "volume")
         indexes = [models.Index(fields=("manga", "chapter_number"))]
 
-    def __str__(self):
-        return f"{self.manga.title} — Ch. {self.chapter_number}"
+    def __str__(self) -> str:
+        return f"{self.manga.title} - Jild: {self.volume}. Bob: {self.chapter_number}"
 
     @property
     def thanks_count(self):
         return self.thanks.count()
 
-    def save(self, *args, **kwargs):
-        # Сначала сохраняем PDF (и возможно прошлое preview)
-        super().save(*args, **kwargs)
 
-        # Если PDF есть, а preview ещё не создано — генерируем
-        if self.pdf and not self.preview:
-            try:
-                # Открываем первую страницу PDF
-                with Image(filename=f"{self.pdf.path}[0]", resolution=150) as img:
-                    img.format = 'jpeg'
-                    # Формируем путь для превью внутри MEDIA_ROOT
-                    # Например: MEDIA_ROOT/chapters/previews/manga-1-ch1.jpg
-                    preview_path = self.pdf.path \
-                        .replace('/pdfs/', '/previews/') \
-                        .rsplit('.', 1)[0] + '.jpg'
-                    img.save(filename=preview_path)
+class Page(models.Model):
+    """
+    Страница главы в формате изображения (JPEG/PNG).
+    Каждая страница привязана к конкретной главе.
+    """
+    chapter = models.ForeignKey(
+        Chapter,
+        on_delete=models.CASCADE,
+        related_name='pages', verbose_name="Qaysi bobga tegishli?"
+    )
+    page_number = models.PositiveIntegerField(verbose_name="nechanchi sahifa?")
+    image = models.ImageField(
+        upload_to='chapters/pages/',
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png'])],
+        verbose_name="Rasm (JPEG/PNG)"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        editable=False,
+        related_name="pages_created",
+        null=True,
+        blank=True,
+    )
 
-                # Сохраняем относительный путь в поле preview
-                self.preview.name = preview_path.split(settings.MEDIA_ROOT + '/', 1)[1]
-                # Только обновляем поле preview, чтобы не зациклить save()
-                super().save(update_fields=['preview'])
+    class Meta:
+        unique_together = ('chapter', 'page_number')
+        ordering = ['page_number']
+        verbose_name = "Sahifa "
+        verbose_name_plural = "Sahifalar "
 
-            except Exception as e:
-                # Логируем, но не падаем с ошибкой
-                import logging
-                logging.getLogger(__name__).error(
-                    f"Failed to generate preview for Chapter {self.pk}: {e}"
-                )   
-@receiver(post_save, sender=Chapter)
-def optimize_pdf_after_upload(sender, instance, **kwargs):
-    if instance.pdf:
-        input_path = instance.pdf.path
-        optimized_path = input_path.replace('.pdf', '_opt.pdf')
-
-        # Linearize через qpdf
-        subprocess.run([
-            "qpdf", "--linearize", input_path, optimized_path
-        ])
-
-        # Заменяем старый файл
-        os.replace(optimized_path, input_path)
+    def __str__(self):
+        return f"{self.chapter} — Page {self.page_number}"
 
 
 class ChapterContributor(models.Model):
@@ -225,9 +205,17 @@ class ChapterContributor(models.Model):
         # при необходимости можно добавить: ('letterer','Letterer'), и т.д.
     ]
 
-    chapter     = models.ForeignKey(Chapter,     on_delete=models.CASCADE)
-    contributor = models.ForeignKey(Contributor, on_delete=models.CASCADE)
-    role        = models.CharField(max_length=12, choices=ROLE_CHOICES)
+    chapter     = models.ForeignKey(Chapter,     on_delete=models.CASCADE, verbose_name="Bobga tegishli")
+    contributor = models.ForeignKey(Contributor, on_delete=models.CASCADE, verbose_name="Hissa qo'shuvchi")
+    role        = models.CharField(max_length=12, choices=ROLE_CHOICES, verbose_name="Roli: Tarjimon, Cleaner, Typer")
+    created_by  = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        editable=False,
+        related_name="chapter_contributors_created",
+        null=True,
+        blank=True,
+    )
 
     class Meta:
         unique_together = ('chapter', 'contributor', 'role')
