@@ -153,6 +153,8 @@ class Chapter(models.Model):
     class Meta:
         unique_together = ("manga", "chapter_number", "volume")
         indexes = [models.Index(fields=("manga", "chapter_number"))]
+        verbose_name = "Bob "
+        verbose_name_plural = "Boblar "
 
     def __str__(self) -> str:
         return f"{self.manga.title} - Jild: {self.volume}. Bob: {self.chapter_number}"
