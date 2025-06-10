@@ -56,9 +56,37 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
 
 
+from django.contrib import admin
+from django.db.models import Max
+from .models import Chapter, Page
+
+class PageInline(admin.TabularInline):
+    model = Page
+    fields = ('page_number', 'image')
+    extra = 3  # сколько пустых формочек выводить сразу
+    ordering = ('page_number',)
+
+    def get_formset(self, request, obj=None, **kwargs):
+        FormSet = super().get_formset(request, obj, **kwargs)
+
+        class NumberingFormSet(FormSet):
+            def __init__(self, *args, **kws):
+                super().__init__(*args, **kws)
+                if obj:  # если редактируем существующую главу
+                    last = obj.pages.aggregate(
+                        max_num=Max('page_number')
+                    )['max_num'] or 0
+                    # заполняем initial для новых (пустых) форм
+                    new_forms = [f for f in self.forms if not f.instance.pk]
+                    for idx, form in enumerate(new_forms, start=1):
+                        form.initial['page_number'] = last + idx
+
+        return NumberingFormSet
+
 @admin.register(Chapter)
 class ChapterAdmin(OwnMixin, admin.ModelAdmin):
-    list_display   = (
+    inlines       = [PageInline]
+    list_display  = (
         "manga",
         "chapter_number",
         "volume",
@@ -66,16 +94,19 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         "created_by",
         "thanks_count",
     )
-    list_filter    = ("release_date", "manga")
-    list_per_page  = 25
+    list_filter   = ("release_date", "manga")
+    list_per_page = 20
 
 @admin.register(Page)
 class PageAdmin(OwnMixin, admin.ModelAdmin):
-    list_display   = ("chapter", "page_number")
-    list_filter    = ("chapter", "page_number", "chapter__manga__title")
-    raw_id_fields  = ("chapter",)
-    search_fields  = ("chapter__manga__title", "chapter__chapter_number")
-    ordering       = ("chapter", "page_number")
+    list_display  = ("chapter", "page_number")
+    list_filter   = ("chapter", "page_number", "chapter__manga__title")
+    raw_id_fields = ("chapter",)
+    search_fields = ("chapter__manga__title", "chapter__chapter_number")
+    ordering      = ("chapter", "page_number")
+
+
+
 
 # 3. Контрибьюторы
 # -----------------
