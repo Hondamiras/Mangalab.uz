@@ -7,6 +7,7 @@ from django.utils.text import slugify
 from PIL import Image
 from io import BytesIO
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import InMemoryUploadedFile
 
 User = get_user_model()
 
@@ -30,14 +31,14 @@ class Tag(models.Model):
     def __str__(self):
         return self.name
 
-class Manga(models.Model):
+class Manga(models.Model): 
     title = models.CharField(max_length=255, verbose_name="Nomi")
     author = models.CharField(max_length=255, verbose_name="Muallifi")
     description = models.TextField(verbose_name="Ta'rifi")
     cover_image = models.ImageField(upload_to="covers/", verbose_name="Poster rasmi")
     genres = models.ManyToManyField("Genre", related_name="mangas", blank=True, verbose_name="Janrlar")
     tags = models.ManyToManyField("Tag", related_name="mangas", blank=True, verbose_name="Teglar")
-    publication_date = models.DateField(null=True, blank=True, verbose_name="Chiqarilgan sana yani Manga qichon chiqgan?")
+    publication_date = models.DateField(null=True, blank=True, verbose_name="Chiqarilgan sana yani Manga qachon chiqgan?")
     status = models.CharField(
         max_length=50,
         choices=[
@@ -75,12 +76,12 @@ class Manga(models.Model):
     slug = models.SlugField(max_length=255, unique=True, blank=True)
 
     created_by = models.ForeignKey(
-    settings.AUTH_USER_MODEL,
-    on_delete=models.CASCADE,
-    editable=False,
-    related_name="mangas_created",
-    null=True,
-    blank=True,
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        editable=False,
+        related_name="mangas_created",
+        null=True,
+        blank=True,
     )
 
     class Meta:
@@ -93,24 +94,24 @@ class Manga(models.Model):
         return self.title
 
     def save(self, *args, **kwargs):
-        # only convert if a new image was uploaded
-        if self.cover_image and hasattr(self.cover_image, 'file'):
+        # Slug avto-generatsiyasi, agar bo'sh bo'lsa
+        if not self.slug:
+            self.slug = slugify(self.title)
+
+        # Convert image only if it's a new upload
+        if self.cover_image and isinstance(self.cover_image.file, InMemoryUploadedFile):
             img = Image.open(self.cover_image)
-            img = img.convert("RGBA")  # ensure we can handle transparency
-            
-            # prepare an in-memory buffer
+            img = img.convert("RGBA")
+
             buffer = BytesIO()
-            # save as WebP (you can tweak quality as you like)
-            img.save(buffer, format='WEBP', quality=80, method=6)
+            img.save(buffer, format="WEBP", quality=80, method=6)
             buffer.seek(0)
-            
-            # build a new filename: keep your slug or title
-            base, _ext = self.cover_image.name.rsplit('.', 1)
+
+            base, _ = self.cover_image.name.rsplit('.', 1)
             webp_name = f"{slugify(base)}.webp"
-            
-            # replace the file on the model
             self.cover_image.save(webp_name, ContentFile(buffer.read()), save=False)
 
+        super().save(*args, **kwargs)
 
 class Genre(models.Model):
     name = models.CharField(max_length=50, unique=True, verbose_name="Janr nomi")
