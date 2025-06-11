@@ -3,6 +3,10 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
+from django.utils.text import slugify
+from PIL import Image
+from io import BytesIO
+from django.core.files.base import ContentFile
 
 User = get_user_model()
 
@@ -87,6 +91,25 @@ class Manga(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def save(self, *args, **kwargs):
+        # only convert if a new image was uploaded
+        if self.cover_image and hasattr(self.cover_image, 'file'):
+            img = Image.open(self.cover_image)
+            img = img.convert("RGBA")  # ensure we can handle transparency
+            
+            # prepare an in-memory buffer
+            buffer = BytesIO()
+            # save as WebP (you can tweak quality as you like)
+            img.save(buffer, format='WEBP', quality=80, method=6)
+            buffer.seek(0)
+            
+            # build a new filename: keep your slug or title
+            base, _ext = self.cover_image.name.rsplit('.', 1)
+            webp_name = f"{slugify(base)}.webp"
+            
+            # replace the file on the model
+            self.cover_image.save(webp_name, ContentFile(buffer.read()), save=False)
 
 
 class Genre(models.Model):
