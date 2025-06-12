@@ -1,17 +1,66 @@
 {% load static %}
 
-<div class="sm:container mx-auto px-0 sm:px-4">
+<style>
+  .page-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 400px;
+  }
+  .spinner {
+    border: 6px solid #f3f3f3;
+    border-top: 6px solid #3498db;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+</style>
+
+<div id="chapter-pages" class="sm:container mx-auto px-0 sm:px-4"
+     data-pages='[{% for page in pages %}{"url": "{{ page.image.url|escapejs }}", "alt": "Страница {{ page.page_number }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>
   {% for page in pages %}
-    <div class="flex justify-center my-4">
-      <img
-        src="{{ page.image.url }}"
-        alt="Страница {{ page.page_number }}"
-        loading="lazy"
-        decoding="async"
-        fetchpriority="low"
-        class="w-full md:w-auto max-w-full h-auto transition-opacity duration-500 ease-in-out opacity-0"
-        onload="this.classList.add('opacity-100')"
-      />
+    <div class="flex justify-center my-4 page-container" data-page-index="{{ forloop.counter0 }}">
+      <div class="page-loader"><div class="spinner"></div></div>
     </div>
   {% endfor %}
 </div>
+
+<script>
+  const container = document.getElementById('chapter-pages');
+  const pages = JSON.parse(container.getAttribute('data-pages'));
+  let current = 0;
+
+  function loadNextPage() {
+    if (current >= pages.length) return;
+    const pageDiv = container.querySelector(`.page-container[data-page-index="${current}"]`);
+    const loader = pageDiv.querySelector('.page-loader');
+    const img = document.createElement('img');
+    img.src = pages[current].url;
+    img.alt = pages[current].alt;
+    img.setAttribute('data-page-index', current);
+    img.loading = 'eager';
+    img.decoding = 'async';
+    img.className = 'w-full md:w-auto max-w-full h-auto transition-opacity duration-500 ease-in-out opacity-0';
+    img.onload = function() {
+      img.classList.add('opacity-100');
+      loader.replaceWith(img);
+      current++;
+      loadNextPage();
+    };
+    img.onerror = function() {
+      loader.innerHTML = '<span style="color:red">Ошибка загрузки</span>';
+      current++;
+      loadNextPage();
+    };
+  }
+
+  window.addEventListener('DOMContentLoaded', function() {
+    loadNextPage();
+  });
+</script>
