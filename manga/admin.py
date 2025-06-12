@@ -1,3 +1,4 @@
+import os
 from django.contrib import admin
 from .models import Page, Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
 
@@ -99,11 +100,19 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
 @admin.register(Page)
 class PageAdmin(OwnMixin, admin.ModelAdmin):
-    list_display  = ("chapter", "page_number")
+    list_display  = ("chapter", "page_number", "image_size_mb")
     list_filter   = ("chapter", "page_number", "chapter__manga__title")
     raw_id_fields = ("chapter",)
     search_fields = ("chapter__manga__title", "chapter__chapter_number")
     ordering      = ("chapter", "page_number")
+
+    def image_size_mb(self, obj):
+        if obj.image and os.path.isfile(obj.image.path):
+            size_mb = os.path.getsize(obj.image.path) / (1024 * 1024)
+            return f"{size_mb:.2f} MB"
+        return "No file"
+
+    image_size_mb.short_description = "Image Size (MB)"
 
 
 
