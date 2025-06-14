@@ -10,7 +10,7 @@
   }
   .spinner {
     border: 6px solid #f3f3f3;
-    border-top: 6px solid #3498db;
+    border-top: 6px solidrgb(177, 0, 169);
     border-radius: 50%;
     width: 48px;
     height: 48px;
@@ -23,9 +23,9 @@
 </style>
 
 <div id="chapter-pages" class="sm:container mx-auto px-0 sm:px-4"
-     data-pages='[{% for page in pages %}{"url": "{{ page.image.url|escapejs }}", "alt": "Страница {{ page.page_number }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>
+     data-pages='[{% for page in pages %}{"url": "{{ page.image.url|escapejs }}", "alt": "Sahifa {{ page.page_number }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>
   {% for page in pages %}
-    <div class="flex justify-center my-4 page-container" data-page-index="{{ forloop.counter0 }}">
+    <div class="flex justify-center page-container" data-page-index="{{ forloop.counter0 }}">
       <div class="page-loader"><div class="spinner"></div></div>
     </div>
   {% endfor %}
@@ -54,7 +54,7 @@
       loadNextPage();
     };
     img.onerror = function() {
-      loader.innerHTML = '<span style="color:red">Ошибка загрузки</span>';
+      loader.innerHTML = '<span style="color:red">Yuklashda xatolik</span>';
       current++;
       loadNextPage();
     };

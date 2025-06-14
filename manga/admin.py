@@ -2,6 +2,9 @@ import os
 from django.contrib import admin
 from .models import Page, Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
 
+admin.site.site_header = "MangaLab Admin"
+admin.site.site_title = "MangaLab Admin Panel"
+admin.site.index_title = "MangaLab Admin Paneliga xush kelibsiz!"
 
 class OwnMixin:
     """Mixin для ограничения видимости и создания "своих" записей"""
@@ -64,7 +67,7 @@ from .models import Chapter, Page
 class PageInline(admin.TabularInline):
     model = Page
     fields = ('page_number', 'image')
-    extra = 3  # сколько пустых формочек выводить сразу
+    extra = 20
     ordering = ('page_number',)
 
     def get_formset(self, request, obj=None, **kwargs):
@@ -73,14 +76,20 @@ class PageInline(admin.TabularInline):
         class NumberingFormSet(FormSet):
             def __init__(self, *args, **kws):
                 super().__init__(*args, **kws)
-                if obj:  # если редактируем существующую главу
+                # Определяем последний занятый номер страниц:
+                if obj:
                     last = obj.pages.aggregate(
                         max_num=Max('page_number')
                     )['max_num'] or 0
-                    # заполняем initial для новых (пустых) форм
-                    new_forms = [f for f in self.forms if not f.instance.pk]
-                    for idx, form in enumerate(new_forms, start=1):
-                        form.initial['page_number'] = last + idx
+                else:
+                    # Для создания новой главы — начинаем с нуля
+                    last = 0
+
+                # Берём только новые (пустые) формы:
+                new_forms = [f for f in self.forms if not f.instance.pk]
+                # Заполняем initial.page_number последовательно:
+                for idx, form in enumerate(new_forms, start=1):
+                    form.initial['page_number'] = last + idx
 
         return NumberingFormSet
 
