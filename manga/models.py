@@ -225,32 +225,45 @@ class Page(models.Model):
     
 
     def save(self, *args, **kwargs):
-        # Сначала сохраняем оригинальный файл, чтобы self.image.path был доступен
+        # 1) Сохраняем исходник, чтобы получить self.image.path
         super().save(*args, **kwargs)
 
-        # Открываем его через Pillow
         img_path = self.image.path
         img = Image.open(img_path).convert('RGB')
 
-        # Генерируем имя для WebP (заменяем расширение)
-        base, _ext = os.path.splitext(self.image.name)
+        # 2) Если размер в пикселях > 16383, уменьшаем, чтобы не вылететь по лимиту WebP
+        MAX_DIM = 16383
+        w, h = img.size
+        if w > MAX_DIM or h > MAX_DIM:
+            scale = min(MAX_DIM / w, MAX_DIM / h)
+            new_size = (int(w * scale), int(h * scale))
+            img = img.resize(new_size, Image.LANCZOS)
+
+        # 3) Формируем имя WebP-файла
+        base, _ = os.path.splitext(self.image.name)
         webp_name = f"{base}.webp"
 
-        # Сохраняем в буфер
+        # 4) Сохраняем в буфер в lossless-режиме
         buffer = BytesIO()
-        img.save(buffer, format='WEBP', quality=80)  # можно подстроить quality
+        img.save(
+            buffer,
+            format='WEBP',
+            lossless=True,
+            quality=100,
+            method=6
+        )
         buffer.seek(0)
 
-        # Записываем в хранилище как новый файл
+        # 5) Заменяем поле image на WebP, без прямого сохранения модели
         self.image.save(webp_name, ContentFile(buffer.read()), save=False)
 
-        # Удаляем старый файл (JPEG/PNG)
+        # 6) Удаляем старый JPEG/PNG из файловой системы
         try:
             os.remove(img_path)
         except OSError:
             pass
 
-        # Финальный save, чтобы обновлённое имя image записалось в БД
+        # 7) Финальный save() — обновляем в БД только поле image
         super().save(update_fields=['image'])
 
 
