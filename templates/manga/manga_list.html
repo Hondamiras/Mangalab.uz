@@ -24,7 +24,7 @@
       <div class="flex items-center space-x-4">
         <form method="get" id="filtersForm" class="flex items-center space-x-2">
           <select name="sort" onchange="this.form.submit()" class="bg-gray-800 text-white text-sm px-2 py-1 rounded">
-            <option value="chapters" {% if sort == 'chapters' %}selected{% endif %}>Bo'limlar soni bo'yicha</option>
+            <option value="chapters" {% if sort == 'chapters' %}selected{% endif %}>Boblar soni bo'yicha</option>
             <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Nomi bo'yicha (A–Z)</option>
             <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Nomi bo'yicha (Z–A)</option>
           </select>

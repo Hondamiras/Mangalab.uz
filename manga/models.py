@@ -8,6 +8,7 @@ from PIL import Image
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
+import os
 
 User = get_user_model()
 
@@ -221,6 +222,36 @@ class Page(models.Model):
 
     def __str__(self):
         return f"{self.chapter} — Page {self.page_number}"
+    
+
+    def save(self, *args, **kwargs):
+        # Сначала сохраняем оригинальный файл, чтобы self.image.path был доступен
+        super().save(*args, **kwargs)
+
+        # Открываем его через Pillow
+        img_path = self.image.path
+        img = Image.open(img_path).convert('RGB')
+
+        # Генерируем имя для WebP (заменяем расширение)
+        base, _ext = os.path.splitext(self.image.name)
+        webp_name = f"{base}.webp"
+
+        # Сохраняем в буфер
+        buffer = BytesIO()
+        img.save(buffer, format='WEBP', quality=80)  # можно подстроить quality
+        buffer.seek(0)
+
+        # Записываем в хранилище как новый файл
+        self.image.save(webp_name, ContentFile(buffer.read()), save=False)
+
+        # Удаляем старый файл (JPEG/PNG)
+        try:
+            os.remove(img_path)
+        except OSError:
+            pass
+
+        # Финальный save, чтобы обновлённое имя image записалось в БД
+        super().save(update_fields=['image'])
 
 
 class ChapterContributor(models.Model):

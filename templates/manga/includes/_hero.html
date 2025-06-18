@@ -101,7 +101,7 @@
                 {% for genre in extra_genres %}
                   <a href="{% url 'manga:manga_list' %}?genre={{ genre.name|urlencode }}"
                     class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 
-                            hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center gap-2">
+                            hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center">
                     <i class="fas fa-tag text-xs opacity-70"></i>
                     {{ genre.name }}
                   </a>
