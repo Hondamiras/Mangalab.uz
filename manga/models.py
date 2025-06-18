@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.utils.text import slugify
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
@@ -222,43 +222,6 @@ class Page(models.Model):
 
     def __str__(self):
         return f"{self.chapter} — Page {self.page_number}"
-    
-
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-
-        # если уже .webp — выходим
-        if self.image.name.lower().endswith('.webp'):
-            return
-
-        img_path = self.image.path
-        try:
-            img = Image.open(img_path).convert('RGB')
-
-            # ресайз под WebP-лимит
-            MAX_DIM = 16383
-            w, h = img.size
-            if w > MAX_DIM or h > MAX_DIM:
-                scale = min(MAX_DIM / w, MAX_DIM / h)
-                img = img.resize((int(w*scale), int(h*scale)), Image.LANCZOS)
-
-            buffer = BytesIO()
-            img.save(buffer, format='WEBP', lossless=True, quality=100, method=6)
-            buffer.seek(0)
-
-            base, _ = os.path.splitext(self.image.name)
-            webp_name = f"{base}.webp"
-            self.image.save(webp_name, ContentFile(buffer.read()), save=False)
-
-            # удаляем старый jpeg/png
-            try: os.remove(img_path)
-            except OSError: pass
-
-            super().save(update_fields=['image'])
-
-        except (UnidentifiedImageError, ValueError, OSError):
-            # если что-то сломалось — оставляем оригинал
-            pass
 
 class ChapterContributor(models.Model):
     ROLE_CHOICES = [
