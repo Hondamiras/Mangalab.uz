@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.utils.text import slugify
-from PIL import Image
+from PIL import Image, UnidentifiedImageError, WebPError
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
@@ -225,47 +225,57 @@ class Page(models.Model):
     
 
     def save(self, *args, **kwargs):
-        # 1) Сохраняем исходник, чтобы получить self.image.path
-        super().save(*args, **kwargs)
+            # Сначала обычный save, чтобы получить self.image.path
+            super().save(*args, **kwargs)
 
-        img_path = self.image.path
-        img = Image.open(img_path).convert('RGB')
+            # Если файл уже .webp — пропускаем конвертацию
+            name = self.image.name.lower()
+            if name.endswith('.webp'):
+                return
 
-        # 2) Если размер в пикселях > 16383, уменьшаем, чтобы не вылететь по лимиту WebP
-        MAX_DIM = 16383
-        w, h = img.size
-        if w > MAX_DIM or h > MAX_DIM:
-            scale = min(MAX_DIM / w, MAX_DIM / h)
-            new_size = (int(w * scale), int(h * scale))
-            img = img.resize(new_size, Image.LANCZOS)
+            img_path = self.image.path
+            try:
+                img = Image.open(img_path).convert('RGB')
 
-        # 3) Формируем имя WebP-файла
-        base, _ = os.path.splitext(self.image.name)
-        webp_name = f"{base}.webp"
+                # Ресайзим, если нужно (WebP-ограничение в пикселях)
+                MAX_DIM = 16383
+                w, h = img.size
+                if w > MAX_DIM or h > MAX_DIM:
+                    scale = min(MAX_DIM / w, MAX_DIM / h)
+                    img = img.resize(
+                        (int(w * scale), int(h * scale)),
+                        Image.LANCZOS
+                    )
 
-        # 4) Сохраняем в буфер в lossless-режиме
-        buffer = BytesIO()
-        img.save(
-            buffer,
-            format='WEBP',
-            lossless=True,
-            quality=100,
-            method=6
-        )
-        buffer.seek(0)
+                # Готовим WebP в памяти
+                buffer = BytesIO()
+                img.save(
+                    buffer,
+                    format='WEBP',
+                    lossless=True,
+                    quality=100,
+                    method=6
+                )
+                buffer.seek(0)
 
-        # 5) Заменяем поле image на WebP, без прямого сохранения модели
-        self.image.save(webp_name, ContentFile(buffer.read()), save=False)
+                # Подменяем поле image
+                base, _ = os.path.splitext(self.image.name)
+                webp_name = f"{base}.webp"
+                self.image.save(webp_name, ContentFile(buffer.read()), save=False)
 
-        # 6) Удаляем старый JPEG/PNG из файловой системы
-        try:
-            os.remove(img_path)
-        except OSError:
-            pass
+                # Удаляем старый файл
+                try:
+                    os.remove(img_path)
+                except OSError:
+                    pass
 
-        # 7) Финальный save() — обновляем в БД только поле image
-        super().save(update_fields=['image'])
+                # Сохраняем только поле image
+                super().save(update_fields=['image'])
 
+            except (UnidentifiedImageError, WebPError, ValueError, OSError) as e:
+                # Логируйте e, если нужно, или просто пропускайте
+                # print("WebP conversion skipped:", e)
+                return
 
 class ChapterContributor(models.Model):
     ROLE_CHOICES = [
