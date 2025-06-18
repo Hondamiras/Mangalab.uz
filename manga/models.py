@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.core.validators import FileExtensionValidator
 from django.utils.text import slugify
-from PIL import Image, UnidentifiedImageError, WebPError
+from PIL import Image, UnidentifiedImageError
+from PIL.WebPImagePlugin import WebPError
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
