@@ -108,29 +108,11 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     list_per_page = 20
 
 
-class IsWebPFilter(admin.SimpleListFilter):
-    title = "WebP"
-    parameter_name = "is_webp"
-
-    def lookups(self, request, model_admin):
-        return (
-            ('yes', 'WebP'),
-            ('no', 'JPEG/PNG'),
-        )
-
-    def queryset(self, request, queryset):
-        if self.value() == 'yes':
-            return queryset.filter(image__iendswith='.webp')
-        if self.value() == 'no':
-            return queryset.exclude(image__iendswith='.webp')
-        return queryset
-
-
 
 @admin.register(Page)
 class PageAdmin(OwnMixin, admin.ModelAdmin):
     list_display  = ("chapter", "page_number", "image_size_mb")
-    list_filter   = (IsWebPFilter, "chapter", "page_number", "chapter__manga__title")
+    list_filter   = ("chapter", "page_number", "chapter__manga__title")
     raw_id_fields = ("chapter",)
     search_fields = ("chapter__manga__title", "chapter__chapter_number")
     ordering      = ("chapter", "page_number")
@@ -142,8 +124,6 @@ class PageAdmin(OwnMixin, admin.ModelAdmin):
         return "No file"
 
     image_size_mb.short_description = "Image Size (MB)"
-
-
 
 
 # 3. Контрибьюторы
