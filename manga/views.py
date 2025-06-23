@@ -254,7 +254,7 @@ def chapter_read(request, manga_slug, chapter_number, volume=1):
     all_chapters = (
         Chapter.objects
         .filter(manga=manga)
-        .order_by('-volume', 'chapter_number')
+        .order_by('-volume', '-chapter_number')
     )
     previous_chapter = all_chapters.filter(
         Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |

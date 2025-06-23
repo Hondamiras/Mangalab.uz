@@ -202,7 +202,7 @@ class Page(models.Model):
     page_number = models.PositiveIntegerField(verbose_name="nechanchi sahifa?")
     image = models.ImageField(
         upload_to='chapters/pages/',
-        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png'])],
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'webp'])],
         verbose_name="Rasm (JPEG/PNG)"
     )
     created_by = models.ForeignKey(
