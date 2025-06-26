@@ -234,3 +234,5 @@ class ChapterContributorAdmin(admin.ModelAdmin):
     list_display   = ("chapter", "contributor", "role")
     list_filter    = ("role",)
     raw_id_fields  = ("chapter", "contributor")
+
+admin.site.register(Page, PageAdmin)
