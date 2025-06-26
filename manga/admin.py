@@ -122,7 +122,7 @@ class PageAdmin(admin.ModelAdmin):
     list_display  = ("chapter", "page_number", "image_size_mb")
     raw_id_fields = ("chapter",)
     ordering      = ("chapter", "page_number")
-    list_filter   = ("chapter", IsWebPFilter)
+    list_filter   = ("chapter")
 
     def changelist_view(self, request, extra_context=None):
         if extra_context is None:
