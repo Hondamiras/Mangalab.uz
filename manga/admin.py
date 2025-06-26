@@ -1,13 +1,6 @@
 import os
 from django.contrib import admin
 from .models import Page, Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
-from django.shortcuts import render, redirect
-from django.urls import path
-from django.contrib import messages
-from .forms import MultiPageUploadForm
-from django.urls import reverse
-from django.utils.html import format_html
-
 
 admin.site.site_header = "MangaLab Admin"
 admin.site.site_title = "MangaLab Admin Panel"
@@ -115,14 +108,37 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     list_per_page = 20
 
 
+class IsWebPFilter(admin.SimpleListFilter):
+    title = "WebP"
+    parameter_name = "is_webp"
+
+    def lookups(self, request, model_admin):
+        return (
+            ('yes', 'WebP'),
+            ('no', 'JPEG/PNG'),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == 'yes':
+            return queryset.filter(image__iendswith='.webp')
+        if self.value() == 'no':
+            return queryset.exclude(image__iendswith='.webp')
+        return queryset
 
 
+from django.shortcuts import render, redirect
+from django.urls import path
+from django.contrib import messages
+from .forms import MultiPageUploadForm
+from .models import Page, Chapter
+from django.urls import reverse
+from django.utils.html import format_html
 
 class PageAdmin(admin.ModelAdmin):
     list_display  = ("chapter", "page_number", "image_size_mb")
     raw_id_fields = ("chapter",)
     ordering      = ("chapter", "page_number")
-    list_filter   = ("chapter")
+    list_filter   = ("chapter", IsWebPFilter)
 
     def changelist_view(self, request, extra_context=None):
         if extra_context is None:
@@ -201,6 +217,7 @@ class PageAdmin(admin.ModelAdmin):
 
 
 
+
 # 3. Контрибьюторы
 # -----------------
 class ChapterContributorInline(admin.TabularInline):
@@ -234,5 +251,6 @@ class ChapterContributorAdmin(admin.ModelAdmin):
     list_display   = ("chapter", "contributor", "role")
     list_filter    = ("role",)
     raw_id_fields  = ("chapter", "contributor")
+
 
 admin.site.register(Page, PageAdmin)
