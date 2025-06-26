@@ -1,6 +1,13 @@
 import os
 from django.contrib import admin
 from .models import Page, Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
+from django.shortcuts import render, redirect
+from django.urls import path
+from django.contrib import messages
+from .forms import MultiPageUploadForm
+from django.urls import reverse
+from django.utils.html import format_html
+
 
 admin.site.site_header = "MangaLab Admin"
 admin.site.site_title = "MangaLab Admin Panel"
@@ -109,13 +116,80 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
 
 
-@admin.register(Page)
-class PageAdmin(OwnMixin, admin.ModelAdmin):
+
+
+class PageAdmin(admin.ModelAdmin):
     list_display  = ("chapter", "page_number", "image_size_mb")
-    list_filter   = ("chapter", "page_number", "chapter__manga__title")
     raw_id_fields = ("chapter",)
-    search_fields = ("chapter__manga__title", "chapter__chapter_number")
     ordering      = ("chapter", "page_number")
+    list_filter   = ("chapter", IsWebPFilter)
+
+    def changelist_view(self, request, extra_context=None):
+        if extra_context is None:
+            extra_context = {}
+
+        upload_url = reverse('admin:page_bulk_upload')
+        extra_context['custom_button'] = format_html(
+            '''
+            <div style="margin: 15px 0;">
+                <a href="{}" class="button" style="
+                    background-color: #2e8540;
+                    color: white;
+                    padding: 8px 15px;
+                    border-radius: 6px;
+                    text-decoration: none;
+                    font-weight: bold;
+                    transition: background-color 0.2s ease;
+                " onmouseover="this.style.backgroundColor='#25632f'" onmouseout="this.style.backgroundColor='#2e8540'">
+                    📥 Sahifalarni bulk yuklash
+                </a>
+            </div>
+            ''',
+            upload_url
+        )
+
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('bulk_upload/', self.admin_site.admin_view(self.bulk_upload_view), name='page_bulk_upload'),
+        ]
+        return custom_urls + urls
+
+    def bulk_upload_view(self, request):
+        if request.method == 'POST':
+            form = MultiPageUploadForm(request.POST, request.FILES)
+            chapter_id = request.POST.get('chapter')
+            chapter = Chapter.objects.filter(id=chapter_id).first()
+
+            if form.is_valid() and chapter:
+                # 📌 Fayllarni tartiblab bulk_create orqali saqlaymiz
+                files = sorted(request.FILES.getlist('images'), key=lambda f: f.name.lower())
+                existing_max = Page.objects.filter(chapter=chapter).aggregate(Max('page_number'))['page_number__max'] or 0
+
+                new_pages = []
+                for index, f in enumerate(files):
+                    new_pages.append(Page(
+                        chapter=chapter,
+                        image=f,
+                        page_number=existing_max + index + 1
+                    ))
+
+                Page.objects.bulk_create(new_pages)  # 🔥 Tez bulk saqlash
+
+                messages.success(request, f"{len(files)} ta sahifa yuklandi!")
+                return redirect('admin:manga_page_changelist')
+
+        else:
+            form = MultiPageUploadForm()
+
+        chapters = Chapter.objects.all()
+        return render(request, 'admin/bulk_upload.html', {
+            'form': form,
+            'chapters': chapters,
+        })
+
 
     def image_size_mb(self, obj):
         if obj.image and os.path.isfile(obj.image.path):
@@ -124,6 +198,7 @@ class PageAdmin(OwnMixin, admin.ModelAdmin):
         return "No file"
 
     image_size_mb.short_description = "Image Size (MB)"
+
 
 
 # 3. Контрибьюторы
