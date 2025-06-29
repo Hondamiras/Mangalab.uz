@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.db.models import Prefetch
 import os
 from django.conf import settings
-from .models import ChapterContributor, Manga, Chapter, Genre, ReadingProgress, Tag
+from .models import Manga, Chapter, Genre, ReadingProgress, Tag
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 
 # ====== списки ==============================================================
@@ -290,16 +290,6 @@ def chapter_read(request, manga_slug, chapter_number, volume=1):
     # 4. Получаем все страницы главы, упорядоченные по номеру
     pages = chapter.pages.all().order_by('page_number')
 
-    # 5. Список участников для блока “Jamoa”
-    translators = ChapterContributor.objects.filter(
-        chapter=chapter, role='translator'
-    ).select_related('contributor')
-    cleaners = ChapterContributor.objects.filter(
-        chapter=chapter, role='cleaner'
-    ).select_related('contributor')
-    typers = ChapterContributor.objects.filter(
-        chapter=chapter, role='typer'
-    ).select_related('contributor')
 
     # 6. Рендерим шаблон
     return render(request, 'manga/chapter_read.html', {
@@ -309,9 +299,6 @@ def chapter_read(request, manga_slug, chapter_number, volume=1):
         'previous_chapter': previous_chapter,
         'next_chapter': next_chapter,
         'reading_progress': progress,
-        'translators': translators,
-        'cleaners': cleaners,
-        'typers': typers,
         'pages': pages,          # <-- передаём сюда QuerySet всех страниц
     })
 

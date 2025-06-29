@@ -1,34 +1,21 @@
 {% extends "admin/base_site.html" %}
+{% load static %}
 
 {% block content %}
-  <p style="margin-bottom: 20px;">
-    <a href="{% url 'admin:manga_page_changelist' %}" class="button default" style="text-decoration: none;">
-      ⬅️ Orqaga qaytish
-    </a>
+  <p>
+    <a href="{% url 'admin:manga_chapter_changelist' %}" class="button default">⬅️ Orqaga</a>
   </p>
 
-  <h2>Ko‘p sahifalarni yuklash</h2>
+  <h2><strong>{{ chapter }}</strong> uchun sahifalarni yuklash</h2>
 
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
-
-    <label for="chapter">Chapter tanlang:</label><br>
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <select name="chapter" id="chapter" required>
-        {% for chapter in chapters %}
-          <option value="{{ chapter.id }}">{{ chapter.manga.title }} - Chapter {{ chapter.chapter_number }}</option>
-        {% endfor %}
-      </select>
-
-      <!-- Chapter yaratish uchun tugma -->
-      <a href="{% url 'admin:manga_chapter_add' %}" target="_blank" class="button default" style="padding: 4px 8px;">
-        ➕ Yaratish
-      </a>
+    <div>
+      <label for="id_images"><strong>Rasmlar tanlang:</strong></label><br>
+      {{ form.images }}
     </div>
 
     <br>
-    {{ form.as_p }}
-
-    <button type="submit" class="button default">Yuklash</button>
+    <button type="submit" class="button default">📤 Yuklash</button>
   </form>
 {% endblock %}

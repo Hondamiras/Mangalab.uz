@@ -4,13 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ chapter.manga.title }} - Bob {{ chapter.chapter_number }}</title>
-  {% comment %} <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
-    <script>
-    // worker fayl manzilini ko‘rsatamiz
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
-    </script> {% endcomment %}
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -139,59 +132,6 @@
         </p>
       {% endif %}
     </div>
-
-
-    <!-- Translator, Cleaner, Typer Section -->
-    {% if  translators or cleaners or typer %}
-    <section class="container mx-auto px-3 py-6 max-w-3xl">
-      <h2 class="text-center text-lg sm:text-xl font-medium text-purple-300 mb-4">
-        Jamoa
-      </h2>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {% if translators %}
-        <div class="bg-purple-800 p-3 sm:p-4 rounded-lg shadow-sm">
-          <div class="flex justify-center mb-2">
-            <i class="fas fa-language text-xl sm:text-2xl text-purple-200"></i>
-          </div>
-          <h3 class="text-center text-xs sm:text-sm font-medium text-purple-100 mb-1">
-            Tarjimon
-          </h3>
-          <p class="text-center text-xs sm:text-sm text-gray-300 truncate">
-            {% for ass in translators %}{{ ass.contributor.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
-          </p>
-        </div>
-        {% endif %}
-
-        {% if cleaners %}
-        <div class="bg-purple-800 p-3 sm:p-4 rounded-lg shadow-sm">
-          <div class="flex justify-center mb-2">
-            <i class="fas fa-eraser text-xl sm:text-2xl text-purple-200"></i>
-          </div>
-          <h3 class="text-center text-xs sm:text-sm font-medium text-purple-100 mb-1">
-            Cleaner
-          </h3>
-          <p class="text-center text-xs sm:text-sm text-gray-300 truncate">
-            {% for ass in cleaners %}{{ ass.contributor.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
-          </p>
-        </div>
-        {% endif %}
-
-        {% if typers %}
-        <div class="bg-purple-800 p-3 sm:p-4 rounded-lg shadow-sm">
-          <div class="flex justify-center mb-2">
-            <i class="fas fa-keyboard text-xl sm:text-2xl text-purple-200"></i>
-          </div>
-          <h3 class="text-center text-xs sm:text-sm font-medium text-purple-100 mb-1">
-            Typer
-          </h3>
-          <p class="text-center text-xs sm:text-sm text-gray-300 truncate">
-            {% for ass in typers %}{{ ass.contributor.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
-          </p>
-        </div>
-        {% endif %}
-      </div>
-    </section>
-    {% endif %}
 
 
     <!-- Navigation Controls -->

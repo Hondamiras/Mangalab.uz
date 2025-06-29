@@ -1,13 +1,23 @@
 import os
-from django.contrib import admin
-from .models import Page, Tag, Genre, Manga, Chapter, Contributor, ChapterContributor
+import re
+from django.contrib import admin, messages
+from django.db.models import Max
+from django.shortcuts import render, redirect
+from django.urls import path, reverse
+from django.utils.html import format_html
 
+from .models import Tag, Genre, Manga, Chapter, Page
+from .forms import MultiPageUploadForm
+
+
+# ===== Global Admin Settings =====
 admin.site.site_header = "MangaLab Admin"
 admin.site.site_title = "MangaLab Admin Panel"
 admin.site.index_title = "MangaLab Admin Paneliga xush kelibsiz!"
 
+
+# ===== Universal Mixin =====
 class OwnMixin:
-    """Mixin для ограничения видимости и создания "своих" записей"""
     def save_model(self, request, obj, form, change):
         if not change:
             obj.created_by = request.user
@@ -20,94 +30,148 @@ class OwnMixin:
         return qs.filter(created_by=request.user)
 
     def has_change_permission(self, request, obj=None):
-        has_class_perm = super().has_change_permission(request, obj)
-        if not has_class_perm:
+        if not super().has_change_permission(request, obj):
             return False
         if obj is None or request.user.is_superuser:
             return True
         return obj.created_by == request.user
 
     def has_delete_permission(self, request, obj=None):
-        has_class_perm = super().has_delete_permission(request, obj)
-        if not has_class_perm:
+        if not super().has_delete_permission(request, obj):
             return False
         if obj is None or request.user.is_superuser:
             return True
         return obj.created_by == request.user
 
 
-# 1. Таксономии
-# --------------
+# ===== Taxonomies =====
 @admin.register(Tag)
 class TagAdmin(OwnMixin, admin.ModelAdmin):
-    list_display   = ("name", "created_by")
-    search_fields  = ("name",)
-
+    list_display = ("name", "created_by")
+    search_fields = ("name",)
 
 @admin.register(Genre)
 class GenreAdmin(OwnMixin, admin.ModelAdmin):
-    list_display   = ("name", "created_by")
-    search_fields  = ("name",)
+    list_display = ("name", "created_by")
+    search_fields = ("name",)
 
 
-# 2. Контент
-# ------------
+# ===== Manga =====
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
-    list_display        = ("title", "author", "status", "publication_date", "created_by")
-    search_fields       = ("title", "author")
-    list_filter         = ("status", "genres")
+    list_display = ("title", "author", "status", "publication_date", "created_by")
+    search_fields = ("title", "author")
+    list_filter = ("status", "genres")
     prepopulated_fields = {"slug": ("title",)}
 
 
-from django.contrib import admin
-from django.db.models import Max
-from .models import Chapter, Page
-
-class PageInline(admin.TabularInline):
-    model = Page
-    fields = ('page_number', 'image')
-    extra = 20
-    ordering = ('page_number',)
-
-    def get_formset(self, request, obj=None, **kwargs):
-        FormSet = super().get_formset(request, obj, **kwargs)
-
-        class NumberingFormSet(FormSet):
-            def __init__(self, *args, **kws):
-                super().__init__(*args, **kws)
-                # Определяем последний занятый номер страниц:
-                if obj:
-                    last = obj.pages.aggregate(
-                        max_num=Max('page_number')
-                    )['max_num'] or 0
-                else:
-                    # Для создания новой главы — начинаем с нуля
-                    last = 0
-
-                # Берём только новые (пустые) формы:
-                new_forms = [f for f in self.forms if not f.instance.pk]
-                # Заполняем initial.page_number последовательно:
-                for idx, form in enumerate(new_forms, start=1):
-                    form.initial['page_number'] = last + idx
-
-        return NumberingFormSet
-
+# ===== Chapter =====
 @admin.register(Chapter)
 class ChapterAdmin(OwnMixin, admin.ModelAdmin):
-    inlines       = [PageInline]
-    list_display  = (
-        "manga",
-        "chapter_number",
-        "volume",
-        "release_date",
-        "created_by",
-        "thanks_count",
+    list_display = (
+        "manga", "chapter_number", "volume", "page_count",    
+        "upload_pages_link",  # 📤 Tugma bob ro‘yxatida
     )
-    list_filter   = ("release_date", "manga")
+    list_filter = ("release_date", "manga")
     list_per_page = 20
 
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        last_chapter = Chapter.objects.order_by('-id').first()
+        if last_chapter:
+            initial['manga'] = last_chapter.manga_id
+            initial['chapter_number'] = last_chapter.chapter_number + 1
+            initial['volume'] = last_chapter.volume
+        return initial
 
+    def page_count(self, obj):
+        return obj.pages.count()
+    page_count.short_description = "Sahifalar soni"
+
+
+    # Tugma ro‘yxatda
+    def upload_pages_link(self, obj):
+        url = reverse('admin:chapter_upload_pages', args=[obj.pk])
+        return format_html(
+            '<a class="button" href="{}">📤 Sahifalarni yuklash</a>', url
+        )
+    upload_pages_link.short_description = "Bulk Upload"
+
+    # Tugma tahrirlash sahifasida (change_view)
+    def change_view(self, request, object_id, form_url='', extra_context=None):
+        if extra_context is None:
+            extra_context = {}
+
+        upload_url = reverse('admin:chapter_upload_pages', args=[object_id])
+        extra_context['upload_pages_button'] = format_html(
+            '''
+            <div style="margin: 10px 0 20px 0;">
+                <a href="{}" class="button" style="
+                    background-color: #2e8540;
+                    color: white;
+                    padding: 6px 12px;
+                    border-radius: 5px;
+                    text-decoration: none;
+                    font-weight: bold;
+                ">
+                    📤 Sahifalarni yuklash
+                </a>
+            </div>
+            ''',
+            upload_url
+        )
+        return super().change_view(request, object_id, form_url, extra_context=extra_context)
+
+    # URL qo‘shish
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<int:chapter_id>/upload_pages/', self.admin_site.admin_view(self.upload_pages_view), name='chapter_upload_pages'),
+        ]
+        return custom_urls + urls
+
+    # Yuklash view — filename'larni raqam bo‘yicha sort qiladi!
+    def upload_pages_view(self, request, chapter_id):
+        chapter = Chapter.objects.filter(pk=chapter_id).first()
+        if not chapter:
+            messages.error(request, "Bunday bob topilmadi.")
+            return redirect('admin:manga_chapter_changelist')
+
+        if request.method == 'POST':
+            form = MultiPageUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                def extract_number(filename):
+                    match = re.search(r'(\d+)', filename)
+                    return int(match.group(1)) if match else 0
+
+                files = sorted(
+                    request.FILES.getlist('images'),
+                    key=lambda f: extract_number(f.name)
+                )
+
+                existing_max = Page.objects.filter(chapter=chapter).aggregate(Max('page_number'))['page_number__max'] or 0
+
+                new_pages = []
+                for index, f in enumerate(files):
+                    new_pages.append(Page(
+                        chapter=chapter,
+                        image=f,
+                        page_number=existing_max + index + 1
+                    ))
+
+                Page.objects.bulk_create(new_pages)
+                messages.success(request, f"{len(files)} ta sahifa yuklandi!")
+                return redirect('admin:manga_chapter_changelist')
+        else:
+            form = MultiPageUploadForm()
+
+        return render(request, 'admin/bulk_upload.html', {
+            'form': form,
+            'chapter': chapter,
+        })
+
+
+# ===== Page =====
 class IsWebPFilter(admin.SimpleListFilter):
     title = "WebP"
     parameter_name = "is_webp"
@@ -125,87 +189,12 @@ class IsWebPFilter(admin.SimpleListFilter):
             return queryset.exclude(image__iendswith='.webp')
         return queryset
 
-
-from django.shortcuts import render, redirect
-from django.urls import path
-from django.contrib import messages
-from .forms import MultiPageUploadForm
-from .models import Page, Chapter
-from django.urls import reverse
-from django.utils.html import format_html
-
+@admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
-    list_display  = ("chapter", "page_number", "image_size_mb")
+    list_display = ("chapter", "page_number", "image_size_mb")
     raw_id_fields = ("chapter",)
-    ordering      = ("chapter", "page_number")
-    list_filter   = ("chapter", IsWebPFilter)
-
-    def changelist_view(self, request, extra_context=None):
-        if extra_context is None:
-            extra_context = {}
-
-        upload_url = reverse('admin:page_bulk_upload')
-        extra_context['custom_button'] = format_html(
-            '''
-            <div style="margin: 15px 0;">
-                <a href="{}" class="button" style="
-                    background-color: #2e8540;
-                    color: white;
-                    padding: 8px 15px;
-                    border-radius: 6px;
-                    text-decoration: none;
-                    font-weight: bold;
-                    transition: background-color 0.2s ease;
-                " onmouseover="this.style.backgroundColor='#25632f'" onmouseout="this.style.backgroundColor='#2e8540'">
-                    📥 Sahifalarni bulk yuklash
-                </a>
-            </div>
-            ''',
-            upload_url
-        )
-
-        return super().changelist_view(request, extra_context=extra_context)
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('bulk_upload/', self.admin_site.admin_view(self.bulk_upload_view), name='page_bulk_upload'),
-        ]
-        return custom_urls + urls
-
-    def bulk_upload_view(self, request):
-        if request.method == 'POST':
-            form = MultiPageUploadForm(request.POST, request.FILES)
-            chapter_id = request.POST.get('chapter')
-            chapter = Chapter.objects.filter(id=chapter_id).first()
-
-            if form.is_valid() and chapter:
-                # 📌 Fayllarni tartiblab bulk_create orqali saqlaymiz
-                files = sorted(request.FILES.getlist('images'), key=lambda f: f.name.lower())
-                existing_max = Page.objects.filter(chapter=chapter).aggregate(Max('page_number'))['page_number__max'] or 0
-
-                new_pages = []
-                for index, f in enumerate(files):
-                    new_pages.append(Page(
-                        chapter=chapter,
-                        image=f,
-                        page_number=existing_max + index + 1
-                    ))
-
-                Page.objects.bulk_create(new_pages)  # 🔥 Tez bulk saqlash
-
-                messages.success(request, f"{len(files)} ta sahifa yuklandi!")
-                return redirect('admin:manga_page_changelist')
-
-        else:
-            form = MultiPageUploadForm()
-
-        chapters = Chapter.objects.all()
-        return render(request, 'admin/bulk_upload.html', {
-            'form': form,
-            'chapters': chapters,
-        })
-
+    ordering = ("chapter", "page_number")
+    list_filter = ("chapter", IsWebPFilter)
 
     def image_size_mb(self, obj):
         if obj.image and os.path.isfile(obj.image.path):
@@ -214,43 +203,3 @@ class PageAdmin(admin.ModelAdmin):
         return "No file"
 
     image_size_mb.short_description = "Image Size (MB)"
-
-
-
-
-# 3. Контрибьюторы
-# -----------------
-class ChapterContributorInline(admin.TabularInline):
-    model   = ChapterContributor
-    extra   = 0
-    fk_name = "contributor"
-
-
-@admin.register(Contributor)
-class ContributorAdmin(admin.ModelAdmin):
-    list_display  = ("name", "is_translator", "is_cleaner", "is_typer")
-    search_fields = ("name",)
-    ordering      = ("name",)
-    inlines       = [ChapterContributorInline]
-
-    @admin.display(boolean=True, description="Tarjimon")
-    def is_translator(self, obj):
-        return obj.chaptercontributor_set.filter(role="translator").exists()
-
-    @admin.display(boolean=True, description="Clean")
-    def is_cleaner(self, obj):
-        return obj.chaptercontributor_set.filter(role="cleaner").exists()
-
-    @admin.display(boolean=True, description="Type")
-    def is_typer(self, obj):
-        return obj.chaptercontributor_set.filter(role="typer").exists()
-
-
-@admin.register(ChapterContributor)
-class ChapterContributorAdmin(admin.ModelAdmin):
-    list_display   = ("chapter", "contributor", "role")
-    list_filter    = ("role",)
-    raw_id_fields  = ("chapter", "contributor")
-
-
-admin.site.register(Page, PageAdmin)

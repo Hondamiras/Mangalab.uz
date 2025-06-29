@@ -134,17 +134,6 @@ class Genre(models.Model):
     def __str__(self) -> str:
         return self.name
     
-class Contributor(models.Model):
-    name = models.CharField(max_length=100, unique=True, verbose_name="Ismi")
-
-    class Meta:
-        ordering = ("name",)
-        verbose_name = "Hissa qo'shuvchi "
-        verbose_name_plural = "Hissa qo'shuvchilar "
-
-    def __str__(self):
-        return self.name
-
 class Chapter(models.Model):
     manga = models.ForeignKey(
         Manga,
@@ -156,11 +145,6 @@ class Chapter(models.Model):
     chapter_number = models.PositiveIntegerField(verbose_name="Bob")
     release_date = models.DateField(default=date.today, verbose_name="Chiqarilgan sana (Tegilmasin!)")
 
-    contributors = models.ManyToManyField(
-        Contributor,
-        through='ChapterContributor',
-        related_name='chapters'
-    )
     thanks = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="thanked_chapters",
@@ -222,34 +206,6 @@ class Page(models.Model):
 
     def __str__(self):
         return f"{self.chapter} — Page {self.page_number}"
-
-class ChapterContributor(models.Model):
-    ROLE_CHOICES = [
-        ('translator', 'Tarjimon'),
-        ('cleaner', 'Cleaner'),
-        ('typer', 'Typer'),
-        # при необходимости можно добавить: ('letterer','Letterer'), и т.д.
-    ]
-
-    chapter     = models.ForeignKey(Chapter,     on_delete=models.CASCADE, verbose_name="Bobga tegishli")
-    contributor = models.ForeignKey(Contributor, on_delete=models.CASCADE, verbose_name="Hissa qo'shuvchi")
-    role        = models.CharField(max_length=12, choices=ROLE_CHOICES, verbose_name="Roli: Tarjimon, Cleaner, Typer")
-    created_by  = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        editable=False,
-        related_name="chapter_contributors_created",
-        null=True,
-        blank=True,
-    )
-
-    class Meta:
-        unique_together = ('chapter', 'contributor', 'role')
-        verbose_name = "Bobga hissa qo'shuvchi "
-        verbose_name_plural = "Bobga hissa qo'shuvchilar "
-
-    def __str__(self):
-        return f"{self.contributor.name}  {self.get_role_display()}"
 
 
 class ReadingProgress(models.Model):
