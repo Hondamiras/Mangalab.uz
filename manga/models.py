@@ -32,12 +32,24 @@ class Tag(models.Model):
     def __str__(self):
         return self.name
 
+class MangaTelegramLink(models.Model):
+    manga = models.ForeignKey(
+        "Manga",
+        on_delete=models.CASCADE,
+        related_name="telegram_links",
+        verbose_name="Qaysi Manga uchun"
+    )
+    name = models.CharField(max_length=100, default="", verbose_name="Link nomi", blank=True)
+    link = models.URLField(verbose_name="Telegram havolasi")
+
+    def __str__(self):
+        return self.name or self.link
+
 class Manga(models.Model): 
     title = models.CharField(max_length=255, verbose_name="Nomi")
     author = models.CharField(max_length=255, verbose_name="Muallifi")
     description = models.TextField(verbose_name="Ta'rifi")
     cover_image = models.ImageField(upload_to="covers/", verbose_name="Poster rasmi")
-    telegram_link = models.URLField(blank=True, null=True)
     genres = models.ManyToManyField("Genre", related_name="mangas", blank=True, verbose_name="Janrlar")
     tags = models.ManyToManyField("Tag", related_name="mangas", blank=True, verbose_name="Teglar")
     publication_date = models.DateField(null=True, blank=True, verbose_name="Chiqarilgan sana yani Manga qachon chiqgan?")
