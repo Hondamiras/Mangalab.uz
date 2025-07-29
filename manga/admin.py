@@ -60,6 +60,7 @@ class GenreAdmin(OwnMixin, admin.ModelAdmin):
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
     list_display = ("title", "telegram_link", "status", "created_by")
+    list_editable = ("telegram_link",)
     search_fields = ("title", "telegram_link",)
     search_help_text = "Manga nomi va Telegram linki bo‘yicha qidirish"
     list_filter = ("status", "type")
