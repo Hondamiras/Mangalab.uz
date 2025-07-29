@@ -59,9 +59,11 @@ class GenreAdmin(OwnMixin, admin.ModelAdmin):
 # ===== Manga =====
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
-    list_display = ("title", "author", "status", "publication_date", "created_by")
-    search_fields = ("title", "author")
-    list_filter = ("status", "genres")
+    list_display = ("title", "telegram_link", "status", "created_by")
+    search_fields = ("title", "telegram_link",)
+    search_help_text = "Manga nomi va Telegram linki bo‘yicha qidirish"
+    list_filter = ("status", "type")
+    list_per_page = 40
     prepopulated_fields = {"slug": ("title",)}
 
 
@@ -69,11 +71,13 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
 @admin.register(Chapter)
 class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     list_display = (
-        "manga", "chapter_number", "volume", "page_count",    
+        "manga", "volume", "chapter_number", "page_count",    
         "upload_pages_link",  # 📤 Tugma bob ro‘yxatida
     )
-    list_filter = ("release_date", "manga")
-    list_per_page = 20
+    search_fields = ("manga__title",)
+    search_help_text = "Manga nomi bo‘yicha qidirish"
+    list_editable = ('volume',)
+    list_per_page = 40
 
     def get_changeform_initial_data(self, request):
         initial = super().get_changeform_initial_data(request)
@@ -194,7 +198,7 @@ class PageAdmin(admin.ModelAdmin):
     list_display = ("chapter", "page_number", "image_size_mb")
     raw_id_fields = ("chapter",)
     ordering = ("chapter", "page_number")
-    list_filter = ("chapter", IsWebPFilter)
+    list_filter = (IsWebPFilter,)
 
     def image_size_mb(self, obj):
         if obj.image and os.path.isfile(obj.image.path):
