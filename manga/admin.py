@@ -55,17 +55,22 @@ class GenreAdmin(OwnMixin, admin.ModelAdmin):
     list_display = ("name", "created_by")
     search_fields = ("name",)
 
+class MangaTelegramLinkInline(admin.TabularInline):
+    model = MangaTelegramLink
+    extra = 1 
+    min_num = 0
 
 # ===== Manga =====
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
     list_display = ("title", "telegram_link", "status", "created_by")
     list_editable = ("telegram_link",)
-    search_fields = ("title", "telegram_link",)
-    search_help_text = "Manga nomi va Telegram linki bo‘yicha qidirish"
+    search_fields = ("title", )
+    search_help_text = "Manga nomi bo‘yicha qidirish"
     list_filter = ("status", "type")
     list_per_page = 40
     prepopulated_fields = {"slug": ("title",)}
+    inlines = [MangaTelegramLinkInline]
 
 
 # ===== Chapter =====
