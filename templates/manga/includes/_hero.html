@@ -225,20 +225,51 @@
               </a>
             </div>
 
-              {# === Telegram Link === #}
-              {% if manga.telegram_link %}
-              <div class="w-[200px]">
-                <a
-                  href="{{ manga.telegram_link }}"
-                  target="_blank"
-                  class="w-full h-14 flex items-center justify-center gap-2 bg-sky-500 text-white rounded-2xl
-                        hover:bg-sky-600 transition-colors duration-200 shadow-sm hover:shadow-md"
-                >
-                  <i class="fab fa-telegram-plane"></i>
-                  <span class="font-medium">Telegram kanal</span>
-                </a>
+            {# === Telegram Link Trigger === #}
+            {% if telegram_links %}
+            <div class="w-[200px]">
+              <button 
+                onclick="document.getElementById('telegramModal').classList.remove('hidden')" 
+                class="w-full h-14 flex items-center justify-center gap-2 bg-sky-500 text-white rounded-2xl
+                       hover:bg-sky-600 transition-colors duration-200 shadow-sm hover:shadow-md">
+                <i class="fab fa-telegram-plane"></i>
+                <span class="font-medium">Telegram kanallar</span>
+              </button>
+            </div>
+            {% endif %}
+            
+            {# === Telegram Modal === #}
+            <div id="telegramModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 backdrop-blur-sm">
+              <div class="bg-gray-800 rounded-xl shadow-xl w-96 max-w-[95%] p-6 relative border border-gray-700">
+                {# Close Button #}
+                <button 
+                  onclick="document.getElementById('telegramModal').classList.add('hidden')" 
+                  class="absolute top-4 right-4 p-1 text-gray-400 hover:text-white transition-colors rounded-full hover:bg-gray-700">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+            
+                {# Header #}
+                <div class="flex items-center gap-3 mb-6">
+                  
+                  <h2 class="text-xl font-bold text-white">Telegram kanallar</h2>
+                </div>
+                
+                {# Links List #}
+                <div class="space-y-3">
+                  {% for link in telegram_links %}
+                    <a href="{{ link.link }}" target="_blank" 
+                       class="flex items-center gap-3 px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 text-white transition-colors border border-gray-600 hover:border-blue-400">
+                      <i class="fab fa-telegram text-blue-400"></i>
+                      <span class="font-medium flex-1">{{ link.name|default:"Telegram kanal" }}</span>
+                      <i class="fas fa-external-link-alt text-gray-400 text-sm"></i>
+                    </a>
+                  {% endfor %}
+                </div>
               </div>
-              {% endif %}
+            </div>
 
             {# Если вы собираетесь давать вариант «зарегистрироваться и сразу перейти на главу», тоже не забудьте подкорректировать: #}
             {# <a href="{% url 'accounts:signup' %}?next={% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}" … > #}
