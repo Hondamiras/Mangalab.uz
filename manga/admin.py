@@ -64,8 +64,7 @@ class MangaTelegramLinkInline(admin.TabularInline):
 # ===== Manga =====
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
-    list_display = ("title", "telegram_link", "status", "created_by")
-    list_editable = ("telegram_link",)
+    list_display = ("title", "status", "created_by")
     search_fields = ("title", )
     search_help_text = "Manga nomi bo‘yicha qidirish"
     list_filter = ("status", "type")
