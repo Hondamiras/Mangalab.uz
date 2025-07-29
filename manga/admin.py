@@ -6,7 +6,8 @@ from django.shortcuts import render, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
 
-from .models import Tag, Genre, Manga, Chapter, Page
+
+from .models import Tag, Genre, Manga, Chapter, Page, MangaTelegramLink
 from .forms import MultiPageUploadForm
 
 
