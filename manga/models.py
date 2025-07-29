@@ -37,6 +37,7 @@ class Manga(models.Model):
     author = models.CharField(max_length=255, verbose_name="Muallifi")
     description = models.TextField(verbose_name="Ta'rifi")
     cover_image = models.ImageField(upload_to="covers/", verbose_name="Poster rasmi")
+    telegram_link = models.URLField(blank=True, null=True)
     genres = models.ManyToManyField("Genre", related_name="mangas", blank=True, verbose_name="Janrlar")
     tags = models.ManyToManyField("Tag", related_name="mangas", blank=True, verbose_name="Teglar")
     publication_date = models.DateField(null=True, blank=True, verbose_name="Chiqarilgan sana yani Manga qachon chiqgan?")
