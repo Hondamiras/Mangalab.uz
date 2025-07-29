@@ -225,6 +225,21 @@
               </a>
             </div>
 
+              {# === Telegram Link === #}
+              {% if manga.telegram_link %}
+              <div class="w-[200px]">
+                <a
+                  href="{{ manga.telegram_link }}"
+                  target="_blank"
+                  class="w-full h-14 flex items-center justify-center gap-2 bg-sky-500 text-white rounded-2xl
+                        hover:bg-sky-600 transition-colors duration-200 shadow-sm hover:shadow-md"
+                >
+                  <i class="fab fa-telegram-plane"></i>
+                  <span class="font-medium">Telegram kanal</span>
+                </a>
+              </div>
+              {% endif %}
+
             {# Если вы собираетесь давать вариант «зарегистрироваться и сразу перейти на главу», тоже не забудьте подкорректировать: #}
             {# <a href="{% url 'accounts:signup' %}?next={% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}" … > #}
 
