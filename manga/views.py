@@ -200,6 +200,8 @@ def manga_details(request, manga_slug):
              .order_by('-shared_genres', 'title')[:10]
     )
 
+    telegram_links = manga.telegram_links.all()
+
     return render(request, 'manga/manga_details.html', {
         'manga': manga,
         'reading_status': reading_status,
@@ -208,6 +210,7 @@ def manga_details(request, manga_slug):
         'current_order': order,
         'similar_mangas': similar_mangas,
         'READING_STATUSES': READING_STATUSES,
+        'telegram_links': telegram_links
     })
 
 # ====== добавление в список чтения ==========================================
