@@ -188,7 +188,7 @@
       <div class="overflow-x-auto scrollbar-hide">
         <div class="flex gap-3 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 2xl:grid-cols-8">
           {% for manga in latest_mangas|slice:":25" %}
-            <div class="group relative shrink-0 w-40 max-w-xs">
+            <div class="group relative shrink-0 w-40">
               <div class="bg-gray-800 rounded-lg overflow-hidden shadow-md transition-all duration-300 group-hover:shadow-lg h-full">
                 <a href="{% url 'manga:manga_details' manga.slug %}" class="block h-full">
                   <div class="relative aspect-[3/4]">
