@@ -3,7 +3,7 @@
 {% load cache %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-4 flex flex-col md:flex-row min-h-screen w-full">
+<div class="container mx-auto px-4 py-4 flex flex-col">
   <!-- Sidebar with filters -->
   {% include "manga/includes/_sidebar_filters.html" %}
 
@@ -44,7 +44,7 @@
       </div>
 
       <!-- Horizontal scroll container -->
-      <div id="autoScroll" class="overflow-x-auto scrollbar-hide">
+      <div id="autoScroll" class="overflow-hidden scrollbar-hide">
         <div class="flex gap-4">
           {% for manga in trending_mangas|slice:":25" %}
             <div class="w-40 flex-shrink-0">
