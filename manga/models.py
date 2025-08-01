@@ -92,7 +92,7 @@ class Manga(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        editable=False,
+        # editable=False,
         related_name="mangas_created",
         null=True,
         blank=True,
@@ -156,6 +156,7 @@ class Chapter(models.Model):
     )
     volume = models.PositiveIntegerField(default=1, verbose_name="Jild")
     chapter_number = models.PositiveIntegerField(verbose_name="Bob")
+    price_tanga = models.PositiveIntegerField(default=0, verbose_name="Bob narxi (tanga)")
     release_date = models.DateField(default=date.today, verbose_name="Chiqarilgan sana (Tegilmasin!)")
 
     thanks = models.ManyToManyField(
@@ -166,7 +167,7 @@ class Chapter(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        editable=False,
+        # editable=False,
         related_name="chapters_created",
         null=True,
         blank=True,
@@ -184,6 +185,21 @@ class Chapter(models.Model):
     @property
     def thanks_count(self):
         return self.thanks.count()
+    
+
+class ChapterPurchase(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="purchased_chapters")
+    chapter = models.ForeignKey(Chapter, on_delete=models.CASCADE, related_name="purchases")
+    purchase_date = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now=True, editable=False, null=True, blank=True)
+
+    class Meta:
+        unique_together = ("user", "chapter")
+        verbose_name = "Sotib olingan bob"
+        verbose_name_plural = "Sotib olingan boblar"
+
+    def __str__(self):
+        return f"{self.user.username} → {self.chapter}"
 
 
 class Page(models.Model):
@@ -200,7 +216,8 @@ class Page(models.Model):
     image = models.ImageField(
         upload_to='chapters/pages/',
         validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'webp'])],
-        verbose_name="Rasm (JPEG/PNG)"
+        help_text="Rasmni JPEG/PNG/WebP formatida yuklang.",
+        verbose_name="Rasm (JPEG/PNG/WEBP formatida yuklang)"
     )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -217,8 +234,38 @@ class Page(models.Model):
         verbose_name = "Sahifa "
         verbose_name_plural = "Sahifalar "
 
+
     def __str__(self):
         return f"{self.chapter} — Page {self.page_number}"
+    
+    def save(self, *args, **kwargs):
+        # Сначала сохраняем оригинальный файл, чтобы self.image.path был доступен
+        super().save(*args, **kwargs)
+
+        # Открываем его через Pillow
+        img_path = self.image.path
+        img = Image.open(img_path).convert('RGB')
+
+        # Генерируем имя для WebP (заменяем расширение)
+        base, _ext = os.path.splitext(self.image.name)
+        webp_name = f"{base}.webp"
+
+        # Сохраняем в буфер
+        buffer = BytesIO()
+        img.save(buffer, format='WEBP', quality=80)  # можно подстроить quality
+        buffer.seek(0)
+
+        # Записываем в хранилище как новый файл
+        self.image.save(webp_name, ContentFile(buffer.read()), save=False)
+
+        # Удаляем старый файл (JPEG/PNG)
+        try:
+            os.remove(img_path)
+        except OSError:
+            pass
+
+        # Финальный save, чтобы обновлённое имя image записалось в БД
+        super().save(update_fields=['image'])
 
 
 class ReadingProgress(models.Model):

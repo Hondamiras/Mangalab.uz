@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -24,9 +25,18 @@ class EmailVerificationCode(models.Model):
     def __str__(self):
         return f"{self.user.email} → {self.code}"
 
-
+    
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True, verbose_name="Rasm")
+    tanga_balance = models.PositiveIntegerField(default=0, verbose_name="Tangalar balansi")
+    is_translator = models.BooleanField(default=False, verbose_name="Tarjimonmi?")
+    description = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="Tarjimon tavsifi"
+    )
+
     reading_list = models.ManyToManyField(
         'manga.Manga',
         through='ReadingStatus',
@@ -46,7 +56,27 @@ class UserProfile(models.Model):
             manga=manga,
             defaults={"status": status}
         )
+    
+    def follower_count(self, obj):
+        return obj.followers.count()
+    follower_count.short_description = "Followers"
 
+from django import forms
+class TranslatorSelfEditForm(forms.ModelForm):
+    class Meta:
+        model = UserProfile
+        fields = ('avatar', 'description')
+
+class TranslatorFollower(models.Model):
+    translator = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='followers')
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='following')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('translator', 'user')
+
+    def __str__(self):
+        return f"{self.translator.user.username} → {self.user.user.username}"
 
 class ReadingStatus(models.Model):
     user_profile = models.ForeignKey(

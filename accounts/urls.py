@@ -48,4 +48,10 @@ urlpatterns = [
       ),
       name="password_reset_complete"
     ),
+
+    path("profile/<str:username>/translator/", views.translator_profile_view, name="translator_profile"),
+    path("profile/<str:username>/follow/", views.follow_translator, name="follow_translator"),
+    path("translators/top/", views.top_translators, name="top_translators"),
+
+    path("translator/owner/", views.translator_profile_owner_view, name="translator_profile_owner"),
 ]

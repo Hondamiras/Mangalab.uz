@@ -5,6 +5,7 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=0.75">
   <meta name="csrf-token" content="{{ csrf_token }}">
   <meta name="description" content="MangaLab - O'zbek tilidagi eng yirik komikslar platformasi.">
   <meta name="keywords" content="manga, komiks, o'zbek, platforma, manga lab, manga uzbek">
@@ -24,6 +25,19 @@
   <!-- Toastify CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 
+  <style>
+    html, body {
+    height: 100%;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    main {
+      flex-grow: 1;
+    }
+
+  </style>
   <style>
     :root {
       --bg-color: #1a202c;
@@ -209,6 +223,16 @@
       });
     });
   </script>
+
+
+
+  <script>
+document.addEventListener("DOMContentLoaded", () => {
+  if (window.innerWidth > 1024) { // faqat desktop
+    document.body.style.zoom = "75%";
+  }
+});
+</script>
 
 </body>
 </html>

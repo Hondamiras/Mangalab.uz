@@ -1,4 +1,6 @@
+{% load cache %}
     {# ---------- HERO SECTION ---------- #}
+    {% cache 86400 manga_header manga.slug manga.cover_image.url %}
     <div class="flex flex-col md:flex-row gap-0 md:gap-8 mb-8 relative">
       {# Cover Image with Floating Effect #}
       <div class="relative flex-shrink-0 self-center md:self-start transform mb-6 md:mb-0">
@@ -13,22 +15,22 @@
       {# Title and Metadata #}
       <div class="flex flex-col flex-1 justify-center space-y-5">
         <header class="text-center md:text-left space-y-3">
-        {# flex-контейнер для title + type #}
-        <div class="flex flex-col items-center gap-1
-                    sm:flex-row sm:items-center sm:justify-center sm:gap-1
-                    md:justify-start">
-          <h1 class="text-3xl sm:text-3xl md:text-4xl lg:text-5xl
-                    font-bold text-purple-400 leading-tight
-                    text-center sm:text-left break-words">
-            {{ manga.title }}
-          </h1>
-        </div>
+          {# flex-контейнер для title + type #}
+          <div class="flex flex-col items-center gap-1
+                      sm:flex-row sm:items-center sm:justify-center sm:gap-1
+                      md:justify-start">
+            <h1 class="text-3xl sm:text-3xl md:text-4xl lg:text-5xl
+                      font-bold text-purple-400 leading-tight
+                      text-center sm:text-left break-words">
+              {{ manga.title }}
+            </h1>
+          </div>
 
-        <p class="text-lg sm:text-xl text-gray-300 font-light">
-          {{ manga.author }}
-        </p>
-      </header>
-
+          <p class="text-lg sm:text-xl text-gray-300 font-light">
+            {{ manga.author }}
+          </p>
+        </header>
+        
         {# Rating and Status Badges #}
         <div class="flex flex-wrap gap-4 justify-center md:justify-start">
           <div class="group px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
@@ -59,6 +61,7 @@
           </div>
         </div>
 
+        {% cache 86400 manga_metadata manga.slug %}
         {# Genres #}
         <div class="flex flex-wrap gap-3 justify-center md:justify-start">
           {% if manga.age_rating %}
@@ -169,6 +172,7 @@
             {% endif %}
           {% endwith %}
         </div>
+        {% endcache %}
 
         {# ---------- ACTION BUTTONS SECTION ---------- #}
         {% if first_chapter %}
@@ -225,13 +229,26 @@
               </a>
             </div>
 
+            {% if translator_profile and translator_profile.is_translator %}
+              <div class="w-[200px]">
+                <a href="{% url 'accounts:translator_profile' translator_profile.user.username %}"
+                  class="w-full h-14 flex items-center justify-center gap-2 
+                          bg-gray-800 text-purple-300 border border-gray-700 rounded-2xl
+                          hover:bg-gray-700 hover:text-purple-200 transition-colors duration-200 shadow-sm hover:shadow-md">
+                  <i class="fas fa-crown text-yellow-400 text-lg"></i>
+                  <span class="font-medium">{{ translator_profile.user.username }}</span>
+                </a>
+              </div>
+            {% endif %}
+
             {# === Telegram Link Trigger === #}
+            {% cache 86400 telegram_links manga.slug %}
             {% if telegram_links %}
               <div class="w-[200px]">
                 {% if telegram_links|length == 1 %}
                   {# Single link - direct navigation #}
                   <a href="{{ telegram_links.0.link }}" target="_blank"
-                     class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl
+                    class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl
                             hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
                     <i class="fab fa-telegram-plane text-xl"></i>
                     <span class="font-medium">Telegram kanal</span>
@@ -241,14 +258,15 @@
                   <button 
                     onclick="document.getElementById('telegramModal').classList.remove('hidden')" 
                     class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl
-                           hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
+                          hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
                     <i class="fab fa-telegram-plane text-xl"></i>
                     <span class="font-medium">Telegram kanallar</span>
                   </button>
                 {% endif %}
               </div>
             {% endif %}
-            
+            {% endcache %}
+
             {# === Modal (only needed if multiple links exist) === #}
             {% if telegram_links|length > 1 %}
             <div id="telegramModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 backdrop-blur-sm">
@@ -261,7 +279,7 @@
                           d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
-            
+
                 <div class="flex items-center gap-3 mb-6">
                   <h2 class="text-xl font-bold text-white">Telegram kanallar</h2>
                 </div>
@@ -269,7 +287,7 @@
                 <div class="space-y-3">
                   {% for link in telegram_links %}
                     <a href="{{ link.link }}" target="_blank" 
-                       class="group block px-4 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white transition-all 
+                      class="group block px-4 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white transition-all 
                               duration-300 flex items-center gap-3 border border-gray-600 hover:border-blue-400">
                       <div class="">
                         <i class="fab fa-telegram text-blue-400"></i>
@@ -283,6 +301,7 @@
             </div>
             {% endif %}
 
+
             {# Если вы собираетесь давать вариант «зарегистрироваться и сразу перейти на главу», тоже не забудьте подкорректировать: #}
             {# <a href="{% url 'accounts:signup' %}?next={% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}" … > #}
 
@@ -292,6 +311,6 @@
             Hozircha hech qanday bob mavjud emas.
           </p>
         {% endif %}
-
       </div>
     </div>
+    {% endcache %}

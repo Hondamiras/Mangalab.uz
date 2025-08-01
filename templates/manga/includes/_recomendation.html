@@ -1,4 +1,6 @@
 <!-- BEGIN: Similar Carousel -->
+{% load cache %}
+{% cache 86400 similar_manga manga.slug %}
 <div class="relative mb-12 mt-12">
   <!-- Заголовок -->
   <div class="flex items-center pb-4 gap-4">
@@ -9,27 +11,20 @@
 
   {% if similar_mangas %}
   <!-- Кнопки навигации -->
-  <!-- Улучшенные кнопки с плавным градиентом, тенью и SVG-стрелками -->
   <button
     id="prevBtn"
     aria-label="Previous"
-    class="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center transition-transform duration-200 hover:scale-105"
+    class="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 w-8 h-8 bg-purple-400 hover:bg-purple-500 transition-colors text-white rounded-full flex items-center justify-center"
   >
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-    </svg>
+    ‹
   </button>
-
   <button
     id="nextBtn"
     aria-label="Next"
-    class="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center transition-transform duration-200 hover:scale-105"
+    class="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 w-8 h-8 bg-purple-400 hover:bg-purple-500 transition-colors text-white rounded-full flex items-center justify-center"
   >
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-    </svg>
+    ›
   </button>
-
   {% endif %}
 
   <!-- Сама «лента» карточек -->
@@ -72,6 +67,7 @@
     {% endfor %}
   </div>
 </div>
+{% endcache %}
 <!-- END: Similar Carousel -->
 
 <style>
@@ -103,13 +99,13 @@
     const nextBtn = document.getElementById('nextBtn');
     const cards = slider.querySelectorAll('.card');
 
-    // Вычисляем ширину одной карточки + gap (отступ справа)
+    // Вычисляем ширину одной карточки + gap
     const style = getComputedStyle(cards[0]);
     const gap = parseInt(style.marginRight) || 0;
     const width = cards[0].getBoundingClientRect().width;
     const step = width + gap;
 
-    // Функции для прокрутки
+    // Кнопки прокрутки
     prevBtn.addEventListener('click', () => {
       slider.scrollBy({ left: -step, behavior: 'smooth' });
     });
@@ -117,49 +113,17 @@
       slider.scrollBy({ left: step, behavior: 'smooth' });
     });
 
-    // Функция, которая обновляет видимость кнопок навигации
+    // Показать/скрыть кнопки в зависимости от ширины экрана и числа карточек
     function updateNavButtons() {
       const count = cards.length;
       const w = window.innerWidth;
       const threshold = w < 640 ? 2 : 4;
-      const showByCount = count > threshold;
-
-      // Сначала скрываем/показываем кнопки по количеству карточек и ширине экрана
-      prevBtn.style.display = showByCount ? 'flex' : 'none';
-      nextBtn.style.display = showByCount ? 'flex' : 'none';
-
-      if (!showByCount) {
-        // Если карточек недостаточно для прокрутки — обе кнопки скрыты
-        return;
-      }
-
-      // Проверяем текущую позицию скролла, чтобы прятать неподходящие кнопки
-      const scrollLeft = slider.scrollLeft;
-      const maxScrollLeft = slider.scrollWidth - slider.clientWidth;
-
-      // Если нахожимся в самом начале — скрываем prev
-      if (scrollLeft <= 0) {
-        prevBtn.style.display = 'none';
-      }
-
-      // Если нахожимся в самом конце — скрываем next
-      if (scrollLeft >= maxScrollLeft) {
-        nextBtn.style.display = 'none';
-      }
-
-      // Если посередине (есть и «prev», и «next») — показываем обе
-      if (scrollLeft > 0 && scrollLeft < maxScrollLeft) {
-        prevBtn.style.display = 'flex';
-        nextBtn.style.display = 'flex';
-      }
+      const show = count > threshold;
+      prevBtn.style.display = show ? 'flex' : 'none';
+      nextBtn.style.display = show ? 'flex' : 'none';
     }
 
-    // Обработчик скролла: при любом изменении scrollLeft обновляем кнопки
-    slider.addEventListener('scroll', updateNavButtons);
-    // При ресайзе окна тоже может меняться scrollWidth/clientWidth
-    window.addEventListener('resize', updateNavButtons);
-
-    // Первичная инициализация видимости кнопок
     updateNavButtons();
+    window.addEventListener('resize', updateNavButtons);
   });
 </script>

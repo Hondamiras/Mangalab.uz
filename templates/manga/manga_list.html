@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load cache %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-4 flex flex-col md:flex-row min-h-screen w-full">
@@ -12,6 +13,7 @@
   <!-- Main Content -->
   <main id="mainContent" class="flex flex-col flex-1 transition-all duration-300">
     <!-- Top Bar -->
+
     <div class="sticky top-0 z-10 bg-gray-900/80 backdrop-blur-sm px-4 py-2 flex justify-between items-center rounded-lg border-gray-800">
       <div class="flex items-center space-x-4">
         <button class="toggle-filters flex items-center gap-2 text-purple-400 hover:text-purple-300">
@@ -24,83 +26,314 @@
       <div class="flex items-center space-x-4">
         <form method="get" id="filtersForm" class="flex items-center space-x-2">
           <select name="sort" onchange="this.form.submit()" class="bg-gray-800 text-white text-sm px-2 py-1 rounded">
-            <option value="chapters" {% if sort == 'chapters' %}selected{% endif %}>Boblar soni bo'yicha</option>
-            <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Nomi bo'yicha (A–Z)</option>
-            <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Nomi bo'yicha (Z–A)</option>
+            <option value="chapters" {% if sort == 'chapters' %}selected{% endif %}>Bo'limlar soni</option>
+            <option value="title_asc" {% if sort == 'title_asc' %}selected{% endif %}>Nomi (A–Z)</option>
+            <option value="title_desc" {% if sort == 'title_desc' %}selected{% endif %}>Nomi (Z–A)</option>
           </select>
         </form>
       </div>
     </div>
 
-    <!-- Manga Grid -->
-    <div class="p-2 grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-3">
-      {% for manga in page_obj %}
-      <article class="group relative overflow-hidden rounded-xl bg-gray-900 shadow-md transition-shadow duration-300">
-        <a href="{% url 'manga:manga_details' manga.slug %}" class="block focus:outline-none focus-visible:ring-2 ring-purple-500">
-          <div class="relative aspect-[2/3]">
-            <!-- Image -->
-            <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }} cover" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy">
+    <!-- Trending Manga (Full Width Carousel) -->
+    {% cache 3600 trending_manga_section %}  <!-- 1 soat -->
+    <section class="mt-6">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white">
+          <span class="pb-1 border-b-2 border-purple-500">🔥 Trenddagi Taytlar</span>
+        </h2>
+      </div>
 
-            <!-- Gradient overlay -->
-            <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
-
-            <!-- Status badge -->
-            <div class="absolute top-1.5 left-1.5 flex items-center">
-              <span class="px-2 py-0.5 sm:px-2 sm:py-1 rounded-full text-xs font-medium transition-colors
-                {% if manga.user_status.0.status == 'planned' %}bg-blue-900/80 text-blue-300
-                {% elif manga.user_status.0.status == 'reading' %}bg-purple-900/80 text-purple-300
-                {% elif manga.user_status.0.status == 'completed' %}bg-green-900/80 text-green-300
-                {% elif manga.user_status.0.status == 'dropped' %}bg-red-900/80 text-red-300
-                {% elif manga.user_status.0.status == 'favorite' %}bg-yellow-900/80 text-yellow-300
-                {% elif manga.user_status.0.status == 'ongoing' %}bg-pink-900/80 text-pink-300
-                {% endif %}">
-                {{ manga.user_status.0.get_status_display }}
-              </span>
+      <!-- Horizontal scroll container -->
+      <div id="autoScroll" class="overflow-x-auto scrollbar-hide">
+        <div class="flex gap-4">
+          {% for manga in trending_mangas|slice:":25" %}
+            <div class="w-40 flex-shrink-0">
+              <div class="bg-gray-800 rounded-lg overflow-hidden">
+                <a href="{% url 'manga:manga_details' manga.slug %}" class="block h-full transition-transform transform hover:scale-[1.02]">
+                  <div class="relative aspect-[3/4]">
+                    <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                    <div class="absolute bottom-0 left-0 right-0 p-3">
+                      <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
+                      <div class="flex justify-between items-center mt-1">
+                        <span class="text-xs text-gray-300">{{ manga.type }}</span>
+                        <span class="text-xs bg-purple-600 px-2 py-0.5 rounded-full">{{ manga.chapters.count }} bob</span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              </div>
             </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+    {% endcache %}
 
-            <!-- Type badge -->
-            <div class="absolute top-1.5 right-1.5 flex items-center px-2 py-0.5 sm:px-2 sm:py-1 bg-gray-900/80 backdrop-blur-sm rounded-full text-xs font-medium text-purple-300 transition-all duration-300">
-              {{ manga.type }}
+
+    <!-- Currently Reading (List Style) -->
+    <section class="hidden sm:block mt-8 bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white">
+          <span class="pb-1 border-b-2 border-purple-500">📖 Hozir o'qilayotganlar</span>
+        </h2>
+      </div>
+      
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {% for prog in active_progress %}
+        <div class="bg-gray-800 rounded-lg overflow-hidden hover:bg-gray-700/50 transition-colors">
+          <a href="{% url 'manga:manga_details' prog.manga.slug %}" class="flex items-center p-3">
+            <div class="w-16 h-20 flex-shrink-0 rounded overflow-hidden">
+              <img src="{{ prog.manga.cover_image.url }}" alt="{{ prog.manga.title }}" class="w-full h-full object-cover">
             </div>
+            <div class="ml-3 flex-1 min-w-0">
+              <h3 class="text-white font-medium truncate">{{ prog.manga.title }}</h3>
+              <div class="flex items-center mt-1">
+                <span class="text-xs text-gray-400">{{ prog.manga.type }}</span>
+                <span class="mx-2 text-gray-600">•</span>
+                <span class="text-xs text-gray-400">{{ prog.manga.chapters.count }} Bob</span>
+              </div>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
 
-            <!-- Title -->
-            <div class="absolute bottom-0 left-0 right-0 p-2 sm:p-3 space-y-0.5">
-              <h2 class="text-sm sm:text-base font-semibold text-white line-clamp-2 leading-snug transition-colors duration-300 group-hover:text-purple-400 subpixel-antialiased">
-                {{ manga.title }}
-              </h2>
+
+    <!-- Top Translators -->
+    {% cache 86400 top_translators_section %}  <!-- 24 soat -->
+    <section class="mt-8">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white">
+          <span class="pb-1 border-b-2 border-purple-500">🏆 Top 4 Tarjimon</span>
+        </h2>
+        <a href="{% url 'accounts:top_translators' %}" class="text-purple-400 hover:text-purple-300 text-sm flex items-center transition-colors">
+          Hammasi
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </a>
+      </div>
+      
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {% for t in top_translators|slice:":4" %}
+        <a href="{% url 'accounts:translator_profile' t.user.username %}"
+          class="bg-gray-800 rounded-xl p-4 text-center transform transition-all
+                  hover:scale-[1.02] hover:shadow-lg border border-gray-700">
+
+          <div class="relative mx-auto w-16 h-16 mb-3">
+            {% if t.avatar %}
+              <img src="{{ t.avatar.url }}" alt="{{ t.user.username }}"
+                  class="w-full h-full rounded-full object-cover border-2 border-purple-500">
+            {% else %}
+              <div class="w-full h-full rounded-full bg-purple-900 flex items-center justify-center
+                          border-2 border-purple-500">
+                <span class="text-xl font-bold text-white">
+                  {{ t.user.username|first|upper }}
+                </span>
+              </div>
+            {% endif %}
+
+            {# ▸ MEDAL / CROWN BADGE ◂ #}
+            <div class="
+                absolute -top-2 -right-2
+                {% if forloop.counter == 1 %}
+                    bg-yellow-400 text-yellow-900
+                {% elif forloop.counter == 2 %}
+                    bg-gray-300  text-gray-900
+                {% elif forloop.counter == 3 %}
+                    bg-amber-600 text-white
+                {% elif forloop.counter == 4 %}
+                    bg-purple-500 text-white
+                {% else %}
+                    bg-purple-600 text-white
+                {% endif %}
+                rounded-full w-7 h-7 flex items-center justify-center text-xs font-extrabold
+                ring-2 ring-white/30">
+              {% if forloop.counter == 1 %}
+                👑
+              {% elif forloop.counter == 2 %}
+                🥈
+              {% elif forloop.counter == 3 %}
+                🥉
+              {% elif forloop.counter == 4 %}
+                🏅
+              {% else %}
+                {{ forloop.counter }}
+              {% endif %}
             </div>
           </div>
+
+          <h3 class="font-bold text-white text-sm truncate">{{ t.user.username }}</h3>
         </a>
-      </article>
-      {% empty %}
-      <div class="col-span-full text-center py-10">
-        <p class="text-gray-400 text-sm xs:text-sm mb-2"><i class="fas fa-search-minus text-lg opacity-70"></i></p>
-        <p class="text-gray-400 text-sm xs:text-sm">Hech narsa topilmadi. Filtr sozlamalarini o'zgartirib ko'ring.</p>
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
+    </section>
+    {% endcache %}
+
+    <!-- Latest Manga (Full Width Carousel) -->
+     {% cache 7200 latest_manga_section %}  <!-- 2 soat -->
+    <section class="mt-8">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white">
+          <span class="pb-1 border-b-2 border-purple-500">🆕 Yangi qo'shilganlar</span>
+        </h2>
+      </div>
+
+      <!-- Phone: horizontal scroll | Desktop: grid -->
+      <div class="overflow-x-auto scrollbar-hide">
+        <div class="flex gap-3 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 2xl:grid-cols-8">
+          {% for manga in latest_mangas|slice:":25" %}
+            <div class="group relative shrink-0 w-40 sm:w-auto">
+              <div class="bg-gray-800 rounded-lg overflow-hidden shadow-md transition-all duration-300 group-hover:shadow-lg h-full">
+                <a href="{% url 'manga:manga_details' manga.slug %}" class="block h-full">
+                  <div class="relative aspect-[3/4]">
+                    <!-- Cover Image -->
+                    <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" 
+                        class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+
+                    <!-- New Badge -->
+                    <span class="absolute top-2 right-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full shadow-md">
+                      {{ manga.type }}: {{ manga.chapters.count }}
+                    </span>
+
+                    <!-- Title Overlay -->
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex items-end p-3">
+                      <h3 class="text-white text-sm font-semibold line-clamp-2">{{ manga.title }}</h3>
+                    </div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+    {% endcache %}
+
+    <!-- All Manga Grid -->
+    <section class="mt-8">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold text-white">
+          <span class="pb-1 border-b-2 border-purple-500">📚 Barcha Taytlar</span>
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 gap-3">
+        {% for manga in page_obj %}
+        <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition-transform hover:scale-[1.03]">
+          <a href="{% url 'manga:manga_details' manga.slug %}" class="block">
+            <div class="relative aspect-[3/4]">
+              <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+              
+              <!-- Status Badge -->
+              {% if manga.user_status.0.status %}
+              <div class="absolute top-2 left-2">
+                <span class="px-2 py-1 text-xs font-bold rounded-full 
+                  {% if manga.user_status.0.status == 'planned' %}bg-blue-900 text-blue-300
+                  {% elif manga.user_status.0.status == 'reading' %}bg-purple-900 text-purple-300
+                  {% elif manga.user_status.0.status == 'completed' %}bg-green-900 text-green-300
+                  {% elif manga.user_status.0.status == 'dropped' %}bg-red-900 text-red-300
+                  {% elif manga.user_status.0.status == 'favorite' %}bg-yellow-900 text-yellow-300
+                  {% elif manga.user_status.0.status == 'ongoing' %}bg-pink-900 text-pink-300
+                  {% endif %}">
+                  {{ manga.user_status.0.get_status_display }}
+                </span>
+              </div>
+              {% endif %}
+              
+              <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
+                <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
+                <div class="flex justify-between items-center text-xs mt-1">
+                  <span class="text-gray-300">{{ manga.type }}</span>
+                  <span class="text-purple-300">{{ manga.chapters.count }} Bob</span>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+        {% empty %}
+        <div class="col-span-full text-center py-10">
+          <div class="inline-block p-4 bg-gray-800 rounded-full mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p class="text-gray-400">Hech narsa topilmadi. Filtrlarni o'zgartirib ko'ring.</p>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
 
     <!-- Pagination -->
+    {% cache 3600 pagination page_obj.number request.GET.urlencode %}
     {% if page_obj.has_other_pages %}
-    <div class="py-6 mt-auto">
-      <div class="flex justify-center items-center gap-1.5">
+    <div class="py-6 mt-8">
+      <div class="flex justify-center items-center gap-2">
         {% if page_obj.has_previous %}
-        <a href="?page={{ page_obj.previous_page_number }}" class="px-5 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">←</a>
+        <a href="?page={{ page_obj.previous_page_number }}" class="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-purple-600 transition-colors duration-200 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </a>
         {% endif %}
+        
         {% for num in page_obj.paginator.page_range %}
-        {% if page_obj.number == num %}
-        <span class="px-4 py-2 bg-purple-600 text-white rounded-full shadow-md">{{ num }}</span>
-        {% elif num > page_obj.number|add:-2 and num < page_obj.number|add:2 %}
-        <a href="?page={{ num }}" class="px-4 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">{{ num }}</a>
-        {% endif %}
+          {% if page_obj.number == num %}
+            <span class="px-4 py-2 bg-purple-600 text-white rounded-lg shadow">{{ num }}</span>
+          {% elif num > page_obj.number|add:-3 and num < page_obj.number|add:3 %}
+            <a href="?page={{ num }}" class="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-purple-600 transition-colors duration-200">{{ num }}</a>
+          {% endif %}
         {% endfor %}
+        
         {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}" class="px-5 py-2 bg-gray-800/50 text-gray-300 rounded-full hover:bg-purple-600 transition-colors duration-200">→</a>
+        <a href="?page={{ page_obj.next_page_number }}" class="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg hover:bg-purple-600 transition-colors duration-200 flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </a>
         {% endif %}
       </div>
     </div>
     {% endif %}
+    {% endcache %}
   </main>
 </div>
+
+<!-- Initialize Swiper -->
+<script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
+{% cache 86400 filter_toggle %}
 <script src="{% static 'js/sidebar.js' %}"></script>
+{% endcache %}
+{% cache 86400 swiper_init %}
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const container = document.getElementById("autoScroll");
+    let scrollSpeed = 1; // 1px har frame
+    let direction = 1;   // 1 = o‘ngga, -1 = chapga
+
+    function autoScroll() {
+      container.scrollLeft += scrollSpeed * direction;
+
+      // Agar oxiriga yetgan bo‘lsa, yo‘nalishni o‘zgartiramiz
+      if (container.scrollLeft + container.clientWidth >= container.scrollWidth) {
+        direction = -1; // chapga
+      } else if (container.scrollLeft <= 0) {
+        direction = 1; // o‘ngga
+      }
+
+      requestAnimationFrame(autoScroll);
+    }
+    requestAnimationFrame(autoScroll);
+
+    // Hover bo‘lganda scroll to‘xtashini istasangiz:
+    container.addEventListener('mouseenter', () => scrollSpeed = 0);
+    container.addEventListener('mouseleave', () => scrollSpeed = 1);
+  });
+</script>
+{% endcache %}
 {% endblock %}

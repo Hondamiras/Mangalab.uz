@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Top Tarjimonlar{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-5xl text-gray-200">
+    <h1 class="text-3xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        Tarjimonlar
+    </h1>
+
+    {% if translators %}
+        <div class="space-y-4">
+            {% for tr in translators %}
+            <div class="flex justify-between items-center bg-gray-800/50 p-4 rounded-lg shadow hover:bg-gray-800 transition">
+                <!-- Avatar va ism -->
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 rounded-full overflow-hidden bg-gray-700">
+                        {% if tr.avatar %}
+                            <img src="{{ tr.avatar.url }}" alt="{{ tr.user.username }} avatar"
+                                 class="w-full h-full object-cover">
+                        {% else %}
+                            <span class="w-full h-full flex items-center justify-center text-xl font-bold text-white">
+                                {{ tr.user.username|first|upper }}
+                            </span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <a href="{% url 'accounts:translator_profile' tr.user.username %}"
+                           class="text-xl text-purple-300 hover:underline">
+                            {{ tr.user.username }}
+                        </a>
+                        <p class="text-gray-400 text-sm mt-1">
+                            <span class="mr-4"><i class="fas fa-book"></i> {{ tr.manga_count }} manga</span>
+                            <span class="mr-4"><i class="fas fa-heart"></i> {{ tr.likes_count }} like</span>
+                            <span><i class="fas fa-users"></i> {{ tr.follower_count }} obuna</span>
+                        </p>
+                    </div>
+                </div>
+
+                <a href="{% url 'accounts:translator_profile' tr.user.username %}"
+                   class="px-3 py-1 text-sm rounded-md bg-purple-600 hover:bg-purple-700 text-white transition">
+                   Profil →
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-gray-400">Hozircha tarjimonlar topilmadi.</p>
+    {% endif %}
+</div>
+{% endblock %}

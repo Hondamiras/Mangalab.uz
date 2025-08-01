@@ -5,10 +5,10 @@ from django.contrib.auth import login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 
-from manga.models import ReadingProgress
+from manga.models import Chapter, ChapterPurchase, Manga, ReadingProgress
 
 from .forms import SignupForm
-from .models import PendingSignup, UserProfile, ReadingStatus
+from .models import PendingSignup, TranslatorFollower, UserProfile, ReadingStatus
 
 User = get_user_model()
 
@@ -90,7 +90,7 @@ def verify_code_view(request):
             )
             pending.delete()
             login(request, user)
-            messages.success(request, "Akkountingiz faollashtirildi, tizimga kirdingiz.")
+            messages.success(request, "Hisobingiz faollashtirildi, tizimga kirdingiz.")
             return redirect("manga:manga_list")
 
     return render(request, "accounts/verify_code.html", {
@@ -110,28 +110,81 @@ def login_view(request):
 @login_required
 def logout_view(request):
     logout(request)
-    messages.info(request, "Siz tizimdan chiqdingiz")  # «Вы вышли из системы»
+    messages.info(request, "Siz tizimdan chiqdingiz")
     return redirect("manga:manga_list")
 
 # ------------------------------------------------------------------#
 #                           ПРОФИЛИ                                 #
 # ------------------------------------------------------------------#
 
+from django.db.models import Count, Sum
+
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from django.db.models import Count, Sum
+
+from manga.models import Manga, ChapterPurchase
+
 @login_required
 def profile_view(request):
-    """Показывает профиль текущего пользователя."""
-    # Получаем или создаём профиль
+    """Foydalanuvchi profilini ko‘rsatadi (oddiy yoki tarjimon)."""
     user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    # Список чтения
+    # --- Agar foydalanuvchi tarjimon bo‘lsa ---
+    if user_profile.is_translator:
+        # Tarjimon yaratgan taytllar (boblar soni bilan)
+        mangas = Manga.objects.filter(created_by=request.user).annotate(
+            chapter_count=Count('chapters', distinct=True)
+        )
+
+        # Har bir manga uchun layklar sonini alohida hisoblash
+        likes_per_manga = (
+            Chapter.objects.filter(manga__in=mangas)
+            .values('manga_id')
+            .annotate(total_likes=Count('thanks'))
+        )
+        likes_dict = {x['manga_id']: x['total_likes'] for x in likes_per_manga}
+        for manga in mangas:
+            manga.total_likes = likes_dict.get(manga.id, 0)
+
+        # Followerlar soni
+        follower_count = TranslatorFollower.objects.filter(translator=user_profile).count()
+
+        # Tarjimonning jami daromadi
+        total_income = (
+            ChapterPurchase.objects.filter(chapter__manga__created_by=request.user)
+            .aggregate(total_earned=Sum('chapter__price_tanga'))
+            .get('total_earned') or 0
+        )
+
+        # Boblar bo‘yicha sotib olish statistikasi
+        chapter_earnings = (
+            ChapterPurchase.objects.filter(chapter__manga__created_by=request.user)
+            .values('chapter__manga__title', 'chapter__volume', 'chapter__chapter_number')
+            .annotate(
+                total_earned=Sum('chapter__price_tanga'),
+                buyers=Count('id')
+            )
+            .order_by('chapter__manga__title', 'chapter__volume', 'chapter__chapter_number')
+        )
+
+        return render(request, "accounts/translators/translator_profile_owner.html", {
+            'profile_user': request.user,
+            'user_profile': user_profile,
+            'mangas': mangas,
+            'follower_count': follower_count,
+            'total_income': total_income,
+            'chapter_earnings': chapter_earnings,
+            'is_self': True,
+        })
+
+    # --- Oddiy foydalanuvchi uchun ---
     reading_statuses = (
         ReadingStatus.objects
         .filter(user_profile=user_profile)
         .select_related('manga')
-        .order_by('status')         # <-- сортировка по полю status
+        .order_by('status')
     )
-
-    # Прогресс чтения (последняя глава + страница)
     reading_progress = (
         ReadingProgress.objects
         .filter(user=request.user)
@@ -139,14 +192,129 @@ def profile_view(request):
         .order_by('-updated_at')
     )
 
+    return render(request, "accounts/profile.html", {
+        'profile_user': request.user,
+        'user_profile': user_profile,
+        'reading_statuses': reading_statuses,
+        'reading_progress': reading_progress,
+        'is_self': True,
+    })
+
+
+from django.db.models import Sum, Count, F
+
+@login_required
+def translator_profile_view(request, username):
+    profile_user = get_object_or_404(User, username=username)
+    user_profile = get_object_or_404(UserProfile, user=profile_user, is_translator=True)
+
+    mangas = Manga.objects.filter(created_by=profile_user).annotate(
+        chapter_count=Count('chapters', distinct=True)
+    )
+    likes_per_manga = (
+        Chapter.objects.filter(manga__in=mangas)
+        .values('manga_id')
+        .annotate(total_likes=Count('thanks'))
+    )
+    likes_dict = {x['manga_id']: x['total_likes'] for x in likes_per_manga}
+    for manga in mangas:
+        manga.total_likes = likes_dict.get(manga.id, 0)
+
+    follower_count = TranslatorFollower.objects.filter(translator=user_profile).count()
+    is_following = (
+        request.user.is_authenticated and request.user != profile_user and
+        TranslatorFollower.objects.filter(translator=user_profile, user=request.user.userprofile).exists()
+    )
+
+    return render(request, "accounts/translators/translator_profile_public.html", {
+        "profile_user": profile_user,
+        "user_profile": user_profile,
+        "mangas": mangas,
+        "follower_count": follower_count,
+        "is_following": is_following,
+    })
+
+
+@login_required
+def translator_profile_owner_view(request):
+    profile_user = request.user
+    user_profile = get_object_or_404(UserProfile, user=profile_user, is_translator=True)
+
+    # Mangalar (boblar soni + layklar soni)
+    mangas = (
+        Manga.objects.filter(created_by=profile_user)
+        .annotate(
+            chapter_count=Count('chapters', distinct=True),
+            total_likes=Count('chapters__thanks', distinct=True)  # xuddi publicdagi kabi
+        )
+    )
+
+    # Jami daromad
+    total_income = (
+        ChapterPurchase.objects.filter(chapter__manga__created_by=profile_user)
+        .aggregate(total_earned=Sum('chapter__price_tanga'))
+        .get('total_earned') or 0
+    )
+
+    # Boblar bo‘yicha sotib olish statistikasi
+    chapter_earnings = (
+        ChapterPurchase.objects.filter(chapter__manga__created_by=profile_user)
+        .values('chapter__manga__title', 'chapter__volume', 'chapter__chapter_number')
+        .annotate(
+            total_earned=Sum('chapter__price_tanga'),
+            buyers=Count('id')
+        )
+        .order_by('chapter__manga__title', 'chapter__volume', 'chapter__chapter_number')
+    )
+
+    # Followerlar soni
+    follower_count = TranslatorFollower.objects.filter(translator=user_profile).count()
+
+    return render(request, "accounts/translators/translator_profile_owner.html", {
+        "profile_user": profile_user,
+        "user_profile": user_profile,
+        "mangas": mangas,
+        "follower_count": follower_count,
+        "total_income": total_income,
+        "chapter_earnings": chapter_earnings,
+    })
+
+
+@login_required
+def follow_translator(request, username):
+    translator_profile = get_object_or_404(UserProfile, user__username=username, is_translator=True)
+    user_profile = request.user.userprofile
+
+    # Agar allaqachon obuna bo'lsa → bekor qilish
+    if TranslatorFollower.objects.filter(translator=translator_profile, user=user_profile).exists():
+        TranslatorFollower.objects.filter(translator=translator_profile, user=user_profile).delete()
+        messages.info(request, f"Siz {translator_profile.user.username} tarjimoniga obunani bekor qildingiz.")
+    else:
+        TranslatorFollower.objects.create(translator=translator_profile, user=user_profile)
+        messages.success(request, f"Siz {translator_profile.user.username} tarjimoniga obuna bo‘ldingiz.")
+
+    return redirect("accounts:translator_profile", username=username)
+
+
+@login_required
+def top_translators(request):
+    translators = (
+        UserProfile.objects.filter(is_translator=True)
+        .annotate(
+            manga_count=Count("user__mangas_created", distinct=True),
+            follower_count=Count("followers", distinct=True),
+            likes_count=Count("user__mangas_created__chapters__thanks"),
+        )
+        .order_by("-likes_count", "-follower_count")
+    )
+
+    # likes_count ni 2 ga bo'lib chiqarish
+    for t in translators:
+        t.likes_count = t.likes_count // 2
+
     return render(
         request,
-        "accounts/profile.html",
-        {
-            'profile_user': request.user,
-            'user_profile': user_profile,
-            'reading_statuses': reading_statuses,
-            'reading_progress': reading_progress,
-            'is_self': True,
-        },
+        "accounts/translators/top_translators.html",
+        {"translators": translators},
     )
+

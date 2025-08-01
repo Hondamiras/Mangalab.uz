@@ -1,0 +1,282 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>{{ manga.title }} — Vol {{ chapter.volume }} • Chap {{ chapter.chapter_number }}</title>
+
+  <!-- FontAwesome & Alpine -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+  />
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <style>
+    :root {
+      --bg-nav: #1A1A2E;
+      --bg-dark: #0F0F1E;
+      --purple: #8B5CF6;
+      --text: #F3F4F6;
+      --muted: #9CA3AF;
+      --border: #2D3748;
+    }
+    * { box-sizing: border-box; margin:0; padding:0; font-family:sans-serif; }
+    body { background:var(--bg-dark); color:var(--text); padding-top:70px; }
+
+    /* ─── NAVBAR & DROPDOWN ─────────────────────────────────────────── */
+    nav {
+      position:fixed; top:0; left:0; right:0; z-index:100;
+      background:var(--bg-nav); backdrop-filter:blur(8px);
+      box-shadow:0 4px 20px rgba(0,0,0,.3);
+    }
+    .nav-inner {
+      max-width:1000px; margin:auto; padding:0.75rem 1rem;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .nav-btn {
+      width:36px; height:36px; display:flex;
+      align-items:center; justify-content:center;
+      background:rgba(139,92,246,.15); color:var(--purple);
+      border-radius:8px; cursor:pointer; transition:all .2s;
+    }
+    .nav-btn:hover { background:rgba(139,92,246,.25); transform:translateY(-2px); }
+
+    .chapter-selector { position:relative; }
+    .selector-btn {
+      display:flex; align-items:center; gap:.5rem;
+      padding:.5rem 1rem; background:var(--purple);
+      border-radius:8px; cursor:pointer; user-select:none;
+      transition:background .2s;
+    }
+    .selector-btn:hover { background:#a278f8; }
+    .selector-btn i { transition:transform .3s; }
+    .selector-btn i.rotate { transform:rotate(180deg); }
+
+    .dropdown {
+      position:absolute; right:0; top:calc(100% + .5rem);
+      width:320px; max-height:60vh; overflow-y:auto;
+      background:var(--bg-nav); border-radius:8px;
+      box-shadow:0 8px 24px rgba(0,0,0,.4);
+      opacity:0; transform:scale(.95); transform-origin:top right;
+      transition:opacity .2s, transform .2s; pointer-events:none;
+      z-index:200;
+    }
+    .dropdown.show {
+      opacity:1; transform:scale(1); pointer-events:auto;
+    }
+    .dropdown-header {
+      position:sticky; top:0; background:var(--bg-nav);
+      padding:0.75rem 1rem; border-bottom:1px solid var(--border);
+      display:flex; flex-direction:column; gap:.5rem;
+    }
+    .search-box { position:relative; }
+    .search-box input {
+      width:100%; padding:.5rem 1rem .5rem 2rem;
+      background:rgba(255,255,255,.08); border:1px solid var(--border);
+      border-radius:6px; color:var(--text); outline:none;
+    }
+    .search-box i {
+      position:absolute; left:.75rem; top:50%;
+      transform:translateY(-50%); color:var(--muted);
+    }
+    .controls {
+      display:flex; gap:.5rem; flex-wrap:wrap;
+    }
+    .controls .sort-btn {
+      padding:.4rem .8rem; background:rgba(255,255,255,.08);
+      border-radius:4px; font-size:.85rem; cursor:pointer;
+      display:flex; align-items:center; gap:.25rem;
+      transition:background .2s;
+    }
+    .controls .sort-btn.active,
+    .controls .sort-btn:hover {
+      background:rgba(139,92,246,.2);
+    }
+
+    .volume-group + .volume-group { border-top:1px solid var(--border); }
+    .volume-header {
+      padding:.75rem 1rem; display:flex; align-items:center; gap:.5rem;
+      cursor:pointer; background:rgba(255,255,255,.03);
+    }
+    .volume-header i { transition:transform .3s; }
+    .volume-header i.rotated { transform:rotate(180deg); }
+
+    .volume-chapters { display:none; }
+    .volume-chapters.expanded { display:block; }
+
+    .chapter-item {
+      display:flex; align-items:center; padding:.75rem 1rem;
+      border-bottom:1px solid var(--border); cursor:pointer;
+      transition:background .2s;
+    }
+    .chapter-item:hover { background:rgba(139,92,246,.1); }
+    .chapter-item.active {
+      background:rgba(139,92,246,.2); border-left:4px solid var(--purple);
+    }
+    .chapter-status {
+      width:20px; text-align:center; margin-right:.75rem;
+    }
+    .chapter-info {
+      flex:1; display:flex; justify-content:space-between;
+      font-size:.9rem; color:var(--muted);
+    }
+
+    /* ─── READER PAGES ─────────────────────────────────────────────── */
+    .reader-container {
+      max-width:900px; margin:2rem auto; padding:0 1rem;
+    }
+    .manga-page {
+      background:var(--bg-dark); border:1px solid var(--border);
+      border-radius:6px; overflow:hidden; margin-bottom:1.5rem;
+      display:flex; justify-content:center; align-items:center;
+    }
+    .manga-page img {
+      width:100%; height:auto; object-fit:contain;
+    }
+  </style>
+</head>
+
+<body>
+
+  <nav x-data>
+    <div class="nav-inner">
+      <div class="nav-btn" onclick="history.back()">
+        <i class="fas fa-arrow-left"></i>
+      </div>
+
+      <div
+        class="chapter-selector"
+        x-data="{ open:false }"
+        @click.outside="open = false"
+      >
+        <div class="selector-btn" @click="open = !open">
+          Vol {{ chapter.volume }} • Chap {{ chapter.chapter_number }}
+          <i class="fas fa-chevron-down" :class="{rotate: open}"></i>
+        </div>
+
+        <div class="dropdown" :class="{ show: open }">
+          <div class="dropdown-header">
+            <div class="search-box">
+              <i class="fas fa-search"></i>
+              <input id="chapterSearch" type="text" placeholder="Search chapters…">
+            </div>
+            <div class="controls">
+              <div class="sort-btn active" id="sortDesc">
+                <i class="fas fa-arrow-down-wide-short"></i> Newest
+              </div>
+              <div class="sort-btn" id="sortAsc">
+                <i class="fas fa-arrow-up-wide-short"></i> Oldest
+              </div>
+              <div class="sort-btn" id="sortVolume">
+                <i class="fas fa-book"></i> By Volume
+              </div>
+            </div>
+          </div>
+
+          <div class="chapters-list">
+            {# group chapters by volume #}
+            {% regroup all_chapters by volume as volume_list %}
+            {% for group in volume_list %}
+              <div class="volume-group">
+                <div
+                  class="volume-header"
+                  data-vol="{{ group.grouper }}"
+                >
+                  <i class="fas fa-chevron-down"></i>
+                  Volume {{ group.grouper }}
+                </div>
+                <div
+                  class="volume-chapters"
+                  data-vol="{{ group.grouper }}"
+                >
+                  {% for ch in group.list %}
+                    <div
+                      class="chapter-item {% if ch.id == chapter.id %}active{% endif %}"
+                      data-chap-id="{{ ch.id }}"
+                    >
+                      <div class="chapter-status">
+                        {% if reading_progress.last_read_chapter and ch.chapter_number < reading_progress.last_read_chapter.chapter_number %}
+                          <i class="fas fa-check-circle" style="color:#10B981"></i>
+                        {% elif reading_progress.last_read_chapter and ch.chapter_number == reading_progress.last_read_chapter.chapter_number %}
+                          <i class="fas fa-bookmark" style="color:#FBBF24"></i>
+                        {% endif %}
+                      </div>
+                      <div class="chapter-info">
+                        <span>Vol {{ ch.volume }} • Chap {{ ch.chapter_number }}</span>
+                        <span>{{ ch.release_date|date:"M d, Y" }}</span>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-btn" onclick="document.documentElement.requestFullscreen()">
+        <i class="fas fa-expand"></i>
+      </div>
+    </div>
+  </nav>
+
+  {% comment %} <div class="reader-container">
+    {% for page in pages %}
+      <div class="manga-page">
+        <img src="{{ page.image.url }}" alt="Page {{ forloop.counter }}">
+      </div>
+    {% endfor %}
+  </div> {% endcomment %}
+
+  <script>
+    // Toggle each volume open/closed
+    document.querySelectorAll('.volume-header').forEach(h => {
+      h.addEventListener('click', () => {
+        const vol = h.dataset.vol;
+        h.querySelector('i').classList.toggle('rotated');
+        document.querySelector(`.volume-chapters[data-vol="${vol}"]`)
+                .classList.toggle('expanded');
+      });
+    });
+
+    // Sort handlers
+    function sortChapters(mode) {
+      const all = [];
+      document.querySelectorAll('.chapter-item').forEach(el => all.push(el));
+      // detach
+      document.querySelector('.chapters-list').innerHTML = '';
+      if (mode === 'asc') {
+        all.sort((a,b) => a.dataset.chapId - b.dataset.chapId);
+      } else if (mode === 'volume') {
+        all.sort((a,b) => {
+          const [av,ac] = a.dataset.chapId.split('-').map(Number);
+          const [bv,bc] = b.dataset.chapId.split('-').map(Number);
+          return bv!==av ? bv-av : bc-ac;
+        });
+      } // default is newest first (desc)
+      all.forEach(el => {
+        const parent = el.closest('.volume-chapters');
+        parent.appendChild(el);
+      });
+    }
+    document.getElementById('sortAsc').onclick    = () => { toggleActive('sortAsc'); sortChapters('asc'); };
+    document.getElementById('sortDesc').onclick   = () => { toggleActive('sortDesc'); sortChapters('desc'); };
+    document.getElementById('sortVolume').onclick = () => { toggleActive('sortVolume'); sortChapters('volume'); };
+    function toggleActive(id) {
+      document.querySelectorAll('.controls .sort-btn').forEach(b=>b.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    // Simple search filter
+    document.getElementById('chapterSearch').addEventListener('input', e => {
+      const term = e.target.value.toLowerCase();
+      document.querySelectorAll('.chapter-item').forEach(item => {
+        item.style.display = item.textContent.toLowerCase().includes(term)
+                             ? 'flex' : 'none';
+      });
+    });
+  </script>
+</body>
+</html>
