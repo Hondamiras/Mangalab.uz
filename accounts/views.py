@@ -308,9 +308,8 @@ def top_translators(request):
         .order_by("-likes_count", "-follower_count")
     )
 
-    # likes_count ni 2 ga bo'lib chiqarish
     for t in translators:
-        t.likes_count = t.likes_count // 2
+        t.likes_count = t.likes_count
 
     return render(
         request,

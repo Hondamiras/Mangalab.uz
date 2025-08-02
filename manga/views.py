@@ -177,12 +177,13 @@ def manga_list(request):
 
     # Cache top translators
     def get_top_translators():
-        return list(
-            UserProfile.objects.filter(is_translator=True)
+        return (
+            UserProfile.objects
+            .filter(is_translator=True)
             .annotate(
-                manga_count=Count("user__mangas_created", distinct=True),
-                follower_count=Count("followers", distinct=True),
-                likes_count=Sum("user__mangas_created__chapters__thanks", distinct=True)
+                manga_count   = Count("user__mangas_created", distinct=True),
+                follower_count= Count("followers",         distinct=True),
+                likes_count   = Count("user__mangas_created__chapters__thanks", distinct=True),
             )
             .order_by("-likes_count", "-follower_count")[:4]
         )
