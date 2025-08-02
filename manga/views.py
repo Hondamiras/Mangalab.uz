@@ -346,7 +346,7 @@ def manga_details(request, manga_slug):
 
     # Add access flags to chapters
     for ch in chapters:
-        if request.user.is_authenticated and ch.created_by == request.user:
+        if request.user.is_authenticated and ch.manga.created_by == request.user:
             ch.can_read = True
         else:
             ch.can_read = (ch.price_tanga == 0 or ch.id in purchased_chapter_ids)
@@ -440,83 +440,6 @@ def add_to_reading_list(request, manga_slug):
 
 # ====== чтение главы ========================================================
 from django.contrib import messages
-
-# def chapter_read(request, manga_slug, volume, chapter_number):
-#     manga = get_object_or_404(Manga, slug=manga_slug)
-#     chapter = get_object_or_404(
-#         Chapter,
-#         manga=manga,
-#         volume=volume,
-#         chapter_number=chapter_number
-#     )
-
-#     # ======== Pullik boblar uchun tekshiruv =========
-#     if chapter.price_tanga > 0:  # bob pullik bo'lsa
-#         if not request.user.is_authenticated:
-#             messages.warning(request, "Bobni o‘qish uchun tizimga kiring!")
-#             return redirect("login")
-#         # Sotib olinganmi?
-#         is_purchased = ChapterPurchase.objects.filter(user=request.user, chapter=chapter).exists()
-#         if not is_purchased:
-#             messages.warning(request, f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling.")
-#             return redirect("manga:purchase_chapter",
-#                             manga_slug=manga.slug,
-#                             volume=chapter.volume,
-#                             chapter_number=chapter.chapter_number)
-#     # ================================================
-
-#     all_chapters = Chapter.objects.filter(manga=manga).order_by('-volume', '-chapter_number')
-
-#     previous_chapter = all_chapters.filter(
-#         Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
-#         Q(volume__lt=chapter.volume)
-#     ).order_by('-volume', '-chapter_number').first()
-
-#     next_chapter = all_chapters.filter(
-#         Q(volume=chapter.volume, chapter_number__gt=chapter.chapter_number) |
-#         Q(volume__gt=chapter.volume)
-#     ).order_by('volume', 'chapter_number').first()
-
-#     progress = None
-#     user_read_chapters = []
-#     if request.user.is_authenticated:
-#         progress, created = ReadingProgress.objects.get_or_create(
-#             user=request.user,
-#             manga=manga,
-#             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
-#         )
-
-#         # Yangi bob eski bobdan katta bo‘lsa, yangilash
-#         if not created and progress.last_read_chapter:
-#             is_newer = (
-#                 chapter.volume > progress.last_read_chapter.volume or
-#                 (chapter.volume == progress.last_read_chapter.volume and
-#                  chapter.chapter_number > progress.last_read_chapter.chapter_number)
-#             )
-#             if is_newer:
-#                 progress.last_read_chapter = chapter
-#                 progress.last_read_page = 1
-#                 progress.save()
-
-#         # O‘qilgan boblar ro‘yxati
-#         user_read_chapters = list(
-#             ReadingProgress.objects.filter(user=request.user, manga=manga)
-#             .exclude(last_read_chapter=None)
-#             .values_list('last_read_chapter__pk', flat=True)
-#         )
-
-#     pages = chapter.pages.all().order_by('page_number')
-
-#     return render(request, 'manga/chapter_read.html', {
-#         'manga': manga,
-#         'chapter': chapter,
-#         'all_chapters': all_chapters,
-#         'previous_chapter': previous_chapter,
-#         'next_chapter': next_chapter,
-#         'reading_progress': progress,
-#         'user_read_chapters': user_read_chapters,
-#         'pages': pages,
-#     })
 
 # ====== спасибо главе ========================================================
 @login_required
