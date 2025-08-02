@@ -164,14 +164,14 @@ class Chapter(models.Model):
         related_name="thanked_chapters",
         blank=True,
     )
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        # editable=False,
-        related_name="chapters_created",
-        null=True,
-        blank=True,
-    )
+    # created_by = models.ForeignKey(
+    #     settings.AUTH_USER_MODEL,
+    #     on_delete=models.CASCADE,
+    #     # editable=False,
+    #     related_name="chapters_created",
+    #     null=True,
+    #     blank=True,
+    # )
 
     class Meta:
         unique_together = ("manga", "chapter_number", "volume")
