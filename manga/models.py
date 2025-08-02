@@ -219,14 +219,14 @@ class Page(models.Model):
         help_text="Rasmni JPEG/PNG/WebP formatida yuklang.",
         verbose_name="Rasm (JPEG/PNG/WEBP formatida yuklang)"
     )
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        editable=False,
-        related_name="pages_created",
-        null=True,
-        blank=True,
-    )
+    # created_by = models.ForeignKey(
+    #     settings.AUTH_USER_MODEL,
+    #     on_delete=models.CASCADE,
+    #     editable=False,
+    #     related_name="pages_created",
+    #     null=True,
+    #     blank=True,
+    # )
 
     class Meta:
         unique_together = ('chapter', 'page_number')

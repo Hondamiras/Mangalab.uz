@@ -210,6 +210,13 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     list_per_page = 40
     list_editable = ('volume', 'price_tanga')
 
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        # Faqat o‘z manga muallifligi bo‘yicha boblar:
+        return qs.filter(manga__created_by=request.user)
+
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
         # Agar superuser bo‘lmasa thanks maydonini olib tashlaymiz
@@ -235,7 +242,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         return obj.pages.count()
     page_count.short_description = "Sahifalar soni"
 
-    
     def get_list_display(self, request):
         """
         Agar superuser bo'lsa, created_by va release_date ustunlarini
@@ -247,7 +253,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         ]
         if request.user.is_superuser:
             # 'published_date' — modelingizdagi chiqqan sana maydoni
-            return base + ["created_by", "release_date"]
+            return base + ["release_date"]
         return base
 
     def get_exclude(self, request, obj=None):
@@ -256,9 +262,20 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         maydonlarini yashiramiz.
         """
         if not request.user.is_superuser:
-            return ["created_by", "release_date"]
+            return ["release_date"]
         return []
 
+    def has_change_permission(self, request, obj=None):
+        # superuser hamma narsaga ruxsat, boshqalar faqat o‘z boblariga
+        if obj and not request.user.is_superuser and obj.manga.created_by != request.user:
+            return False
+        return super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and not request.user.is_superuser and obj.manga.created_by != request.user:
+            return False
+        return super().has_delete_permission(request, obj)
+    
     # Tugma ro‘yxatda
     def upload_pages_link(self, obj):
         url = reverse('admin:chapter_upload_pages', args=[obj.pk])
@@ -372,17 +389,11 @@ class PageAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        # Superuser hamma narsani ko‘radi
         if request.user.is_superuser:
             return qs
-        # Faqat foydalanuvchi o‘zi yaratgan chapterlarni ko‘radi
-        return qs.filter(chapter__created_by=request.user)
-
-    def save_model(self, request, obj, form, change):
-        if not change or not obj.pk:
-            if not getattr(obj, 'created_by', None):
-                obj.created_by = request.user
-        super().save_model(request, obj, form, change)
+        # Chapter modelida `created_by` yo‘qligi uchun:
+        # manga.created_by ga qaraymiz
+        return qs.filter(chapter__manga__created_by=request.user)
 
     def image_size_mb(self, obj):
         if obj.image and os.path.isfile(obj.image.path):
