@@ -202,13 +202,13 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
 @admin.register(Chapter)
 class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     list_display = (
-        "manga", "volume", "chapter_number", 'price_tanga', "page_count", 'created_by',   
+        "manga", "volume", "chapter_number", 'price_tanga', "page_count",  
         "upload_pages_link",  # 📤 Tugma bob ro‘yxatida
     )
     search_fields = ("manga__title",)
     search_help_text = "Manga nomi bo‘yicha qidirish"
     list_per_page = 40
-    list_editable = ('volume', 'price_tanga', 'created_by')
+    list_editable = ('volume', 'price_tanga')
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
