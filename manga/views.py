@@ -641,34 +641,201 @@ def thank_chapter(request, chapter_id):
         
 #     return response
 
-def chapter_read(request, manga_slug, volume, chapter_number):
-    # 1) Cache kaliti va anonimizmga qarab oldindan tekshiruv
-    cache_key = f"chapter_read_{manga_slug}_{volume}_{chapter_number}_{request.user.is_authenticated}"
-    if not request.user.is_authenticated:
-        cached = cache.get(cache_key)
-        if cached:
-            return cached
+# def chapter_read(request, manga_slug, volume, chapter_number):
+#     # 1) Cache kaliti va anonimizmga qarab oldindan tekshiruv
+#     cache_key = f"chapter_read_{manga_slug}_{volume}_{chapter_number}_{request.user.is_authenticated}"
+#     if not request.user.is_authenticated:
+#         cached = cache.get(cache_key)
+#         if cached:
+#             return cached
 
-    # 2) Manga va Chapter obyektlarini olish (cache bilan)
+#     # 2) Manga va Chapter obyektlarini olish (cache bilan)
+#     manga = get_object_or_404(Manga, slug=manga_slug)
+#     chapter = get_cached_or_query(
+#         cache_key=f'chapter_{manga_slug}_{volume}_{chapter_number}',
+#         queryset_func=lambda: get_object_or_404(
+#             Chapter,
+#             manga=manga,
+#             volume=volume,
+#             chapter_number=chapter_number
+#         ),
+#         timeout=60*60*24
+#     )
+
+#     # 3) Pullik bobga ruxsat tekshiruvi
+#     if chapter.price_tanga > 0:
+#         if not request.user.is_authenticated:
+#             messages.warning(request, "Bobni o'qish uchun tizimga kiring!")
+#             return redirect("login")
+
+#         # agar siz bob yaratgan emas, balki manga muallifi bo‘lmasangiz — sotib olishga yo‘naltir
+#         if manga.created_by != request.user:
+#             purchased = ChapterPurchase.objects.filter(
+#                 user=request.user,
+#                 chapter=chapter
+#             ).exists()
+#             if not purchased:
+#                 messages.warning(
+#                     request,
+#                     f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling."
+#                 )
+#                 return redirect(
+#                     "manga:purchase_chapter",
+#                     manga_slug=manga.slug,
+#                     volume=chapter.volume,
+#                     chapter_number=chapter.chapter_number
+#                 )
+
+#     # 4) Barchа boblarni ro‘yxat uchun olish (navigatsiya uchun)
+#     all_chapters = get_cached_or_query(
+#         cache_key=f'all_chapters_{manga_slug}',
+#         queryset_func=lambda: list(
+#             Chapter.objects
+#                    .filter(manga=manga)
+#                    .order_by('-volume', '-chapter_number')
+#         ),
+#         timeout=60*60*12
+#     )
+
+#     # 5) Oldingi va keyingi boblarni aniqlash
+#     previous_chapter = get_cached_or_query(
+#         cache_key=f'prev_chapter_{manga_slug}_{volume}_{chapter_number}',
+#         queryset_func=lambda: (
+#             Chapter.objects
+#                    .filter(manga=manga)
+#                    .filter(
+#                        Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
+#                        Q(volume__lt=chapter.volume)
+#                    )
+#                    .order_by('-volume', '-chapter_number')
+#                    .first()
+#         ),
+#         timeout=60*60*24
+#     )
+
+#     next_chapter = get_cached_or_query(
+#         cache_key=f'next_chapter_{manga_slug}_{volume}_{chapter_number}',
+#         queryset_func=lambda: (
+#             Chapter.objects
+#                    .filter(manga=manga,
+#                            volume=chapter.volume,
+#                            chapter_number__gt=chapter.chapter_number)
+#                    .order_by('chapter_number')
+#                    .first()
+#             or
+#             Chapter.objects
+#                    .filter(manga=manga,
+#                            volume__gt=chapter.volume)
+#                    .order_by('volume', 'chapter_number')
+#                    .first()
+#         ),
+#         timeout=60*60*24
+#     )
+
+#     # 6) Keyingi bob uchun narxini qayta tekshirish
+#     next_chapter_price = None
+#     if next_chapter and next_chapter.price_tanga > 0 \
+#        and request.user.is_authenticated \
+#        and manga.created_by != request.user:
+#         bought = ChapterPurchase.objects.filter(
+#             user=request.user,
+#             chapter=next_chapter
+#         ).exists()
+#         if not bought:
+#             next_chapter_price = next_chapter.price_tanga
+
+#     # 7) O‘qish progress’ini saqlash/yangilash
+#     progress, created = ReadingProgress.objects.get_or_create(
+#         user=request.user,
+#         manga=manga,
+#         defaults={'last_read_chapter': chapter, 'last_read_page': 1}
+#     )
+#     if not created:
+#         # agar ilgari hech bob o‘qilmagan bo‘lsa, birinchi marta belgilaymiz
+#         if progress.last_read_chapter is None:
+#             progress.last_read_chapter = chapter
+#             progress.last_read_page = 1
+#         else:
+#             # agar hozirgi bob ilgari o‘qilganidan keyinroq bo‘lsa, yangilaymiz
+#             prev = progress.last_read_chapter
+#             if (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
+#                 progress.last_read_chapter = chapter
+#                 progress.last_read_page = 1
+#         progress.save(update_fields=['last_read_chapter', 'last_read_page'])
+
+#     # 8) Foydalanuvchi ko‘rgan boblar ro‘yxati
+#     user_read_chapters = list(
+#         Chapter.objects
+#                .filter(manga=manga)
+#                .filter(
+#                    Q(volume__lt=progress.last_read_chapter.volume) |
+#                    Q(volume=progress.last_read_chapter.volume,
+#                      chapter_number__lte=progress.last_read_chapter.chapter_number)
+#                )
+#                .values_list('id', flat=True)
+#     )
+
+#     # 9) Bobning sahifalarini olish
+#     pages = get_cached_or_query(
+#         cache_key=f'pages_{manga_slug}_{volume}_{chapter_number}',
+#         queryset_func=lambda: list(
+#             chapter.pages.all().order_by('page_number')
+#         ),
+#         timeout=60*60*24
+#     )
+
+#     # 10) Allangan boblar ro‘yxati (chapters purchased)
+#     purchased_chapters = []
+#     if request.user.is_authenticated:
+#         purchased_chapters = list(
+#             ChapterPurchase.objects
+#                            .filter(user=request.user, chapter__manga=manga)
+#                            .values_list('chapter_id', flat=True)
+#         )
+
+#     # 11) oxirgi bobmi?
+#     is_last_chapter = (next_chapter is None)
+
+#     # 12) Kontekst va render
+#     context = {
+#         'manga': manga,
+#         'chapter': chapter,
+#         'all_chapters': all_chapters,
+#         'previous_chapter': previous_chapter,
+#         'next_chapter': next_chapter,
+#         'next_chapter_price': next_chapter_price,
+#         'reading_progress': progress,
+#         'user_read_chapters': user_read_chapters,
+#         'pages': pages,
+#         'purchased_chapters': purchased_chapters,
+#         'is_last_chapter': is_last_chapter,
+#     }
+#     response = render(request, 'manga/chapter_read.html', context)
+
+#     # 13) anonim foydalanuvchi uchun sahifani cache qilamiz
+#     if not request.user.is_authenticated:
+#         cache.set(cache_key, response, 60*15)
+
+#     return response
+
+
+def chapter_read(request, manga_slug, volume, chapter_number):
+    # 1) Manga va Chapter obyektlarini olish
     manga = get_object_or_404(Manga, slug=manga_slug)
-    chapter = get_cached_or_query(
-        cache_key=f'chapter_{manga_slug}_{volume}_{chapter_number}',
-        queryset_func=lambda: get_object_or_404(
-            Chapter,
-            manga=manga,
-            volume=volume,
-            chapter_number=chapter_number
-        ),
-        timeout=60*60*24
+    chapter = get_object_or_404(
+        Chapter,
+        manga=manga,
+        volume=volume,
+        chapter_number=chapter_number
     )
 
-    # 3) Pullik bobga ruxsat tekshiruvi
+    # 2) Pullik bobga ruxsat tekshiruvi
     if chapter.price_tanga > 0:
         if not request.user.is_authenticated:
             messages.warning(request, "Bobni o'qish uchun tizimga kiring!")
             return redirect("login")
 
-        # agar siz bob yaratgan emas, balki manga muallifi bo‘lmasangiz — sotib olishga yo‘naltir
+        # agar siz bob yaratgan emas, balki manga muallifi bo'lmasangiz — sotib olishga yo'naltir
         if manga.created_by != request.user:
             purchased = ChapterPurchase.objects.filter(
                 user=request.user,
@@ -686,53 +853,41 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                     chapter_number=chapter.chapter_number
                 )
 
-    # 4) Barchа boblarni ro‘yxat uchun olish (navigatsiya uchun)
-    all_chapters = get_cached_or_query(
-        cache_key=f'all_chapters_{manga_slug}',
-        queryset_func=lambda: list(
-            Chapter.objects
-                   .filter(manga=manga)
-                   .order_by('-volume', '-chapter_number')
-        ),
-        timeout=60*60*12
+    # 3) Barchа boblarni ro'yxat uchun olish (navigatsiya uchun)
+    all_chapters = list(
+        Chapter.objects
+               .filter(manga=manga)
+               .order_by('-volume', '-chapter_number')
     )
 
-    # 5) Oldingi va keyingi boblarni aniqlash
-    previous_chapter = get_cached_or_query(
-        cache_key=f'prev_chapter_{manga_slug}_{volume}_{chapter_number}',
-        queryset_func=lambda: (
-            Chapter.objects
-                   .filter(manga=manga)
-                   .filter(
-                       Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
-                       Q(volume__lt=chapter.volume)
-                   )
-                   .order_by('-volume', '-chapter_number')
-                   .first()
-        ),
-        timeout=60*60*24
+    # 4) Oldingi va keyingi boblarni aniqlash
+    previous_chapter = (
+        Chapter.objects
+               .filter(manga=manga)
+               .filter(
+                   Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
+                   Q(volume__lt=chapter.volume)
+               )
+               .order_by('-volume', '-chapter_number')
+               .first()
     )
 
-    next_chapter = get_cached_or_query(
-        cache_key=f'next_chapter_{manga_slug}_{volume}_{chapter_number}',
-        queryset_func=lambda: (
-            Chapter.objects
-                   .filter(manga=manga,
-                           volume=chapter.volume,
-                           chapter_number__gt=chapter.chapter_number)
-                   .order_by('chapter_number')
-                   .first()
-            or
-            Chapter.objects
-                   .filter(manga=manga,
-                           volume__gt=chapter.volume)
-                   .order_by('volume', 'chapter_number')
-                   .first()
-        ),
-        timeout=60*60*24
+    next_chapter = (
+        Chapter.objects
+               .filter(manga=manga,
+                       volume=chapter.volume,
+                       chapter_number__gt=chapter.chapter_number)
+               .order_by('chapter_number')
+               .first()
+        or
+        Chapter.objects
+               .filter(manga=manga,
+                       volume__gt=chapter.volume)
+               .order_by('volume', 'chapter_number')
+               .first()
     )
 
-    # 6) Keyingi bob uchun narxini qayta tekshirish
+    # 5) Keyingi bob uchun narxini qayta tekshirish
     next_chapter_price = None
     if next_chapter and next_chapter.price_tanga > 0 \
        and request.user.is_authenticated \
@@ -744,47 +899,46 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         if not bought:
             next_chapter_price = next_chapter.price_tanga
 
-    # 7) O‘qish progress’ini saqlash/yangilash
-    progress, created = ReadingProgress.objects.get_or_create(
-        user=request.user,
-        manga=manga,
-        defaults={'last_read_chapter': chapter, 'last_read_page': 1}
-    )
-    if not created:
-        # agar ilgari hech bob o‘qilmagan bo‘lsa, birinchi marta belgilaymiz
-        if progress.last_read_chapter is None:
-            progress.last_read_chapter = chapter
-            progress.last_read_page = 1
-        else:
-            # agar hozirgi bob ilgari o‘qilganidan keyinroq bo‘lsa, yangilaymiz
-            prev = progress.last_read_chapter
-            if (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
+    # 6) O'qish progress'ini saqlash/yangilash
+    if request.user.is_authenticated:
+        progress, created = ReadingProgress.objects.get_or_create(
+            user=request.user,
+            manga=manga,
+            defaults={'last_read_chapter': chapter, 'last_read_page': 1}
+        )
+        if not created:
+            # agar ilgari hech bob o'qilmagan bo'lsa, birinchi marta belgilaymiz
+            if progress.last_read_chapter is None:
                 progress.last_read_chapter = chapter
                 progress.last_read_page = 1
-        progress.save(update_fields=['last_read_chapter', 'last_read_page'])
+            else:
+                # agar hozirgi bob ilgari o'qilganidan keyinroq bo'lsa, yangilaymiz
+                prev = progress.last_read_chapter
+                if (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
+                    progress.last_read_chapter = chapter
+                    progress.last_read_page = 1
+            progress.save(update_fields=['last_read_chapter', 'last_read_page'])
+    else:
+        progress = None
 
-    # 8) Foydalanuvchi ko‘rgan boblar ro‘yxati
-    user_read_chapters = list(
-        Chapter.objects
-               .filter(manga=manga)
-               .filter(
-                   Q(volume__lt=progress.last_read_chapter.volume) |
-                   Q(volume=progress.last_read_chapter.volume,
-                     chapter_number__lte=progress.last_read_chapter.chapter_number)
-               )
-               .values_list('id', flat=True)
-    )
+    # 7) Foydalanuvchi ko'rgan boblar ro'yxati
+    user_read_chapters = []
+    if request.user.is_authenticated and progress and progress.last_read_chapter:
+        user_read_chapters = list(
+            Chapter.objects
+                   .filter(manga=manga)
+                   .filter(
+                       Q(volume__lt=progress.last_read_chapter.volume) |
+                       Q(volume=progress.last_read_chapter.volume,
+                         chapter_number__lte=progress.last_read_chapter.chapter_number)
+                   )
+                   .values_list('id', flat=True)
+        )
 
-    # 9) Bobning sahifalarini olish
-    pages = get_cached_or_query(
-        cache_key=f'pages_{manga_slug}_{volume}_{chapter_number}',
-        queryset_func=lambda: list(
-            chapter.pages.all().order_by('page_number')
-        ),
-        timeout=60*60*24
-    )
+    # 8) Bobning sahifalarini olish
+    pages = list(chapter.pages.all().order_by('page_number'))
 
-    # 10) Allangan boblar ro‘yxati (chapters purchased)
+    # 9) Sotib olingan boblar ro'yxati (chapters purchased)
     purchased_chapters = []
     if request.user.is_authenticated:
         purchased_chapters = list(
@@ -793,10 +947,10 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                            .values_list('chapter_id', flat=True)
         )
 
-    # 11) oxirgi bobmi?
+    # 10) oxirgi bobmi?
     is_last_chapter = (next_chapter is None)
 
-    # 12) Kontekst va render
+    # 11) Kontekst va render
     context = {
         'manga': manga,
         'chapter': chapter,
@@ -810,10 +964,5 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'purchased_chapters': purchased_chapters,
         'is_last_chapter': is_last_chapter,
     }
-    response = render(request, 'manga/chapter_read.html', context)
-
-    # 13) anonim foydalanuvchi uchun sahifani cache qilamiz
-    if not request.user.is_authenticated:
-        cache.set(cache_key, response, 60*15)
-
-    return response
+    
+    return render(request, 'manga/chapter_read.html', context)
