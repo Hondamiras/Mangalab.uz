@@ -2,11 +2,6 @@
   <meta property="og:title" content="{{ manga.title }}" />
   <meta property="og:description" content="{{ manga.description|striptags|truncatechars:150 }}" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="{{ request.build_absolute_uri }}" />
-  {% if manga.cover %}
-    <meta property="og:image" content="{{ request.build_absolute_uri(manga.cover.url) }}" />
-  {% else %}
-    <meta property="og:image" content="{{ request.build_absolute_uri }}{% static 'img/default_manga_cover.jpg' %}" />
   {% endif %}
 {% endblock %}
 
