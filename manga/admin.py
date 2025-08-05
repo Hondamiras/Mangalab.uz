@@ -92,6 +92,11 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
             kwargs["queryset"] = db_field.related_model.objects.all()
         return super().formfield_for_manytomany(db_field, request, **kwargs)
 
+    def save_model(self, request, obj, form, change):
+        if not obj.created_by_id:  # Faqat yangi yaratilganda
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
+
 # ===== Chapter =====
 # @admin.register(Chapter)
 # class ChapterAdmin(OwnMixin, admin.ModelAdmin):
