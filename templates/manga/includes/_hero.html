@@ -1,25 +1,15 @@
 {% block head_extra %}
-  <!-- Open Graph Meta Tags -->
   <meta property="og:title" content="{{ manga.title }}" />
   <meta property="og:description" content="{{ manga.description|striptags|truncatechars:150 }}" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="{{ request.build_absolute_uri }}" />
   {% if manga.cover %}
-    <meta property="og:image" content="{{ manga.cover.url }}" />
+    <meta property="og:image" content="{{ request.build_absolute_uri(manga.cover.url) }}" />
   {% else %}
-    <meta property="og:image" content="{% static 'img/default_manga_cover.jpg' %}" />
-  {% endif %}
-
-  <!-- Twitter Card Meta Tags -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="{{ manga.title }}" />
-  <meta name="twitter:description" content="{{ manga.description|striptags|truncatechars:150 }}" />
-  {% if manga.cover %}
-    <meta name="twitter:image" content="{{ manga.cover.url }}" />
-  {% else %}
-    <meta name="twitter:image" content="{% static 'img/default_manga_cover.jpg' %}" />
+    <meta property="og:image" content="{{ request.build_absolute_uri }}{% static 'img/default_manga_cover.jpg' %}" />
   {% endif %}
 {% endblock %}
+
 
 {% load cache %}
     {# ---------- HERO SECTION ---------- #}
