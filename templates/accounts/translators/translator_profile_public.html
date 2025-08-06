@@ -67,9 +67,9 @@
             Tarjima qilingan mangalar
         </h2>
         {% if mangas %}
-        <div class="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-5 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
             {% for manga in mangas %}
-            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg hover:scale-105 transition-transform duration-300">
+            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg">
                 <div class="p-5">
                     <img
                     src="{{ manga.cover_image.url }}"
