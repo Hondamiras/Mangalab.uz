@@ -285,130 +285,81 @@ def manga_list(request):
 
 # ====== детали манги ========================================================
 def manga_details(request, manga_slug):
-    # Generate cache key based on slug, user auth status and order param
-    order = request.GET.get('order', 'desc')
-    cache_key = f"manga_details_{manga_slug}_{order}_{request.user.is_authenticated}"
-    
-    # Try to get cached response for anonymous users
-    if not request.user.is_authenticated:
-        cached_response = cache.get(cache_key)
-        if cached_response:
-            return cached_response
+    """
+    Detail view with *no caching*.
+    Retrieves all data directly from the database each request.
+    """
+    # --- Base objects -------------------------------------------------------
+    order = request.GET.get("order", "desc")
+    manga = get_object_or_404(Manga, slug=manga_slug)
 
-    # Get manga with basic caching
-    manga = get_cached_or_query(
-        f'manga_obj_{manga_slug}',
-        lambda: get_object_or_404(Manga, slug=manga_slug),
-        60 * 60 * 24  # 24 hours
-    )
-
-    # --- User data ---
+    # --- User-specific data --------------------------------------------------
     reading_status = None
     purchased_chapter_ids = []
+
     if request.user.is_authenticated:
-        user_profile = get_cached_or_query(
-            f'user_profile_{request.user.pk}',
-            lambda: UserProfile.objects.get_or_create(user=request.user)[0],
-            60 * 60 * 12  # 12 hours
-        )
-        
-        reading_status = get_cached_or_query(
-            f'reading_status_{user_profile.pk}_{manga.pk}',
-            lambda: ReadingStatus.objects.filter(
-                user_profile=user_profile, 
-                manga=manga
-            ).first(),
-            60 * 60 * 6  # 6 hours
-        )
-        
-        purchased_chapter_ids = get_cached_or_query(
-            f'purchased_chapters_{request.user.pk}_{manga.pk}',
-            lambda: list(
-                ChapterPurchase.objects.filter(
-                    user=request.user, 
-                    chapter__manga=manga
-                ).values_list("chapter_id", flat=True)
-            ),
-            60 * 60 * 3  # 3 hours
+        user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+        reading_status = (
+            ReadingStatus.objects.filter(user_profile=user_profile, manga=manga)
+            .select_related("user_profile", "manga")
+            .first()
         )
 
-    # --- Chapters ---
-    def get_chapters():
-        if order == 'asc':
-            return manga.chapters.order_by('volume', 'chapter_number')
-        return manga.chapters.order_by('-volume', '-chapter_number')
-    
-    chapters = get_cached_or_query(
-        f'chapters_{manga.pk}_{order}',
-        get_chapters,
-        60 * 60 * 12  # 12 hours
-    )
+        purchased_chapter_ids = list(
+            ChapterPurchase.objects.filter(
+                user=request.user, chapter__manga=manga
+            ).values_list("chapter_id", flat=True)
+        )
 
-    # Add access flags to chapters
-    for ch in chapters:
+    # --- Chapters -----------------------------------------------------------
+    chapters_qs = manga.chapters.order_by(
+        "volume", "chapter_number"
+    ) if order == "asc" else manga.chapters.order_by("-volume", "-chapter_number")
+
+    # Add simple access flags
+    chapters = []
+    for ch in chapters_qs:
         if request.user.is_authenticated and ch.manga.created_by == request.user:
             ch.can_read = True
         else:
-            ch.can_read = (ch.price_tanga == 0 or ch.id in purchased_chapter_ids)
+            ch.can_read = ch.price_tanga == 0 or ch.id in purchased_chapter_ids
+        chapters.append(ch)
 
-    # --- First chapter ---
-    first_chapter = get_cached_or_query(
-        f'first_chapter_{manga.pk}',
-        lambda: manga.chapters.order_by('volume', 'chapter_number').first(),
-        60 * 60 * 24  # 24 hours
-    )
+    first_chapter = manga.chapters.order_by("volume", "chapter_number").first()
 
-    # --- Similar mangas ---
-    def get_similar_mangas():
-        user_genres = manga.genres.all()
-        return (
-            Manga.objects.exclude(pk=manga.pk)
-            .annotate(shared_genres=Count('genres', filter=Q(genres__in=user_genres), distinct=True))
-            .filter(shared_genres__gt=0)
-            .order_by('-shared_genres', 'title')[:10]
+    # --- Similar mangas -----------------------------------------------------
+    user_genres = manga.genres.all()
+    similar_mangas = (
+        Manga.objects.exclude(pk=manga.pk)
+        .annotate(
+            shared_genres=Count(
+                "genres", filter=Q(genres__in=user_genres), distinct=True
+            )
         )
-    
-    similar_mangas = get_cached_or_query(
-        f'similar_mangas_{manga.pk}',
-        get_similar_mangas,
-        60 * 60 * 24  # 24 hours
+        .filter(shared_genres__gt=0)
+        .order_by("-shared_genres", "title")[:10]
     )
 
-    # --- Telegram links ---
-    telegram_links = get_cached_or_query(
-        f'telegram_links_{manga.pk}',
-        lambda: list(manga.telegram_links.all()),
-        60 * 60 * 24  # 24 hours
+    # --- Telegram links & translator profile --------------------------------
+    telegram_links = list(manga.telegram_links.all())
+    translator_profile = (
+        getattr(manga.created_by, "userprofile", None) if manga.created_by else None
     )
 
-    # --- Translator profile ---
-    translator_profile = None
-    if manga.created_by:
-        translator_profile = get_cached_or_query(
-            f'translator_profile_{manga.created_by.pk}',
-            lambda: getattr(manga.created_by, "userprofile", None),
-            60 * 60 * 24  # 24 hours
-        )
-
+    # --- Render -------------------------------------------------------------
     context = {
-        'manga': manga,
-        'reading_status': reading_status,
-        'first_chapter': first_chapter,
-        'chapters': chapters,
-        'current_order': order,
-        'similar_mangas': similar_mangas,
-        'READING_STATUSES': READING_STATUSES,
-        'telegram_links': telegram_links,
-        'translator_profile': translator_profile,
+        "manga": manga,
+        "reading_status": reading_status,
+        "first_chapter": first_chapter,
+        "chapters": chapters,
+        "current_order": order,
+        "similar_mangas": similar_mangas,
+        "READING_STATUSES": READING_STATUSES,
+        "telegram_links": telegram_links,
+        "translator_profile": translator_profile,
     }
-
-    response = render(request, 'manga/manga_details.html', context)
-    
-    # Cache full response only for anonymous users
-    if not request.user.is_authenticated:
-        cache.set(cache_key, response, 60 * 15)  # 15 minutes
-        
-    return response
+    return render(request, "manga/manga_details.html", context)
 
 # ====== добавление в список чтения ==========================================
 @login_required
