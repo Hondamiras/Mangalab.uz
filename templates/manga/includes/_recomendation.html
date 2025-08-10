@@ -97,15 +97,22 @@
     const slider = document.getElementById('slider');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
-    const cards = slider.querySelectorAll('.card');
 
-    // Вычисляем ширину одной карточки + gap
+    if (!slider || !prevBtn || !nextBtn) return; // tugmalar yo‘q bo‘lsa chiqib ketamiz
+    const cards = slider.querySelectorAll('.card');
+    if (!cards.length) {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+      return;
+    }
+
+    // Bir qadam kengligi (karta + gap)
     const style = getComputedStyle(cards[0]);
     const gap = parseInt(style.marginRight) || 0;
     const width = cards[0].getBoundingClientRect().width;
     const step = width + gap;
 
-    // Кнопки прокрутки
+    // Navigatsiya tugmalari
     prevBtn.addEventListener('click', () => {
       slider.scrollBy({ left: -step, behavior: 'smooth' });
     });
@@ -113,8 +120,8 @@
       slider.scrollBy({ left: step, behavior: 'smooth' });
     });
 
-    // Показать/скрыть кнопки в зависимости от ширины экрана и числа карточек
-    function updateNavButtons() {
+    // Ekran o‘lchami va kartalar soniga qarab tugmalarni ko‘rsatish/yashirish
+    function updateNavButtonsByCount() {
       const count = cards.length;
       const w = window.innerWidth;
       const threshold = w < 640 ? 2 : 4;
@@ -123,7 +130,28 @@
       nextBtn.style.display = show ? 'flex' : 'none';
     }
 
-    updateNavButtons();
-    window.addEventListener('resize', updateNavButtons);
+    // Scroll chekkalariga yetganda tugmalarni yashirish
+    function updateEdgeButtons() {
+      const max = slider.scrollWidth - slider.clientWidth;
+      const atStart = slider.scrollLeft <= 0;
+      const atEnd = slider.scrollLeft >= max - 1; // -1: float xatolariga bufer
+
+      // Faqat chekkalarda yashiramiz (agar umumiy ko‘rsatish ruxsat bo‘lsa)
+      if (prevBtn.style.display !== 'none' || nextBtn.style.display !== 'none') {
+        prevBtn.style.visibility = atStart ? 'hidden' : 'visible';
+        nextBtn.style.visibility = atEnd ? 'hidden' : 'visible';
+      }
+    }
+
+    function updateAll() {
+      updateNavButtonsByCount();
+      // Agar butunlay yashirilmagan bo‘lsa, chekka holatini ham tekshiramiz
+      updateEdgeButtons();
+    }
+
+    // Dastlab va harakat paytida yangilaymiz
+    updateAll();
+    slider.addEventListener('scroll', updateEdgeButtons);
+    window.addEventListener('resize', updateAll);
   });
 </script>
