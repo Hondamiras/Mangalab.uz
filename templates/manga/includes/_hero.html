@@ -179,7 +179,7 @@
           <div class="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row sm:items-center sm:justify-start">
 
             {# Reading Status Selector #}
-            {% if user.is_authenticated %}
+            {% if request.user.is_authenticated %}
               <div class="items-center w-[200px]">
                 <form method="post" action="{% url 'manga:add_to_reading_list' manga.slug %}">
                   {% csrf_token %}
