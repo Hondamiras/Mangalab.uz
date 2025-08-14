@@ -15,7 +15,7 @@ SECRET_KEY = config("SECRET_KEY")
 DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = [
-    '*',
+    # '*',
     
     '164.92.253.187',    
     'localhost',
@@ -144,12 +144,37 @@ USE_TZ = True
 
 import os
 
-MEDIA_URL = 'https://media.mangalab.uz/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+AWS_S3_OBJECT_PARAMETERS = {
+    "CacheControl": "public, max-age=31536000, immutable"
+}
+
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME")
+AWS_S3_ENDPOINT_URL = "https://fra1.digitaloceanspaces.com"
+AWS_S3_CUSTOM_DOMAIN = "media.mangalab.uz"
+
+MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+
+# Foydali flaglar
+AWS_DEFAULT_ACL = "public-read"
+AWS_S3_FILE_OVERWRITE = False
+AWS_QUERYSTRING_AUTH = False
+
+
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
