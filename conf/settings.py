@@ -22,8 +22,15 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     "mangalab.uz",
     "www.mangalab.uz",
+    "media.mangalab.uz",
 ]
 
+# conf/settings.py
+CSRF_TRUSTED_ORIGINS = [
+    "https://mangalab.uz",
+    "https://www.mangalab.uz",
+    "https://media.mangalab.uz",
+]
 
 # Application definition
 
