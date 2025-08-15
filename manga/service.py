@@ -6,6 +6,14 @@ from django.contrib.auth.decorators import login_required
 from accounts.models import UserProfile
 from manga.models import Manga, Chapter, ChapterPurchase
 
+
+def _is_translator(user) -> bool:
+    try:
+        return getattr(user.userprofile, "is_translator", False)
+    except UserProfile.DoesNotExist:
+        return False
+
+
 @login_required
 def purchase_chapter(request, manga_slug, volume, chapter_number):
     manga = get_object_or_404(Manga, slug=manga_slug)
@@ -19,12 +27,23 @@ def purchase_chapter(request, manga_slug, volume, chapter_number):
             "message": "Siz bu bobni allaqachon sotib olgansiz."
         })
 
-    # — agar foydalanuvchi manga egasi bo'lsa → bepul ochilsin
-    if manga.created_by == request.user:
+    # --- Tarjimonlar o'zaro bepul (owner ham tarjimon bo'lsa),
+    # --- superuser esa har doim bepul,
+    # --- va o'z boblari har doim bepul.
+    owner_user = manga.created_by
+    owner_is_translator = _is_translator(owner_user) if owner_user else False
+    user_is_translator = _is_translator(request.user)
+
+    if (
+        request.user.is_superuser
+        or (owner_user and owner_user == request.user)
+        or (user_is_translator and owner_is_translator)
+    ):
         ChapterPurchase.objects.create(user=request.user, chapter=chapter)
+        # Eslatma: bepul holatda balanslar o'zgarmaydi
         return JsonResponse({
             "success": True,
-            "message": "Bu sizning bobingiz, bepul ochildi!"
+            "message": "Tarjimonlar/superuser uchun bepul ochildi!"
         })
 
     # — balans yetarli emas
@@ -34,17 +53,19 @@ def purchase_chapter(request, manga_slug, volume, chapter_number):
             "message": "Tangangiz yetarli emas!"
         })
 
-    # — xarid qilish (daromad manga egasiga yoziladi)
+    # — pullik xarid (daromad manga egasiga yoziladi)
     with transaction.atomic():
+        # Agar bir vaqtda ikki marta bosilsa ham, unique_together tufayli dublikat bo‘lmaydi
         ChapterPurchase.objects.create(user=request.user, chapter=chapter)
+
         profile.tanga_balance -= chapter.price_tanga
-        profile.save()
+        profile.save(update_fields=["tanga_balance"])
 
         # daromadni manga egasiga o'tkazish
-        if manga.created_by and manga.created_by != request.user:
-            owner_profile, _ = UserProfile.objects.get_or_create(user=manga.created_by)
+        if owner_user and owner_user != request.user:
+            owner_profile, _ = UserProfile.objects.get_or_create(user=owner_user)
             owner_profile.tanga_balance += chapter.price_tanga
-            owner_profile.save()
+            owner_profile.save(update_fields=["tanga_balance"])
 
     return JsonResponse({
         "success": True,
