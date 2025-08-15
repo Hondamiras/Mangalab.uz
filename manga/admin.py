@@ -77,24 +77,59 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
     list_filter = ("status", "type")
     prepopulated_fields = {"slug": ("title",)}
     inlines = [MangaTelegramLinkInline]
-    
-    def chapter_count(self, obj):
-        return obj.chapters.count()
-    chapter_count.short_description = "Chapters"
-    
+
+    # --- Helpers ---
+    def _is_translator(self, user) -> bool:
+        prof = getattr(user, "userprofile", None)
+        return bool(prof and getattr(prof, "is_translator", False))
+
+    # --- Changelist ustunlari ---
     def get_list_display(self, request):
         if request.user.is_superuser:
-            return super().get_list_display(request)
+            # Superuser hammasini ko‘radi
+            return ("title", "status", "created_by", "chapter_count")
+        # Tarjimon va oddiy staff uchun created_by chiqarilmaydi
         return ("title", "status", "chapter_count")
-    
+
+    # --- Form maydonlarini dinamik boshqarish ---
+    def get_form(self, request, obj=None, **kwargs):
+        # Tarjimon bo‘lsa slug va created_by formdan butunlay chiqariladi
+        if not request.user.is_superuser and self._is_translator(request.user):
+            exclude = list(kwargs.get("exclude", []))
+            for f in ("slug", "created_by"):
+                if f not in exclude:
+                    exclude.append(f)
+            kwargs["exclude"] = exclude
+        return super().get_form(request, obj, **kwargs)
+
+    # prepopulated_fields'ni tarjimonlar uchun o‘chirib qo‘yamiz
+    def get_prepopulated_fields(self, request, obj=None):
+        if not request.user.is_superuser and self._is_translator(request.user):
+            return {}
+        return super().get_prepopulated_fields(request, obj)
+
+    # ManyToMany fieldlar o‘z holicha qolsin
     def formfield_for_manytomany(self, db_field, request, **kwargs):
         if db_field.name in ["genres", "tags"]:
             kwargs["queryset"] = db_field.related_model.objects.all()
         return super().formfield_for_manytomany(db_field, request, **kwargs)
 
+    # Changelistda boblar soni
+    def chapter_count(self, obj):
+        return obj.chapters.count()
+    chapter_count.short_description = "Chapters"
+
+    # created_by ni xavfsiz o‘rnatish:
     def save_model(self, request, obj, form, change):
-        if not obj.created_by_id:  # Faqat yangi yaratilganda
+        # Superuserdan boshqa (jumladan tarjimon) hech kim created_by ni o‘zgartira olmaydi
+        if not request.user.is_superuser:
+            obj.created_by = getattr(obj, "created_by", None) or request.user
+            # Agar mavjud bo‘lsa ham, majburan o‘zingizga tenglab qo‘yish xavfsizroq:
             obj.created_by = request.user
+        else:
+            # Superuserga erkinlik
+            if not obj.created_by_id:
+                obj.created_by = request.user
         super().save_model(request, obj, form, change)
 
 # ===== Chapter =====
