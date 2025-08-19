@@ -91,7 +91,7 @@ def verify_code_view(request):
             pending.delete()
             login(request, user)
             messages.success(request, "Hisobingiz faollashtirildi, tizimga kirdingiz.")
-            return redirect("manga:manga_list")
+            return redirect("manga:discover")
 
     return render(request, "accounts/verify_code.html", {
         "pid": pid,
@@ -103,7 +103,7 @@ def login_view(request):
     if form.is_valid():
         login(request, form.get_user())
         messages.success(request, "Tizimga muvaffaqiyatli kirdingiz")  # «Вы успешно вошли»
-        return redirect("manga:manga_list")
+        return redirect("manga:discover")
     return render(request, "accounts/login.html", {"form": form})
 
 
@@ -111,7 +111,7 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     messages.info(request, "Siz tizimdan chiqdingiz")
-    return redirect("manga:manga_list")
+    return redirect("manga:discover")
 
 # ------------------------------------------------------------------#
 #                           ПРОФИЛИ                                 #
