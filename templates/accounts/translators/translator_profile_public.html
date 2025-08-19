@@ -1,104 +1,136 @@
 {% extends "base.html" %}
 {% block title %}{{ profile_user.username }} - Tarjimon{% endblock %}
+
 {% block content %}
 <div class="container mx-auto max-w-5xl px-4 py-8">
 
-    <!-- Profil sarlavhasi -->
-    <div class="bg-gradient-to-r from-gray-800 to-gray-700 p-6 rounded-2xl shadow-lg mb-8">
-        <div class="flex flex-col md:flex-row justify-between items-center gap-6">
-            <!-- Avatar va info -->
-            <div class="flex items-center space-x-4">
-                <div class="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center bg-gray-700">
-                    {% if profile_user.userprofile.avatar %}
-                        <img src="{{ profile_user.userprofile.avatar.url }}" 
-                            alt="{{ profile_user.username }} avatar" 
-                            class="w-full h-full object-cover">
-                    {% else %}
-                        <span class="text-3xl font-bold text-white">
-                            {{ profile_user.username|first|upper }}
-                        </span>
-                    {% endif %}
-                </div>
-                <div>
-                    <h1 class="text-3xl font-bold text-white">{{ profile_user.username }}</h1>
+  {# ===================== PROFILE HEADER ===================== #}
+  <section class="rounded-2xl bg-gray-900/40 border border-gray-800 shadow-xl p-6 mb-8">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
 
-                    {% if user_profile.description %}
-                    <p class="mt-2 text-gray-300 text-sm leading-relaxed max-w-md">
-                        {{ user_profile.description }}
-                    </p>
-                    {% endif %}
-
-                    <div class="flex items-center space-x-4 mt-3">
-                        <span class="flex items-center text-gray-300">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 
-                                        0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                            </svg>
-                            {{ follower_count }} obunachi
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-
-            <!-- Obuna tugmasi -->
-            {% if request.user.is_authenticated and request.user != profile_user %}
-                <a href="{% url 'accounts:follow_translator' profile_user.username %}"
-                   class="px-6 py-3 rounded-full text-white font-medium transition-all duration-300 transform hover:scale-105 
-                   {% if is_following %}
-                        bg-gradient-to-r from-red-500 to-red-600 hover:shadow-red-500/30
-                   {% else %}
-                        bg-gradient-to-r from-green-500 to-teal-500 hover:shadow-green-500/30
-                   {% endif %} shadow-lg hover:shadow-md">
-                   {% if is_following %}
-                       Obunani bekor qilish
-                   {% else %}
-                       Obuna bo'lish
-                   {% endif %}
-                </a>
+      <!-- Left: avatar + info -->
+      <div class="flex items-start sm:items-center gap-4">
+        <!-- Avatar -->
+        <div class="relative">
+          <div class="w-20 h-20 rounded-full overflow-hidden bg-gray-800 ring-2 ring-gray-700">
+            {% if profile_user.userprofile.avatar %}
+              <img src="{{ profile_user.userprofile.avatar.url }}"
+                   alt="{{ profile_user.username }} avatar"
+                   class="w-full h-full object-cover">
+            {% else %}
+              <div class="w-full h-full grid place-items-center">
+                <span class="text-3xl font-bold text-white">
+                  {{ profile_user.username|first|upper }}
+                </span>
+              </div>
             {% endif %}
+          </div>
+          {% if profile_user.userprofile.is_translator %}
+            <span class="absolute -bottom-2 left-1/2 -translate-x-1/2 text-[11px] px-2 py-0.5 rounded-full bg-purple-700 text-purple-50 border border-purple-500/50">
+              Tarjimon
+            </span>
+          {% endif %}
         </div>
+
+        <!-- Name + bio + chips -->
+        <div class="min-w-0">
+          <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">{{ profile_user.username }}</h1>
+
+          {% if profile_user.userprofile.description %}
+            <p class="mt-1 text-gray-300 text-sm leading-relaxed break-words">
+              {{ profile_user.userprofile.description }}
+            </p>
+          {% elif user_profile.description %}
+            <p class="mt-1 text-gray-300 text-sm leading-relaxed break-words">
+              {{ user_profile.description }}
+            </p>
+          {% else %}
+            <p class="mt-1 text-gray-500 italic text-sm">Ma’lumot kiritilmagan</p>
+          {% endif %}
+
+          <div class="flex flex-wrap items-center gap-2 mt-3 text-sm">
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-800 border border-gray-700 text-gray-200">
+              <!-- users icon -->
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 11c1.66 0 3-1.34 3-3s-1.34-3-3-3s-3 1.34-3 3s1.34 3 3 3zM8 11c1.66 0 3-1.34 3-3S9.66 5 8 5S5 6.34 5 8s1.34 3 3 3z"/>
+                <path d="M8 13c-2.67 0-8 1.34-8 4v2h6v-2.5c0-.7.3-1.31.73-1.83C7.2 13.66 7.6 13.31 8 13zM16 13c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
+              </svg>
+              {{ follower_count }} obunachi
+            </span>
+
+            {% if mangas %}
+            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-800 border border-gray-700 text-gray-200">
+              <!-- books -->
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4v15.5A2.5 2.5 0 0 1 6.5 22H20V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2z"/>
+              </svg>
+              {{ mangas|length }} taytl
+            </span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: follow/unfollow -->
+      <div class="flex items-center gap-2 self-end md:self-auto">
+        {% if request.user.is_authenticated and request.user != profile_user %}
+          <a href="{% url 'accounts:follow_translator' profile_user.username %}"
+             class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-medium border transition
+                    {% if is_following %} bg-red-600 hover:bg-red-500 border-red-500/60
+                    {% else %} bg-green-600 hover:bg-green-500 border-green-500/60 {% endif %}">
+            {% if is_following %}
+              Obunani bekor qilish
+            {% else %}
+              Obuna bo'lish
+            {% endif %}
+          </a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {# ===================== TRANSLATED MANGAS ===================== #}
+  <section class="mb-10">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold text-white">
+        <span class="pb-1 border-b-2 border-purple-500">Tarjima qilingan mangalar</span>
+      </h2>
+      {% if mangas %}
+        <span class="text-xs text-gray-400">{{ mangas|length }} ta</span>
+      {% endif %}
     </div>
 
-    <!-- Taytllar -->
-    <div class="mb-8">
-        <h2 class="text-2xl font-bold text-white border-b-2 border-indigo-500 pb-1 mb-6">
-            Tarjima qilingan mangalar
-        </h2>
-        {% if mangas %}
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-3 gap-4">
-            {% for manga in mangas %}
-            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg">
-                <div class="p-5">
-                    <img
-                    src="{{ manga.cover_image.url }}"
-                    alt="{{ manga.title }} cover"
-                    class="
-                        rounded-md mb-2 object-cover
-                        w-[150px] h-[225px]
-                        sm:w-[200px] sm:h-[300px]
-                        md:w-[250px] md:h-[375px]
-                    "
-                    >
-                    <h3 class="text-xl font-bold text-white truncate">{{ manga.title }}</h3>
-                    <div class="flex justify-between text-sm text-gray-400 mt-2 mb-4">
-                        <span>{{ manga.chapter_count }} bob</span>
-                        <span>❤️ {{ manga.total_likes }}</span>
-                    </div>
-                    <a href="{% url 'manga:manga_details' manga.slug %}" 
-                       class="block w-full text-center px-4 py-2 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg transition-colors duration-300">
-                       Ko'rish
-                    </a>
+    {% if mangas %}
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-4">
+        {% for manga in mangas %}
+          <a href="{% url 'manga:manga_details' manga.slug %}"
+             class="group block bg-gray-800 rounded-xl overflow-hidden border border-gray-700 hover:border-purple-500 transition">
+            <div class="relative aspect-[3/4]">
+              <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}"
+                   class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300">
+              <div class="absolute inset-x-0 bottom-0 p-2 bg-black/60">
+                <h3 class="text-white text-sm font-semibold truncate" title="{{ manga.title }}">{{ manga.title }}</h3>
+                <div class="mt-1 flex items-center justify-between text-[12px] text-gray-300">
+                  <span>{{ manga.chapter_count }} bob</span>
+                  <span class="inline-flex items-center gap-1">
+                    <!-- heart -->
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12.1 8.64l-.1.1-.11-.1C10.14 6.6 7.1 6.24 5.14 8.2c-2.07 2.07-1.48 5.44 1.06 7.32L12 21l5.8-5.48c2.54-1.88 3.13-5.25 1.06-7.32-1.96-1.96-5-1.6-6.76.44z"/>
+                    </svg>
+                    {{ manga.total_likes }}
+                  </span>
                 </div>
+              </div>
             </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="bg-gray-800 rounded-xl p-8 text-center text-gray-400">
-            Hali manga tarjima qilinmagan
-        </div>
-        {% endif %}
-    </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="rounded-xl bg-gray-900/40 border border-gray-800 p-8 text-center text-gray-400">
+        Hali manga tarjima qilinmagan
+      </div>
+    {% endif %}
+  </section>
+
 </div>
 {% endblock %}
