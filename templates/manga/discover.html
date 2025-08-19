@@ -1,0 +1,299 @@
+{# templates/manga/discover.html #}
+{% extends "base.html" %}
+{% load static %}
+{% load cache %}
+
+{% block content %}
+<style>
+  /* Scrollbarni yashirish (Chrome/Safari/Edge) */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  /* Scrollbarni yashirish (Firefox) */
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+
+  /* Yordamchi klass: faqat X bo‘yicha skroll, Y bo‘yicha hidden */
+  .row-scroll { overflow-x: auto; overflow-y: hidden; }
+</style>
+
+<div class="container mx-auto max-w-screen-2xl px-4 py-6">
+
+  {# === TRENDING (cards same as grid style) === #}
+  {% cache 3600 trending_manga_section %}
+  <section aria-labelledby="trending-title" class="mb-10">
+    <div class="flex items-center justify-between mb-3">
+      <h2 id="trending-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
+        <span class="inline-flex items-center gap-2">
+          <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M13 2L3 14h7v8l11-14h-8l0-6z"/>
+          </svg>
+          Trenddagi taytlar
+        </span>
+      </h2>
+      <div class="flex items-center gap-2">
+        <button id="trendingPrev"
+                class="rounded-md p-2 bg-gray-800 hover:bg-gray-700 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Oldinga qaytarish">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </button>
+        <button id="trendingNext"
+                class="rounded-md p-2 bg-gray-800 hover:bg-gray-700 text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                aria-label="Keyingiga o'tkazish">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="relative">
+      <div id="trendingRow"
+           class="row-scroll no-scrollbar flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-p-4 pr-1 scrollbar-hide"
+           role="list">
+        {% for manga in trending_mangas %}
+          <div role="listitem" class="snap-start w-36 sm:w-40 flex-shrink-0">
+            <a href="{% url 'manga:manga_details' manga.slug %}" class="block hover:text-puple-400">
+              <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+                <div class="relative aspect-[3/4]">
+                  <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}"
+                       class="w-full h-full object-cover transition-transform duration-300">
+                  
+                  {# (ixtiyoriy) user_status bo‘lsa ko‘rsin, bo‘lmasa shunchaki o'tadi #}
+                  {% if manga.user_status and manga.user_status.0.status %}
+                  <div class="absolute top-2 left-2">
+                    <span class="px-2 py-1 text-xs font-bold rounded-full 
+                      {% if manga.user_status.0.status == 'planned' %}bg-blue-900 text-blue-300
+                      {% elif manga.user_status.0.status == 'reading' %}bg-purple-900 text-purple-300
+                      {% elif manga.user_status.0.status == 'completed' %}bg-green-900 text-green-300
+                      {% elif manga.user_status.0.status == 'dropped' %}bg-red-900 text-red-300
+                      {% elif manga.user_status.0.status == 'favorite' %}bg-yellow-900 text-yellow-300
+                      {% elif manga.user_status.0.status == 'ongoing' %}bg-pink-900 text-pink-300
+                      {% endif %}">
+                      {{ manga.user_status.0.get_status_display }}
+                    </span>
+                  </div>
+                  {% endif %}
+
+                  <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
+                    <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
+                    <div class="flex justify-between items-center text-xs mt-1">
+                      <span class="text-gray-300">{{ manga.type }}</span>
+                      <span class="text-purple-300">{{ manga.chapters.count }} Bob</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endcache %}
+
+  {# === CURRENTLY READING (unchanged list) === #}
+  <section aria-labelledby="reading-title" class="mb-10">
+    <div class="flex items-center justify-between mb-3">
+      <h2 id="reading-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
+        <span class="inline-flex items-center gap-2">
+          <svg class="h-5 w-5 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 4c0-1.1.9-2 2-2h6v18H5c-1.1 0-2-.9-2-2V4zm10-2h6c1.1 0 2 .9 2 2v14c0 1.1-.9 2-2 2h-6V2z"/></svg>
+          Hozir o‘qilayotganlar
+        </span>
+      </h2>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {% for prog in active_progress %}
+      <a href="{% url 'manga:manga_details' prog.manga.slug %}"
+         class="group flex items-center gap-3 rounded-xl bg-gray-800 border border-gray-700 hover:border-blue-500 p-3 transition shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div class="w-16 h-20 rounded-md overflow-hidden border border-gray-700">
+          <img src="{{ prog.manga.cover_image.url }}" alt="{{ prog.manga.title }}" class="w-full h-full object-cover transition-transform duration-200">
+        </div>
+        <div class="min-w-0 flex-1">
+          <h3 class="text-white font-medium truncate" title="{{ prog.manga.title }}">{{ prog.manga.title }}</h3>
+          <div class="mt-1 flex items-center gap-2 text-xs text-gray-400">
+            <span class="inline-flex items-center gap-1">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M20.59 13.41L11 3.83V3H3v8h.83l9.58 9.59c.78.78 2.05.78 2.83 0l4.35-4.35c.78-.78.78-2.05 0-2.83zM6.5 7C5.67 7 5 6.33 5 5.5S5.67 4 6.5 4 8 4.67 8 5.5 7.33 7 6.5 7z"/></svg>
+              {{ prog.manga.type }}
+            </span>
+            <span class="text-gray-600">•</span>
+            <span class="inline-flex items-center gap-1">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l-11 6 11 6 11-6-11-6zm-9.74 9.32L12 17l9.74-5.68L23 13l-11 6-11-6 1.26-1.68z"/></svg>
+              {{ prog.manga.chapters.count }} bob
+            </span>
+          </div>
+        </div>
+        <svg class="h-5 w-5 text-gray-500 group-hover:text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M10 17l5-5-5-5v10z"/></svg>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# === TOP TRANSLATORS (unchanged) === #}
+  {% cache 86400 top_translators_section %}
+  <section aria-labelledby="translators-title" class="mb-10">
+    <div class="flex items-center justify-between mb-3">
+      <h2 id="translators-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
+        <span class="inline-flex items-center gap-2">
+          <svg class="h-5 w-5 text-amber-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17 3V2H7v1H3v4a4 4 0 004 4h1.1A5.002 5.002 0 0011 15v3H8v2h8v-2h-3v-3a5.002 5.002 0 002.9-4H17a4 4 0 004-4V3h-4zM7 9a2 2 0 01-2-2V5h2v4zm12-2a2 2 0 01-2 2V5h2v2z"/>
+          </svg>
+          Top 4 tarjimon
+        </span>
+      </h2>
+      <a href="{% url 'accounts:top_translators' %}" class="text-sm text-purple-300 hover:text-purple-100 underline underline-offset-4">
+        Hammasi →
+      </a>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      {% for t in top_translators|slice:":4" %}
+      <a href="{% url 'accounts:translator_profile' t.user.username %}"
+         class="group relative rounded-xl bg-gray-800 border border-gray-700 hover:border-amber-500 p-4 text-center transition shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-amber-500">
+        <div class="relative mx-auto w-16 h-16 mb-3">
+          {% if t.avatar %}
+            <img src="{{ t.avatar.url }}" alt="{{ t.user.username }}"
+                 class="w-full h-full rounded-full object-cover border-2 border-amber-500">
+          {% else %}
+            <div class="w-full h-full rounded-full bg-gray-700 flex items-center justify-center border-2 border-amber-500">
+              <span class="text-xl font-bold text-white">{{ t.user.username|first|upper }}</span>
+            </div>
+          {% endif %}
+          <div class="absolute -bottom-2 right-0">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold
+                         {% if forloop.counter == 1 %} bg-yellow-500 text-yellow-900
+                         {% elif forloop.counter == 2 %} bg-gray-300 text-gray-900
+                         {% elif forloop.counter == 3 %} bg-orange-500 text-white
+                         {% else %} bg-purple-600 text-purple-50 {% endif %}">
+              {% if forloop.counter == 1 %}#1{% elif forloop.counter == 2 %}#2{% elif forloop.counter == 3 %}#3{% else %}#4{% endif %}
+            </span>
+          </div>
+        </div>
+
+        <h3 class="font-semibold text-white text-sm truncate" title="{{ t.user.username }}">{{ t.user.username }}</h3>
+
+        <div class="mt-2 flex items-center justify-center gap-3 text-[11px] text-gray-300">
+          <span class="inline-flex items-center gap-1" title="Loyihalar soni">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H8a2 2 0 00-2 2v15a3 3 0 012-2.82V4h10v14h2V4a2 2 0 00-2-2zM6 6H4v14a2 2 0 002 2h10v-2H6V6z"/></svg>
+            {{ t.manga_count|default:"0" }}
+          </span>
+          <span class="inline-flex items-center gap-1" title="Obunachilar">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zM8 11c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm8 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zM8 13c-2.67 0-8 1.34-8 4v2h6v-2.5c0-.69.28-1.3.72-1.82C7.2 13.66 7.6 13.31 8 13z"/></svg>
+            {{ t.follower_count|default:"0" }}
+          </span>
+          <span class="inline-flex items-center gap-1" title="Like/Thanks">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12.1 8.64l-.1.1-.11-.1C10.14 6.6 7.1 6.24 5.14 8.2c-2.07 2.07-1.48 5.44 1.06 7.32L12 21l5.8-5.48c2.54-1.88 3.13-5.25 1.06-7.32-1.96-1.96-5-1.6-6.76.44z"/></svg>
+            {{ t.likes_count|default:"0" }}
+          </span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endcache %}
+
+  {# === LATEST (cards same as grid style) === #}
+  {% cache 7200 latest_manga_section %}
+  <section aria-labelledby="latest-title" class="mb-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 id="latest-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
+        <span class="inline-flex items-center gap-2">
+          <svg class="h-5 w-5 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.41 0-8-3.58-8-8s3.59-8 8-8c4.42 0 8 3.58 8 8s-3.58 8-8 8zm1-13h-2v5h5v-2h-3z"/></svg>
+          Yangi qo‘shilganlar
+        </span>
+      </h2>
+      <a href="{% url 'manga:browse' %}" class="text-sm text-purple-300 hover:text-purple-100 underline underline-offset-4">
+        Barchasi →
+      </a>
+    </div>
+
+    <!-- Mobile: horizontal cards -->
+    <div class="sm:hidden relative">
+      <div class="flex items-center justify-end gap-2 mb-2">
+        <button id="latestPrev" class="rounded-md p-2 bg-gray-800 hover:bg-gray-700 text-gray-200 disabled:opacity-40">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </button>
+        <button id="latestNext" class="rounded-md p-2 bg-gray-800 hover:bg-gray-700 text-gray-200 disabled:opacity-40">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+        </button>
+      </div>
+
+      <div id="latestRow"
+           class="row-scroll no-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-p-4 pr-1 scrollbar-hide"
+           role="list">
+        {% for manga in latest_mangas %}
+          <div role="listitem" class="snap-start w-36 flex-shrink-0">
+            <a href="{% url 'manga:manga_details' manga.slug %}" class="block">
+              <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition-transform hover:scale-[1.03]">
+                <div class="relative aspect-[3/4]">
+                  <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}"
+                       class="w-full h-full object-cover transition-transform duration-300">
+                  
+                  <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
+                    <h3 class="text-white text-[13px] font-semibold line-clamp-2" title="{{ manga.title }}">{{ manga.title }}</h3>
+                    <div class="mt-1 text-[11px] flex items-center justify-between">
+                      <span class="text-gray-300">{{ manga.type }}</span>
+                      <span class="text-purple-300">{{ manga.chapters.count }} Bob</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </a>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Desktop: grid cards -->
+    <div class="hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 gap-3">
+      {% for manga in latest_mangas %}
+      <a href="{% url 'manga:manga_details' manga.slug %}" class="block">
+        <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition-transform hover:scale-[1.03]">
+          <div class="relative aspect-[3/4]">
+            <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}"
+                 class="w-full h-full object-cover transition-transform duration-300">
+            <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
+              <h3 class="text-white text-sm font-semibold line-clamp-2" title="{{ manga.title }}">{{ manga.title }}</h3>
+              <div class="mt-1 text-xs flex items-center justify-between">
+                <span class="text-gray-300">{{ manga.type }}</span>
+                <span class="text-purple-300">{{ manga.chapters.count }} Bob</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endcache %}
+
+</div>
+
+<!-- Tiny JS: scroll controls & button state -->
+<script>
+  (function () {
+    function setupScroller(rowId, prevId, nextId) {
+      const row = document.getElementById(rowId);
+      const prev = document.getElementById(prevId);
+      const next = document.getElementById(nextId);
+      if (!row || !prev || !next) return;
+
+      const update = () => {
+        const max = row.scrollWidth - row.clientWidth - 1;
+        prev.disabled = row.scrollLeft <= 0;
+        next.disabled = row.scrollLeft >= max;
+      };
+
+      prev.addEventListener('click', () => {
+        row.scrollBy({ left: -row.clientWidth, behavior: 'smooth' });
+      });
+      next.addEventListener('click', () => {
+        row.scrollBy({ left: row.clientWidth, behavior: 'smooth' });
+      });
+      row.addEventListener('scroll', update);
+      window.addEventListener('resize', update);
+      update();
+    }
+
+    setupScroller('trendingRow', 'trendingPrev', 'trendingNext');
+    setupScroller('latestRow', 'latestPrev', 'latestNext');
+  })();
+</script>
+
+{% endblock %}
