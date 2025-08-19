@@ -1,7 +1,14 @@
 {% extends "base.html" %}
 {% load static %}
 {% block title %}{{ manga.title }}{% endblock %}
-
+{% block head_extra %}
+  {% with desc=manga.description|striptags|truncatechars:160 %}
+    <meta name="description" content="{{ desc }}">
+    <!-- Telegram / OG -->
+    <meta property="og:title" content="{{ manga.title }}">
+    <meta property="og:description" content="{{ desc }}">
+  {% endwith %}
+{% endblock %}
 
 {% block content %}
 <div class="container py-8 mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
