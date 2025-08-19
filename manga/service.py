@@ -71,3 +71,17 @@ def purchase_chapter(request, manga_slug, volume, chapter_number):
         "success": True,
         "message": f"{chapter.price_tanga} tanga evaziga bob ochildi!"
     })
+
+
+def can_read(user, manga, chapter) -> bool:
+    # 1) bepul bob
+    if chapter.price_tanga == 0:
+        return True
+    # 2) login bo'lmagan foydalanuvchi pullik bobni o'qiy olmaydi
+    if not user.is_authenticated:
+        return False
+    # 3) muallif o'z kontentini o'qiy oladi
+    if manga.created_by_id == getattr(user, "id", None) or _is_translator(user) or user.is_superuser or user.is_staff:
+        return True
+    # 4) aks holda — faqat xarid qilingan bo'lsa
+    return ChapterPurchase.objects.filter(user=user, chapter=chapter).exists()
