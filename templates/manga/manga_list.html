@@ -44,7 +44,7 @@
       </div>
 
       <!-- Horizontal scroll container -->
-      <div id="autoScroll" class="overflow-hidden scrollbar-hide">
+      <div class="overflow-hidden scrollbar-hide">
         <div class="flex gap-4">
           {% for manga in trending_mangas|slice:":25" %}
             <div class="w-40 flex-shrink-0">
@@ -304,36 +304,7 @@
   </main>
 </div>
 
-<!-- Initialize Swiper -->
-<script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
 {% cache 86400 filter_toggle %}
 <script src="{% static 'js/sidebar.js' %}"></script>
-{% endcache %}
-{% cache 86400 swiper_init %}
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const container = document.getElementById("autoScroll");
-    let scrollSpeed = 1; // 1px har frame
-    let direction = 1;   // 1 = o‘ngga, -1 = chapga
-
-    function autoScroll() {
-      container.scrollLeft += scrollSpeed * direction;
-
-      // Agar oxiriga yetgan bo‘lsa, yo‘nalishni o‘zgartiramiz
-      if (container.scrollLeft + container.clientWidth >= container.scrollWidth) {
-        direction = -1; // chapga
-      } else if (container.scrollLeft <= 0) {
-        direction = 1; // o‘ngga
-      }
-
-      requestAnimationFrame(autoScroll);
-    }
-    requestAnimationFrame(autoScroll);
-
-    // Hover bo‘lganda scroll to‘xtashini istasangiz:
-    container.addEventListener('mouseenter', () => scrollSpeed = 0);
-    container.addEventListener('mouseleave', () => scrollSpeed = 1);
-  });
-</script>
 {% endcache %}
 {% endblock %}
