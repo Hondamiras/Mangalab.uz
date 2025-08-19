@@ -1,316 +1,292 @@
 {% load cache %}
-    {# ---------- HERO SECTION ---------- #}
-    {% cache 86400 manga_header manga.slug manga.cover_image.url %}
-    <div class="flex flex-col md:flex-row gap-0 md:gap-8 mb-8 relative">
-      {# Cover Image with Floating Effect #}
-      <div class="relative flex-shrink-0 self-center md:self-start transform mb-6 md:mb-0">
-        <div class="relative overflow-hidden rounded-2xl shadow-2xl border-4 border-gray-700 ">
-          <img src="{{ manga.cover_image.url }}" 
-               alt="{{ manga.title }}"
-               class="aspect-[3/4] w-48 sm:w-56 md:w-64 lg:w-72 object-cover transform hover:scale-105 transition-transform duration-300">
-          <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
-        </div>
+
+{# ---------- HERO SECTION (split-cached for per-user safety) ---------- #}
+<div class="flex flex-col md:flex-row gap-0 md:gap-8 mb-8 relative">
+
+  {# Cover Image with Floating Effect (cached) #}
+  <div class="relative flex-shrink-0 self-center md:self-start transform mb-6 md:mb-0">
+    {% cache 86400 manga_cover manga.slug manga.cover_image.url %}
+    <div class="relative overflow-hidden rounded-2xl shadow-2xl border-4 border-gray-700 ">
+      <img src="{{ manga.cover_image.url }}"
+           alt="{{ manga.title }}"
+           class="aspect-[3/4] w-48 sm:w-56 md:w-64 lg:w-72 object-cover transform hover:scale-105 transition-transform duration-300">
+      <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
+    </div>
+    {% endcache %}
+  </div>
+
+  {# Right column #}
+  <div class="flex flex-col flex-1 justify-center space-y-5">
+
+    {# Title & Author (cached) #}
+    {% cache 86400 manga_title_author manga.slug %}
+    <header class="text-center md:text-left space-y-3">
+      <div class="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:justify-center sm:gap-1 md:justify-start">
+        <h1 class="text-3xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-purple-400 leading-tight text-center sm:text-left break-words">
+          {{ manga.title }}
+        </h1>
+      </div>
+      <p class="text-lg sm:text-xl text-gray-300 font-light">{{ manga.author }}</p>
+    </header>
+    {% endcache %}
+
+    {# Rating / Status / Translation badges (cached) #}
+    {% cache 86400 manga_badges manga.slug %}
+    <div class="flex flex-wrap gap-4 justify-center md:justify-start">
+      <div class="group px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
+        <a href="{% url 'manga:discover' %}?type={{ manga.type|urlencode }}"><div class="flex flex-col items-center">
+          <span class="text-sm font-semibold text-purple-400">{{ manga.get_type_display }}</span>
+        </div></a>
       </div>
 
-      {# Title and Metadata #}
-      <div class="flex flex-col flex-1 justify-center space-y-5">
-        <header class="text-center md:text-left space-y-3">
-          {# flex-контейнер для title + type #}
-          <div class="flex flex-col items-center gap-1
-                      sm:flex-row sm:items-center sm:justify-center sm:gap-1
-                      md:justify-start">
-            <h1 class="text-3xl sm:text-3xl md:text-4xl lg:text-5xl
-                      font-bold text-purple-400 leading-tight
-                      text-center sm:text-left break-words">
-              {{ manga.title }}
-            </h1>
-          </div>
+      <div class="group px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
+        <a href="{% url 'manga:discover' %}?status={{ manga.status|urlencode }}"><div class="flex flex-col items-center">
+          <span class="text-sm font-semibold text-purple-400">{{ manga.get_type_display }}: {{ manga.get_status_display }}</span>
+        </div></a>
+      </div>
 
-          <p class="text-lg sm:text-xl text-gray-300 font-light">
-            {{ manga.author }}
-          </p>
-        </header>
-        
-        {# Rating and Status Badges #}
-        <div class="flex flex-wrap gap-4 justify-center md:justify-start">
-          <div class="group px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
-            <a href="{% url 'manga:manga_list' %}?type={{ manga.type|urlencode }}"
-             class="">
-              <div class="flex flex-col items-center">
-                <span class="text-sm font-semibold text-purple-400">{{ manga.get_type_display }}</span>
-              </div>
-            </a>
-          </div>
-
-          <div class="group px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
-            <a href="{% url 'manga:manga_list' %}?status={{ manga.status|urlencode }}"
-             class="">
-              <div class="flex flex-col items-center">
-                <span class="text-sm font-semibold text-purple-400">{{manga.get_type_display}}: {{ manga.get_status_display }}</span>
-              </div>
-            </a>
-          </div>
-
-          <div class="flex items-center gap-3 px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
-            <a href="{% url 'manga:manga_list' %}?translation={{ manga.translation_status|urlencode }}"
-             class="">
-              <div class="flex flex-col items-center">
-              <span class="text-sm font-semibold text-purple-400">{{ manga.get_translation_status_display }}</span>
-              </div>
-            </a>
-          </div>
-        </div>
-
-        {% cache 86400 manga_metadata manga.slug %}
-        {# Genres #}
-        <div class="flex flex-wrap gap-3 justify-center md:justify-start">
-          {% if manga.age_rating %}
-            <a href="{% url 'manga:manga_list' %}?age_rating={{ manga.age_rating|urlencode }}"
-              class="flex items-center gap-2 px-3 py-1 rounded-xl bg-red-900/30 border border-red-500/30">
-              <span class="text-sm font-semibold text-purple-300">{{ manga.age_rating }}</span>
-            </a>
-          {% else %}
-            <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/30">
-              <span class="text-sm font-semibold text-purple-300">Yosh belgilinmagan</span>
-            </div>
-          {% endif %}
-
-          {% if manga.publication_date %}
-            <a href="{% url 'manga:manga_list' %}?publication_date={{ manga.publication_date|urlencode }}"
-              class="flex items-center gap-2 px-3 py-1 rounded-xl bg-purple-500/20 border border-purple-500/30">
-              <span class="text-sm font-semibold text-purple-300">{{ manga.publication_date| date:"Y" }}</span>
-            </a>
-          {% else %}
-            <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/30">
-              <span class="text-sm font-semibold text-purple-300">Yil belgilinmagan</span>
-            </div>
-          {% endif %}
-
-
-          {# Срез первых 5 жанров #}
-          {% for genre in manga.genres.all|slice:":3" %}
-            <a href="{% url 'manga:manga_list' %}?genre={{ genre.name|urlencode }}"
-              class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 
-                      hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center gap-2">
-              <i class="fas fa-tag text-xs opacity-70"></i>
-              {{ genre.name }}
-            </a>
-          {% endfor %}
-
-          {# Остальные жанры, скрыты по умолчанию #}
-          {% with extra_genres=manga.genres.all|slice:"3:" %}
-            {% if extra_genres %}
-              <div id="extra-genres-{{ manga.id }}" class="flex flex-wrap gap-3 hidden mt-2 md:mt-0">
-                {% for genre in extra_genres %}
-                  <a href="{% url 'manga:manga_list' %}?genre={{ genre.name|urlencode }}"
-                    class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 
-                            hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center gap-2">
-                    <i class="fas fa-tag text-xs opacity-70"></i>
-                    {{ genre.name }}
-                  </a>
-                {% endfor %}
-              </div>
-              <button type="button"
-                onclick="
-                  const extra = document.getElementById('extra-genres-{{ manga.id }}');
-                  if (extra.classList.contains('hidden')) {
-                    extra.classList.remove('hidden');
-                    this.textContent = 'Yashirish';
-                  } else {
-                    extra.classList.add('hidden');
-                    this.textContent = 'Davomi…';
-                  }
-                "
-                class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 hover:shadow-purple-500/20 transition-all flex items-center gap-2">
-                Davomi…
-              </button>
-            {% endif %}
-          {% endwith %}
-        </div>
-
-        {# ---------- TAGS ---------- #}
-        <div class="flex flex-wrap gap-3 justify-center md:justify-start mb-4">
-          {# Показ первых 4 тегов #}
-          {% for tag in manga.tags.all|slice:":4" %}
-            <a href="{% url 'manga:manga_list' %}?tag={{ tag.name|urlencode }}"
-              class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 
-                      hover:bg-green-500/30 hover:shadow-green-500/20 transition-all flex items-center">
-              <i class="fas fa-hashtag text-xs opacity-70"></i>
-              {{ tag.name }}
-            </a>
-          {% endfor %}
-
-          {# Скрытые теги + кнопка-«тогглер» #}
-          {% with extra_tags=manga.tags.all|slice:"4:" %}
-            {% if extra_tags %}
-              <div id="extra-tags-{{ manga.id }}" class="flex flex-wrap gap-3 hidden">
-                {% for tag in extra_tags %}
-                  <a href="{% url 'manga:manga_list' %}?tag={{ tag.name|urlencode }}"
-                    class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 
-                            hover:bg-green-500/30 hover:shadow-green-500/20 transition-all flex items-center">
-                    <i class="fas fa-hashtag text-xs opacity-70"></i>
-                    {{ tag.name }}
-                  </a>
-                {% endfor %}
-              </div>
-
-              <button type="button"
-                onclick="
-                  const extra = document.getElementById('extra-tags-{{ manga.id }}');
-                  if (extra.classList.contains('hidden')) {
-                    extra.classList.remove('hidden');
-                    this.textContent = 'Yashirish';
-                  } else {
-                    extra.classList.add('hidden');
-                    this.textContent = 'Davomi…';
-                  }
-                "
-                class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 
-                      hover:bg-green-500/30 hover:shadow-green-500/20 transition-all flex items-center gap-2">
-                Davomi…
-              </button>
-            {% endif %}
-          {% endwith %}
-        </div>
-        {% endcache %}
-
-        {# ---------- ACTION BUTTONS SECTION ---------- #}
-        {% if first_chapter %}
-          <div class="mt-6 flex flex-col items-center justify-center gap-4 sm:flex-row sm:items-center sm:justify-start">
-
-            {# Reading Status Selector #}
-            {% if request.user.is_authenticated %}
-              <div class="items-center w-[200px]">
-                <form method="post" action="{% url 'manga:add_to_reading_list' manga.slug %}">
-                  {% csrf_token %}
-                  <div class="relative">
-                    <select
-                      name="status"
-                      onchange="this.form.submit()"
-                      class="w-full h-14 pl-2 pr-10 text-sm bg-gray-800 border border-gray-700 rounded-2xl
-                            text-purple-300 font-medium cursor-pointer focus:outline-none appearance-none"
-                    >
-                      <option value="remove">Tanlanmagan</option>
-                      {% for val,label in READING_STATUSES %}
-                        <option value="{{ val }}" {% if reading_status and reading_status.status == val %}selected{% endif %}>
-                          {{ label }}
-                        </option>
-                      {% endfor %}
-                    </select>
-                    <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none"
-                          viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                              d="M19 9l-7 7-7-7"/>
-                      </svg>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            {% else %}
-              <div class="w-[300px]">
-                <a href="{% url 'accounts:login' %}?next={% url 'manga:add_to_reading_list' manga.slug %}"
-                  class="w-full h-14 flex items-center justify-center text-sm px-4 gap-2 bg-gray-900 text-purple-300 rounded-2xl
-                        hover:bg-gray-800 transition-colors duration-200 shadow-sm hover:shadow-md">
-                  <span class="font-medium">Ro'yxatga qo'shish uchun kiring.</span>
-                </a>
-              </div>
-            {% endif %}
-
-            {# Start Reading Button #}
-            <div class="w-[200px]">
-              <a
-                href="{% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}"
-                class="w-full h-14 flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
-                      hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md"
-              >
-                <i class="fas fa-play"></i>
-                <span class="font-medium">O'qishni boshlash</span>
-              </a>
-            </div>
-
-            {% if translator_profile and translator_profile.is_translator %}
-              <div class="w-[200px]">
-                <a href="{% url 'accounts:translator_profile' translator_profile.user.username %}"
-                  class="w-full h-14 flex items-center justify-center gap-2 
-                          bg-gray-800 text-purple-300 border border-gray-700 rounded-2xl
-                          hover:bg-gray-700 hover:text-purple-200 transition-colors duration-200 shadow-sm hover:shadow-md">
-                  <i class="fas fa-crown text-yellow-400 text-lg"></i>
-                  <span class="font-medium">{{ translator_profile.user.username }}</span>
-                </a>
-              </div>
-            {% endif %}
-
-            {# === Telegram Link Trigger === #}
-            {% cache 86400 telegram_links manga.slug %}
-            {% if telegram_links %}
-              <div class="w-[200px]">
-                {% if telegram_links|length == 1 %}
-                  {# Single link - direct navigation #}
-                  <a href="{{ telegram_links.0.link }}" target="_blank"
-                    class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl
-                            hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
-                    <i class="fab fa-telegram-plane text-xl"></i>
-                    <span class="font-medium">Telegram kanal</span>
-                  </a>
-                {% else %}
-                  {# Multiple links - open modal #}
-                  <button 
-                    onclick="document.getElementById('telegramModal').classList.remove('hidden')" 
-                    class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl
-                          hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
-                    <i class="fab fa-telegram-plane text-xl"></i>
-                    <span class="font-medium">Telegram kanallar</span>
-                  </button>
-                {% endif %}
-              </div>
-            {% endif %}
-            {% endcache %}
-
-            {# === Modal (only needed if multiple links exist) === #}
-            {% if telegram_links|length > 1 %}
-            <div id="telegramModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 backdrop-blur-sm">
-              <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-xl w-96 max-w-[90%] p-6 relative border border-gray-700">
-                <button 
-                  onclick="document.getElementById('telegramModal').classList.add('hidden')" 
-                  class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                          d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-
-                <div class="flex items-center gap-3 mb-6">
-                  <h2 class="text-xl font-bold text-white">Telegram kanallar</h2>
-                </div>
-                
-                <div class="space-y-3">
-                  {% for link in telegram_links %}
-                    <a href="{{ link.link }}" target="_blank" 
-                      class="group block px-4 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white transition-all 
-                              duration-300 flex items-center gap-3 border border-gray-600 hover:border-blue-400">
-                      <div class="">
-                        <i class="fab fa-telegram text-blue-400"></i>
-                      </div>
-                      <span class="font-medium">{{ link.name|default:"Telegram kanal" }}</span>
-                      <i class="fas fa-external-link-alt ml-auto text-gray-400 group-hover:text-blue-300 transition-colors"></i>
-                    </a>
-                  {% endfor %}
-                </div>
-              </div>
-            </div>
-            {% endif %}
-
-
-            {# Если вы собираетесь давать вариант «зарегистрироваться и сразу перейти на главу», тоже не забудьте подкорректировать: #}
-            {# <a href="{% url 'accounts:signup' %}?next={% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}" … > #}
-
-          </div>
-        {% else %}
-          <p class="mt-6 text-center sm:text-left text-gray-400 italic">
-            Hozircha hech qanday bob mavjud emas.
-          </p>
-        {% endif %}
+      <div class="flex items-center gap-3 px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
+        <a href="{% url 'manga:discover' %}?translation={{ manga.translation_status|urlencode }}"><div class="flex flex-col items-center">
+          <span class="text-sm font-semibold text-purple-400">{{ manga.get_translation_status_display }}</span>
+        </div></a>
       </div>
     </div>
     {% endcache %}
+
+    {# Genres & Tags (cached) #}
+    {% cache 86400 manga_metadata manga.slug %}
+    <div class="flex flex-wrap gap-3 justify-center md:justify-start">
+      {% if manga.age_rating %}
+        <a href="{% url 'manga:discover' %}?age_rating={{ manga.age_rating|urlencode }}"
+           class="flex items-center gap-2 px-3 py-1 rounded-xl bg-red-900/30 border border-red-500/30">
+          <span class="text-sm font-semibold text-purple-300">{{ manga.age_rating }}</span>
+        </a>
+      {% else %}
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/30">
+          <span class="text-sm font-semibold text-purple-300">Yosh belgilinmagan</span>
+        </div>
+      {% endif %}
+
+      {% if manga.publication_date %}
+        <a href="{% url 'manga:discover' %}?publication_date={{ manga.publication_date|urlencode }}"
+           class="flex items-center gap-2 px-3 py-1 rounded-xl bg-purple-500/20 border border-purple-500/30">
+          <span class="text-sm font-semibold text-purple-300">{{ manga.publication_date|date:"Y" }}</span>
+        </a>
+      {% else %}
+        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/30">
+          <span class="text-sm font-semibold text-purple-300">Yil belgilinmagan</span>
+        </div>
+      {% endif %}
+
+      {# first 3 genres #}
+      {% for genre in manga.genres.all|slice:":3" %}
+        <a href="{% url 'manga:discover' %}?genre={{ genre.name|urlencode }}"
+           class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 transition-all flex items-center gap-2">
+          <i class="fas fa-tag text-xs opacity-70"></i>{{ genre.name }}
+        </a>
+      {% endfor %}
+
+      {# extra genres toggle #}
+      {% with extra_genres=manga.genres.all|slice:"3:" %}
+        {% if extra_genres %}
+          <div id="extra-genres-{{ manga.id }}" class="flex flex-wrap gap-3 hidden mt-2 md:mt-0">
+            {% for genre in extra_genres %}
+              <a href="{% url 'manga:discover' %}?genre={{ genre.name|urlencode }}"
+                 class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 transition-all flex items-center gap-2">
+                <i class="fas fa-tag text-xs opacity-70"></i>{{ genre.name }}
+              </a>
+            {% endfor %}
+          </div>
+          <button type="button"
+            onclick="
+              const extra = document.getElementById('extra-genres-{{ manga.id }}');
+              if (extra.classList.contains('hidden')) { extra.classList.remove('hidden'); this.textContent='Yashirish'; }
+              else { extra.classList.add('hidden'); this.textContent='Davomi…'; }
+            "
+            class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 transition-all flex items-center gap-2">
+            Davomi…
+          </button>
+        {% endif %}
+      {% endwith %}
+    </div>
+
+    <div class="flex flex-wrap gap-3 justify-center md:justify-start mb-4">
+      {% for tag in manga.tags.all|slice:":4" %}
+        <a href="{% url 'manga:discover' %}?tag={{ tag.name|urlencode }}"
+           class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 hover:bg-green-500/30 transition-all flex items-center">
+          <i class="fas fa-hashtag text-xs opacity-70"></i>{{ tag.name }}
+        </a>
+      {% endfor %}
+      {% with extra_tags=manga.tags.all|slice:"4:" %}
+        {% if extra_tags %}
+          <div id="extra-tags-{{ manga.id }}" class="flex flex-wrap gap-3 hidden">
+            {% for tag in extra_tags %}
+              <a href="{% url 'manga:discover' %}?tag={{ tag.name|urlencode }}"
+                 class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 hover:bg-green-500/30 transition-all flex items-center">
+                <i class="fas fa-hashtag text-xs opacity-70"></i>{{ tag.name }}
+              </a>
+            {% endfor %}
+          </div>
+          <button type="button"
+            onclick="
+              const extra = document.getElementById('extra-tags-{{ manga.id }}');
+              if (extra.classList.contains('hidden')) { extra.classList.remove('hidden'); this.textContent='Yashirish'; }
+              else { extra.classList.add('hidden'); this.textContent='Davomi…'; }
+            "
+            class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 hover:bg-green-500/30 transition-all flex items-center gap-2">
+            Davomi…
+          </button>
+        {% endif %}
+      {% endwith %}
+    </div>
+    {% endcache %}
+
+    {# ---------- ACTION BUTTONS (NOT CACHED; per-user) ---------- #}
+    {% if first_chapter %}
+      <div class="mt-2 flex flex-col items-center justify-center gap-4 sm:flex-row sm:items-center sm:justify-start">
+
+        {# Reading Status Selector #}
+        {% if request.user.is_authenticated %}
+          <div class="items-center w-[200px]">
+            <form method="post" action="{% url 'manga:add_to_reading_list' manga.slug %}">
+              {% csrf_token %}
+              <div class="relative">
+                <select name="status" onchange="this.form.submit()"
+                        class="w-full h-14 pl-2 pr-10 text-sm bg-gray-800 border border-gray-700 rounded-2xl text-purple-300 font-medium cursor-pointer focus:outline-none appearance-none">
+                  <option value="remove">Tanlanmagan</option>
+                  {% for val,label in READING_STATUSES %}
+                    <option value="{{ val }}" {% if reading_status and reading_status.status == val %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                  </svg>
+                </div>
+              </div>
+            </form>
+          </div>
+        {% else %}
+          <div class="w-[300px]">
+            <a href="{% url 'accounts:login' %}?next={% url 'manga:add_to_reading_list' manga.slug %}"
+               class="w-full h-14 flex items-center justify-center text-sm px-4 gap-2 bg-gray-900 text-purple-300 rounded-2xl hover:bg-gray-800 transition-colors duration-200 shadow-sm hover:shadow-md">
+              <span class="font-medium">Ro'yxatga qo'shish uchun kiring.</span>
+            </a>
+          </div>
+        {% endif %}
+
+        {# Start / Continue Reading Button #}
+        <div class="w-[220px]">
+          {% if progress_current_chapter_id %}
+            {% for c in chapters %}
+              {% if c.id == progress_current_chapter_id %}
+                <a href="{% url 'manga:chapter_read' manga.slug c.volume c.chapter_number %}"
+                   class="w-full h-14 flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md">
+                  <i class="fas fa-redo"></i>
+                  <span class="font-medium">Davom ettirish (Bob {{ c.chapter_number }})</span>
+                </a>
+              {% endif %}
+            {% endfor %}
+          {% else %}
+            <a href="{% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}"
+               class="w-full h-14 flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md">
+              <i class="fas fa-play"></i>
+              <span class="font-medium">O'qishni boshlash</span>
+            </a>
+          {% endif %}
+        </div>
+
+        {# Translator profile #}
+        {% if translator_profile and translator_profile.is_translator %}
+          <div class="w-[200px]">
+            <a href="{% url 'accounts:translator_profile' translator_profile.user.username %}"
+               class="w-full h-14 flex items-center justify-center gap-2 bg-gray-800 text-purple-300 border border-gray-700 rounded-2xl hover:bg-gray-700 hover:text-purple-200 transition-colors duration-200 shadow-sm hover:shadow-md">
+              {% comment %} <i class="fas fa-crown text-yellow-400 text-lg"></i> {% endcomment %}
+              <span class="font-medium">{{ translator_profile.user.username }}</span>
+            </a>
+          </div>
+        {% endif %}
+
+        {# Telegram links (can be cached, but fine here) #}
+        {% if telegram_links %}
+          <div class="w-[200px]">
+            {% if telegram_links|length == 1 %}
+              <a href="{{ telegram_links.0.link }}" target="_blank"
+                 class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
+                <i class="fab fa-telegram-plane text-xl"></i><span class="font-medium">Telegram kanal</span>
+              </a>
+            {% else %}
+              <button onclick="document.getElementById('telegramModal').classList.remove('hidden')"
+                      class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
+                <i class="fab fa-telegram-plane text-xl"></i><span class="font-medium">Telegram kanallar</span>
+              </button>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {# LIKE Button #}
+        {# 3) Like #}
+        <div class="relative">
+          {% if request.user.is_authenticated %}
+            <button id="likeBtn"
+                    data-url="{% url 'manga:manga_like_toggle' slug=manga.slug %}"
+                    title="{% if is_liked %}Liked{% else %}Like{% endif %}"
+                    class="h-14 px-4 inline-flex items-center justify-center gap-2 rounded-xl border transition
+                          {% if is_liked %} bg-pink-600 text-white border-pink-700 hover:opacity-90
+                          {% else %} bg-gray-800 text-pink-300 border-gray-700 hover:bg-gray-700 {% endif %}">
+              <i class="fas fa-heart text-sm"></i>
+              <span id="likeCount">{{ likes_count }}</span>
+              <span class="sr-only">Like</span>
+            </button>
+          {% else %}
+            <a href="{% url 'accounts:login' %}?next={{ request.path }}"
+              title="Like qilish uchun kirish"
+              class="h-11 w-11 inline-flex items-center justify-center rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-pink-300 transition">
+              <i class="fas fa-heart text-base"></i>
+              <span class="sr-only">Like (kirish)</span>
+            </a>
+          {% endif %}
+        </div>
+
+      </div>
+    {% else %}
+      <p class="mt-6 text-center sm:text-left text-gray-400 italic">Hozircha hech qanday bob mavjud emas.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# (Optional) Like AJAX — ishlashi uchun qisqa skript #}
+<script>
+  (function(){
+    const likeBtn = document.getElementById('likeBtn');
+    if (!likeBtn) return;
+    likeBtn.addEventListener('click', async function(){
+      const url = likeBtn.dataset.url;
+      likeBtn.disabled = true;
+      try {
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With':'XMLHttpRequest' },
+        });
+        if (!resp.ok) throw new Error();
+        const data = await resp.json();
+        const likeCountEl = document.getElementById('likeCount');
+        if (likeCountEl && typeof data.likes_count !== 'undefined') likeCountEl.textContent = data.likes_count;
+
+        if (data.liked) {
+          likeBtn.classList.remove('bg-gray-800','text-pink-300','border-gray-700');
+          likeBtn.classList.add('bg-pink-600','text-white','border-pink-700');
+          likeBtn.querySelector('span.font-medium').textContent = 'Liked';
+        } else {
+          likeBtn.classList.remove('bg-pink-600','text-white','border-pink-700');
+          likeBtn.classList.add('bg-gray-800','text-pink-300','border-gray-700');
+          likeBtn.querySelector('span.font-medium').textContent = 'Like';
+        }
+      } catch(e) {
+        // optional: show toast
+      } finally {
+        likeBtn.disabled = false;
+      }
+    });
+  })();
+</script>
