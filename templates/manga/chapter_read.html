@@ -1,396 +1,403 @@
+{% load static %}
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="uz">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ chapter.manga.title }} - Bob {{ chapter.chapter_number }}</title>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="{% static 'images/logo.png' %}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ chapter.manga.title }} — Bob {{ chapter.chapter_number }}</title>
 
-  <!-- Tailwind CSS CDN -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Alpine.js -->
+  <!-- Alpine.js (dropdown uchun) -->
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <style>[x-cloak] { display: none !important; }</style>
+  <style>[x-cloak]{display:none!important}</style>
   <!-- Font Awesome -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
 </head>
+
 <body class="bg-[#0F0F1E] text-gray-100">
-<div class="bg-[#0F0F1E] text-gray-100 min-h-screen">
-    <!-- Sticky Top Navigation -->
-    <div id="navbar" class="sticky top-0 z-50 transform transition-transform duration-700 ease-in-out bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm">
-        <div class="container mx-auto px-4 py-3">
-            <div class="flex items-center justify-between">
-                <a href="{% url 'manga:manga_details' chapter.manga.slug %}" 
-                class="group flex items-center space-x-2 hover:text-purple-300 transition-colors">
-                <i class="fas fa-arrow-left text-purple-400 group-hover:text-purple-300 transition-colors"></i>
-                </a>
 
-                <!-- Chapter Selector -->
-                <div x-data="{ open: false }" class="relative">
-                <button @click="open = !open" 
-                        class="flex items-center space-x-3 px-4 py-2 bg-purple-900 rounded-lg">
-                    <div class="text-left">
-                    <p class="font-semibold">
-                        Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
-                    </p>
-                    </div>
-                    <i class="fas fa-chevron-down text-purple-300 transform transition-transform duration-200" 
-                    :class="{ 'rotate-180': open }"></i>
-                </button>
+  <!-- ======== Sticky Navbar ======== -->
+  <div id="navbar" class="sticky top-0 z-50 transform transition-transform duration-700 ease-in-out bg-gradient-to-b from-[#1A1A2E] to-[#1A1A2E]/90 backdrop-blur-sm">
+    <div class="max-w-6xl mx-auto px-4 py-3">
+      <div class="flex items-center justify-between">
 
-                <!-- Chapter Dropdown -->
-                <div x-show="open" x-cloak @click.away="open = false"
-                    class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto 
-                            bg-[#1A1A2E] rounded-xl shadow-2xl
-                            scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
-                            
-                            
-                            <ul class="divide-y divide-purple-800/50">
-                                {% for ch in all_chapters %}
-                                    {% if ch.price_tanga > 0 and ch.id not in purchased_chapters and ch.created_by != request.user %}
-                                        <!-- Pullik bob, hali sotib olinmagan -->
-                                        <li>
-                                            <button type="button"
-                                                    onclick="showPurchaseModal('{{ ch.volume }}','{{ ch.chapter_number }}','{{ ch.price_tanga }}')"
-                                                    class="group flex items-center px-5 py-3.5 transition-all hover:bg-purple-900/20 w-full text-left">
-                                                <div class="flex items-center min-w-0 flex-1 space-x-3.5">
-                                                    <div class="w-5 h-5 flex items-center justify-center text-yellow-400">
-                                                        <i class="fas fa-lock"></i>
-                                                    </div>
-                                                    <div class="min-w-0 flex-1">
-                                                        <div class="flex items-baseline justify-between space-x-2">
-                                                            <p class="text-sm truncate text-purple-200">
-                                                                Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}
-                                                            </p>
-                                                            <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        </li>
-                                    {% else %}
-                                        <!-- Erkin yoki allaqachon sotib olingan bob -->
-                                        <li>
-                                            <a href="{% url 'manga:chapter_read' manga.slug ch.volume ch.chapter_number %}"
-                                              class="group flex items-center px-5 py-3.5 transition-all hover:bg-purple-900/20">
-                                                <div class="flex items-center min-w-0 flex-1 space-x-3.5">
-                                                    <div class="w-5 h-5 flex items-center justify-center">
-                                                        {% if reading_progress and reading_progress.last_read_chapter %}
-                                                            {% if ch.id in user_read_chapters and ch.id != reading_progress.last_read_chapter.id %}
-                                                                <!-- O‘qilgan boblar -->
-                                                                <i class="fas fa-check-circle text-emerald-400 text-base"></i>
-                                                            {% elif ch.id == reading_progress.last_read_chapter.id %}
-                                                                <!-- Hozirgi o‘qilayotgan bob -->
-                                                                <i class="fas fa-bookmark text-amber-400 text-lg rotate-12"></i>
-                                                            {% endif %}
-                                                        {% endif %}
-                                                    </div>
-                                                    <div class="min-w-0 flex-1">
-                                                        <div class="flex items-baseline justify-between space-x-2">
-                                                            <p class="text-sm truncate text-purple-200">
-                                                                Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}
-                                                            </p>
-                                                            <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </li>
-                                    {% endif %}
-                                {% endfor %}
-                            </ul>
+        <!-- Back -->
+        <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
+           class="group inline-flex items-center gap-2 text-purple-300 hover:text-purple-200">
+          <i class="fas fa-arrow-left"></i>
+        </a>
 
+        <!-- Chapter selector -->
+        <div x-data="{open:false}" class="relative">
+          <button @click="open=!open"
+                  class="flex items-center gap-3 px-4 py-2 bg-purple-900 rounded-lg hover:bg-purple-800">
+            <span class="font-semibold">Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}</span>
+            <i class="fas fa-chevron-down text-purple-300 transition-transform"
+               :class="{'rotate-180':open}"></i>
+          </button>
 
-                </div>
-                
-                </div>
-            </div>
+          <!-- Dropdown list -->
+          <div x-show="open" x-cloak @click.away="open=false"
+               class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto
+                      bg-[#1A1A2E] rounded-xl shadow-2xl
+                      scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
+            <ul class="divide-y divide-purple-800/50">
+              {% for ch in all_chapters %}
+                {% comment %}
+                  LOCK holati: pullik + foydalanuvchi muallif emas + hali sotib olinmagan
+                {% endcomment %}
+                {% if ch.price_tanga > 0 and request.user.is_authenticated and manga.created_by != request.user and ch.id not in purchased_chapters %}
+                  <li>
+                    <button type="button"
+                            class="js-open-purchase group flex items-center w-full text-left px-5 py-3.5 hover:bg-purple-900/20 transition"
+                            data-vol="{{ ch.volume }}"
+                            data-ch="{{ ch.chapter_number }}"
+                            data-price="{{ ch.price_tanga }}">
+                      <div class="flex items-center gap-3 min-w-0 flex-1">
+                        <i class="fas fa-lock text-yellow-400 w-5 text-center"></i>
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-baseline justify-between gap-2">
+                            <p class="text-sm truncate text-purple-200">Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}</p>
+                            <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                {% else %}
+                  <li>
+                    <a href="{% url 'manga:chapter_read' manga.slug ch.volume ch.chapter_number %}"
+                       class="group flex items-center px-5 py-3.5 hover:bg-purple-900/20 transition">
+                      <div class="flex items-center gap-3 min-w-0 flex-1">
+                        <span class="w-5 text-center">
+                          {% if reading_progress and reading_progress.last_read_chapter %}
+                            {% if ch.id == reading_progress.last_read_chapter.id %}
+                              <i class="fas fa-bookmark text-amber-400 rotate-12"></i>
+                            {% elif ch.id in user_read_chapters %}
+                              <i class="fas fa-check-circle text-emerald-400"></i>
+                            {% endif %}
+                          {% endif %}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                          <div class="flex items-baseline justify-between gap-2">
+                            <p class="text-sm truncate text-purple-200">Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}</p>
+                            <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </a>
+                  </li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 
-  <!-- Manga Title and Cover -->
+  <!-- ======== Pages (images) ======== -->
   {% include "manga/includes/_chapter_pages.html" %}
 
-    <!-- Thank Section -->
-    <div id="thank-section" class="mt-4 text-center">
-      {% if user.is_authenticated %}
-        <button
-          id="thankBtn"
-          class="inline-flex items-center px-6 py-3 space-x-3 bg-purple-900 rounded-full hover:bg-purple-800 transition"
-          data-chapter-id="{{ chapter.id }}"
-        >
-          <i class="fas fa-heart text-red-400"></i>
-          <span id="thankText" class="font-medium">
-            {% if user in chapter.thanks.all %}
-              Rahmat aytildi
-            {% else %}
-              Rahmat aytish
-            {% endif %}
-          </span>
-          <span id="thankCount" class="text-purple-300/70 text-sm">
-            ({{ chapter.thanks_count }})
-          </span>
+  <!-- ======== Thank button ======== -->
+  <div class="mt-4 text-center">
+    {% if user.is_authenticated %}
+      <button id="thankBtn"
+              class="inline-flex items-center px-6 py-3 gap-3 bg-purple-900 rounded-full hover:bg-purple-800 transition"
+              data-chapter-id="{{ chapter.id }}">
+        <i class="fas fa-heart {% if user in chapter.thanks.all %}text-red-400{% else %}text-red-300/70{% endif %}"></i>
+        <span id="thankText" class="font-medium">
+          {% if user in chapter.thanks.all %}Rahmat aytildi{% else %}Rahmat aytish{% endif %}
+        </span>
+        <span id="thankCount" class="text-purple-300/70 text-sm">({{ chapter.thanks_count }})</span>
+      </button>
+    {% else %}
+      <p class="text-purple-300/80 bg-purple-900/20 p-4 rounded-lg inline-flex items-center gap-2">
+        <i class="fas fa-info-circle text-purple-400"></i>
+        <a href="{% url 'accounts:login' %}" class="text-purple-400 hover:text-purple-300">Kiring rahmat aytish uchun</a>
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- ======== Bottom navigation (prev/next) ======== -->
+  <div class="max-w-6xl mx-auto px-4 py-6 flex justify-center items-center gap-4">
+
+    {% if previous_chapter %}
+      <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.volume previous_chapter.chapter_number %}"
+         class="flex items-center gap-3 px-5 py-3 bg-purple-600 rounded-xl border border-purple-900 hover:bg-purple-900 transition">
+        <i class="fas fa-arrow-left text-indigo-200"></i>
+        <span class="text-indigo-100 font-medium">Bob {{ previous_chapter.chapter_number }}</span>
+      </a>
+    {% else %}
+      <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
+         class="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-gray-800 to-gray-900 rounded-xl border border-purple-500/30 hover:border-purple-400/50 transition">
+        <i class="fas fa-book-open text-purple-400"></i>
+        <span class="text-purple-300 font-medium">Manga sahifasiga</span>
+      </a>
+    {% endif %}
+
+    {% if next_chapter %}
+      {% if next_chapter_price and manga.created_by != request.user %}
+        <button type="button"
+                class="js-open-purchase flex items-center gap-3 px-5 py-3 bg-indigo-600 rounded-xl border border-indigo-800 hover:bg-indigo-800 transition"
+                data-vol="{{ next_chapter.volume }}"
+                data-ch="{{ next_chapter.chapter_number }}"
+                data-price="{{ next_chapter_price }}">
+          <span class="text-white font-medium">Bob {{ next_chapter.chapter_number }} ({{ next_chapter_price }} tanga)</span>
+          <i class="fas fa-lock text-yellow-400"></i>
         </button>
       {% else %}
-        <p class="text-purple-300/80 bg-purple-900/20 p-4 rounded-lg inline-flex items-center space-x-2">
-          <i class="fas fa-info-circle text-purple-400"></i>
-          <a href="{% url 'accounts:login' %}"
-            class="text-purple-400 hover:text-purple-300"
-          >
-            Kiring rahmat aytish uchun
-          </a>
-        </p>
+        <a href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
+           class="flex items-center gap-3 px-5 py-3 bg-purple-600 rounded-xl border border-purple-900 hover:bg-purple-900 transition">
+          <span class="text-indigo-100 font-medium">Bob {{ next_chapter.chapter_number }}</span>
+          <i class="fas fa-arrow-right text-indigo-200"></i>
+        </a>
       {% endif %}
+    {% else %}
+      <div class="flex items-center gap-3 px-5 py-3 bg-gradient-to-l from-gray-800 to-gray-900 rounded-xl border border-purple-500/30 opacity-70">
+        <span class="text-purple-300 font-medium">Oxirgi bob</span>
+        <i class="fas fa-trophy text-yellow-400/70"></i>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if is_last_chapter %}
+    <div class="max-w-6xl mx-auto px-4">
+      <div class="text-center py-4 bg-purple-900/20 rounded-lg">
+        <p class="text-purple-300">Bu manga uchun oxirgi bob!</p>
+      </div>
     </div>
+  {% endif %}
 
-
-<!-- Navigation Controls - Improved Design -->
-<div class="container mx-auto px-4 py-4">
-    <div class="flex justify-center items-center gap-4">
-        {# ← Previous or Manga #}
-        {% if previous_chapter %}
-            <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.volume previous_chapter.chapter_number %}"
-               class="flex items-center px-5 py-3 space-x-3
-                      bg-purple-600
-                      rounded-xl border border-purple-900 hover:bg-purple-900
-                      transition-all duration-300
-                      ">
-                <i class="fas fa-arrow-left text-indigo-200 group-hover:text-white transition"></i>
-                <span class="text-indigo-100 group-hover:text-white font-medium transition">
-                    Bob {{ previous_chapter.chapter_number }}
-                </span>
-            </a>
-        {% else %}
-            <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
-               class="flex items-center px-5 py-3 space-x-3
-                      bg-gradient-to-r from-gray-800 to-gray-900
-                      rounded-xl border border-purple-500/30 hover:border-purple-400/50
-                      hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300
-                      group">
-                <i class="fas fa-book-open text-purple-400 group-hover:text-purple-300 transition"></i>
-                <span class="text-purple-300 group-hover:text-white font-medium transition">
-                    Manga sahifasiga
-                </span>
-            </a>
-        {% endif %}
-
-        {# → Next or Disabled #}
-        {% if next_chapter %}
-            {% if next_chapter_price and next_chapter.created_by != request.user %}
-                <!-- Pullik bob uchun tugma -->
-                <button id="showBuyModal"
-                        class="flex items-center px-5 py-3 space-x-3
-                              bg-indigo-600
-                              rounded-xl border border-indigo-800 hover:bg-indigo-800
-                              transition-all duration-300">
-                    <span class="text-white font-medium transition">
-                        Bob {{ next_chapter.chapter_number }} ({{ next_chapter_price }} tanga) 
-                    </span>
-                    <i class="fas fa-lock text-yellow-400 group-hover:text-white transition"></i>
-                </button>
-            {% else %}
-                <!-- Erkin yoki tarjimon o‘zi yaratgan bob -->
-                <a href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
-                  class="flex items-center px-5 py-3 space-x-3
-                          bg-purple-600
-                          rounded-xl border border-purple-900 hover:bg-purple-900
-                          transition-all duration-300 group">
-                    <span class="text-indigo-100 group-hover:text-white font-medium transition">
-                        Bob {{ next_chapter.chapter_number }}
-                    </span>
-                    <i class="fas fa-arrow-right text-indigo-200 group-hover:text-white transition"></i>
-                </a>
-            {% endif %}
-            {% if is_last_chapter %}
-                <div class="text-center py-4 bg-purple-900/20 rounded-lg">
-                    <p class="text-purple-300">Bu manga uchun oxirgi bob!</p>
-                </div>
-            {% endif %}
-        {% else %}
-            <!-- Oxirgi bob -->
-            <div class="flex items-center px-5 py-3 space-x-3
-                        bg-gradient-to-l from-gray-800 to-gray-900
-                        rounded-xl border border-purple-500/30 opacity-70 cursor-not-allowed">
-                <span class="text-purple-300 font-medium">Oxirgi bob</span>
-                <i class="fas fa-trophy text-yellow-400/70"></i>
-            </div>
-        {% endif %}
-    </div>
-</div>
-
-<!-- Modal - Improved Design -->
-<div id="buyModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <!-- ======== Universal Purchase Modal (JS orqali to‘ldiriladi) ======== -->
+  <div id="buyModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 text-center max-w-md w-full 
                 border border-purple-500/30 shadow-2xl shadow-purple-500/10">
-        <div class="mb-6 flex justify-center">
-            <div class="bg-yellow-500/20 p-4 rounded-full border border-yellow-500/40">
-                <i class="fas fa-crown text-3xl text-yellow-400"></i>
-            </div>
+      <div class="mb-6 flex justify-center">
+        <div class="bg-yellow-500/20 p-4 rounded-full border border-yellow-500/40">
+          <i class="fas fa-crown text-3xl text-yellow-400"></i>
         </div>
-        <h2 class="text-2xl font-bold text-yellow-400 mb-3">Premium Bob</h2>
-        <p class="text-gray-300 mb-6 leading-relaxed">
-            "<span class="text-white font-medium">{{ manga.title }}</span>" mangasining 
-            <span class="text-yellow-300">{{ next_chapter.chapter_number }}-bobi</span> 
-            pullik kontent hisoblanadi.
+      </div>
+      <h2 class="text-2xl font-bold text-yellow-400 mb-3">Premium Bob</h2>
+      <p class="text-gray-300 mb-6 leading-relaxed">
+        "<span id="modalTitle" class="text-white font-medium"></span>" mangasining
+        <span id="modalChapter" class="text-yellow-300"></span>-bobi pullik kontent hisoblanadi.
+      </p>
+      <div class="bg-gray-700/50 rounded-lg p-4 mb-6 border border-gray-600/50">
+        <p class="text-gray-200 text-lg">Narx:
+          <span id="modalPrice" class="text-purple-400 font-bold">0</span> tanga
         </p>
-        <div class="bg-gray-700/50 rounded-lg p-4 mb-6 border border-gray-600/50">
-            <p class="text-gray-200 text-lg">
-                Narx: <span class="text-purple-400 font-bold">{{ next_chapter_price }} tanga</span>
-            </p>
-        </div>
-        <div class="flex justify-center space-x-4">
-            {% if next_chapter %}
-            <button id="buyBtn"
-                    data-url="{% url 'manga:purchase_chapter' manga.slug next_chapter.volume next_chapter.chapter_number %}"
-                    data-next-url="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
-                    class="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 transition-all
-                           flex items-center space-x-2">
-                <i class="fas fa-shopping-cart"></i>
-                <span>Sotib olish</span>
-            </button>
-            {% endif %}
-            <button id="closeBuyModal"
-                    class="px-6 py-3 rounded-xl bg-gray-600
-                           hover:bg-gray-700 transition-all
-                            text-white
-                           flex items-center space-x-2">
-                <i class="fas fa-times"></i>
-                <span>Bekor qilish</span>
-            </button>
-        </div>
+      </div>
+      <div class="flex justify-center gap-3">
+        <button id="buyBtn"
+                class="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 transition flex items-center gap-2">
+          <i class="fas fa-shopping-cart"></i><span>Sotib olish</span>
+        </button>
+        <button id="closeBuyModal"
+                class="px-6 py-3 rounded-xl bg-gray-600 hover:bg-gray-700 transition text-white flex items-center gap-2">
+          <i class="fas fa-times"></i><span>Bekor qilish</span>
+        </button>
+      </div>
     </div>
-</div>
+  </div>
 
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const modal = document.getElementById("buyModal");
-        const showBtn = document.getElementById("showBuyModal");
-        const closeBtn = document.getElementById("closeBuyModal");
-        const buyBtn = document.getElementById("buyBtn");
+  <!-- ======== Scripts ======== -->
+  <script>
+    // Navbar autohide (desktop)
+    (function(){
+      const nav = document.getElementById('navbar');
+      const navH = nav.offsetHeight;
+      let last = window.pageYOffset || document.documentElement.scrollTop;
+      let ticking = false;
 
-        // Modalni ochish/yopish
-        if (showBtn) showBtn.addEventListener("click", () => modal.classList.remove("hidden"));
-        if (closeBtn) closeBtn.addEventListener("click", () => modal.classList.add("hidden"));
-
-        // Modal tashqarisini bosganda yopish
-        modal.addEventListener("click", (e) => {
-            if (e.target === modal) modal.classList.add("hidden");
+      window.addEventListener('scroll', () => {
+        if (window.innerWidth < 768) return;
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const cur = window.pageYOffset || document.documentElement.scrollTop;
+          const d = cur - last;
+          if (Math.abs(d) > 5) {
+            if (d > 0 && cur > navH) nav.classList.add('-translate-y-full');
+            else if (d < 0) nav.classList.remove('-translate-y-full');
+            last = cur;
+          }
+          ticking = false;
         });
+      }, {passive:true});
+    })();
+  </script>
 
-        // Sotib olish jarayoni
-        if (buyBtn) {
-            buyBtn.addEventListener("click", async function () {
-                this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Jarayonda...</span>';
-                this.classList.add("opacity-70", "cursor-not-allowed");
-                
-                try {
-                    const res = await fetch(this.dataset.url, {
-                        method: "POST",
-                        headers: {
-                            "X-CSRFToken": "{{ csrf_token }}",
-                            "X-Requested-With": "XMLHttpRequest"
-                        }
-                    });
-                    const data = await res.json();
-                    
-                    if (data.success) {
-                        this.innerHTML = '<i class="fas fa-check"></i> <span>Muvaffaqiyatli!</span>';
-                        setTimeout(() => window.location.href = this.dataset.nextUrl, 800);
-                    } else {
-                        this.innerHTML = '<i class="fas fa-shopping-cart"></i> <span>Sotib olish</span>';
-                        alert(data.message || "Xatolik yuz berdi. Qaytadan urinib ko'ring.");
-                    }
-                } catch (err) {
-                    console.error("Purchase error:", err);
-                    alert("Tarmoq xatosi. Internet aloqasini tekshiring.");
-                } finally {
-                    this.classList.remove("opacity-70", "cursor-not-allowed");
-                }
-            });
-        }
-    });
-</script>
+  <script>
+    // -------- Purchase modal helpers --------
+    const mangaTitle = "{{ manga.title|escapejs }}";
+    const BUY_URL_TPL  = "{% url 'manga:purchase_chapter' manga.slug 111 222 %}";
+    const READ_URL_TPL = "{% url 'manga:chapter_read'    manga.slug 111 222 %}";
 
-<script>
-    document.getElementById('thankBtn')?.addEventListener('click', async function() {
-    const btn = this;
-    const chapterId = btn.dataset.chapterId;
-    const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${chapterId}/`);
+    const buyModal   = document.getElementById('buyModal');
+    const buyBtn     = document.getElementById('buyBtn');
+    const closeModal = document.getElementById('closeBuyModal');
+    const modalTitle   = document.getElementById('modalTitle');
+    const modalChapter = document.getElementById('modalChapter');
+    const modalPrice   = document.getElementById('modalPrice');
 
-    try {
-        const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-        });
-        const { thanked, count } = await res.json();
+    let targetBuyUrl = "";
+    let targetReadUrl = "";
 
-        // Иконка и тексты
-        const icon = btn.querySelector('.fa-heart');
-        const text = btn.querySelector('#thankText');
-        const countEl = btn.querySelector('#thankCount');
-
-        // Переключаем класс цвета на иконке
-        icon.classList.toggle('text-red-400', thanked);
-
-        // Обновляем подпись и счётчик
-        text.textContent = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
-        countEl.textContent = `(${count})`;
-    } catch (err) {
-        console.error('Thank error:', err);
+    function buildUrl(tpl, vol, ch) {
+      return tpl.replace('/111/', '/' + vol + '/').replace('/222/', '/' + ch + '/');
     }
+
+    function openPurchase(vol, ch, price) {
+      modalTitle.textContent   = mangaTitle;
+      modalChapter.textContent = ch;
+      modalPrice.textContent   = price;
+      targetBuyUrl  = buildUrl(BUY_URL_TPL,  vol, ch);
+      targetReadUrl = buildUrl(READ_URL_TPL, vol, ch);
+      buyModal.classList.remove('hidden');
+    }
+
+    // Delegation: har qanday .js-open-purchase tugmasi
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-open-purchase');
+      if (!btn) return;
+      openPurchase(btn.dataset.vol, btn.dataset.ch, btn.dataset.price);
     });
-</script>
 
-<!-- Внизу страницы, перед </body> -->
+    closeModal.addEventListener('click', () => buyModal.classList.add('hidden'));
+    buyModal.addEventListener('click', (e) => { if (e.target === buyModal) buyModal.classList.add('hidden'); });
+
+    buyBtn.addEventListener('click', async function(){
+      const self = this;
+      self.disabled = true;
+      const oldHTML = self.innerHTML;
+      self.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Jarayonda…</span>';
+      try{
+        const res  = await fetch(targetBuyUrl, {
+          method: 'POST',
+          headers: {'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'XMLHttpRequest'}
+        });
+        const data = await res.json();
+        if (data.success) {
+          self.innerHTML = '<i class="fas fa-check"></i> <span>Muvaffaqiyatli!</span>';
+          setTimeout(()=>{ window.location.href = targetReadUrl; }, 700);
+        } else {
+          self.innerHTML = oldHTML;
+          alert(data.message || 'Xatolik yuz berdi, qayta urinib ko‘ring.');
+          self.disabled = false;
+        }
+      } catch(err){
+        console.error(err);
+        self.innerHTML = oldHTML;
+        alert('Tarmoq xatosi. Internet aloqasini tekshiring.');
+        self.disabled = false;
+      }
+    });
+  </script>
+
+  <script>
+    // -------- Thank toggle --------
+    document.getElementById('thankBtn')?.addEventListener('click', async function(){
+      const btn = this;
+      const id  = btn.dataset.chapterId;
+      const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${id}/`);
+
+      try{
+        const res = await fetch(url, {
+          method:'POST',
+          headers:{'X-CSRFToken':'{{ csrf_token }}','X-Requested-With':'XMLHttpRequest'}
+        });
+        const {thanked, count} = await res.json();
+        const icon   = btn.querySelector('.fa-heart');
+        const textEl = btn.querySelector('#thankText');
+        const cntEl  = btn.querySelector('#thankCount');
+
+        icon.classList.toggle('text-red-400', thanked);
+        textEl.textContent = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
+        cntEl.textContent  = `(${count})`;
+      }catch(err){
+        console.error('Thank error:', err);
+      }
+    });
+  </script>
+
 <script>
-  (function() {
-    const nav = document.getElementById('navbar');
-    const navHeight = nav.offsetHeight;
-    let lastScroll = window.pageYOffset || document.documentElement.scrollTop;
-    let ticking = false;
+(function () {
+  const nav = document.getElementById('navbar');
+  const HIDE = '-translate-y-full';
+  const isMobile = () =>
+    window.matchMedia('(max-width: 767px)').matches || navigator.maxTouchPoints > 0;
 
-    // 1) Скролл-логика (только десктоп)
+  // mobilga kirganda — yashirin; desktopga o‘tganda — ko‘rinadigan holatni saqlaymiz
+  function syncState() {
+    if (isMobile()) nav.classList.add(HIDE);
+    else nav.classList.remove(HIDE);
+  }
+  syncState();
+  window.addEventListener('resize', syncState);
+
+  // ⛔ Hech qanday scroll listener yo‘q mobil uchun (faqat tap ishlaydi)
+
+  // Tap aniqlash (kaltagina bosish)
+  let sx = 0, sy = 0, st = 0;
+  document.addEventListener('touchstart', (e) => {
+    if (!isMobile()) return;
+    const t = e.changedTouches[0];
+    sx = t.clientX; sy = t.clientY; st = Date.now();
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!isMobile()) return;
+
+    const t = e.changedTouches[0];
+    const dx = Math.abs(t.clientX - sx);
+    const dy = Math.abs(t.clientY - sy);
+    const dt = Date.now() - st;
+    const isTap = dx < 6 && dy < 6 && dt < 300;
+
+    if (!isTap) return;
+
+    // modal ochiq bo‘lsa (sotib olish), navni o‘zgartirmaymiz
+    const modal = document.getElementById('buyModal');
+    if (modal && !modal.classList.contains('hidden')) return;
+
+    const insideNav = e.target.closest('#navbar');
+
+    // Tashqariga bosilsa: nav ko‘rinmasa — ko‘rsatamiz; ko‘rinib turgan bo‘lsa — yopamiz
+    if (!insideNav) {
+      nav.classList.toggle(HIDE);
+      return;
+    }
+
+    // Nav ichida bosilsa: eventlar ishlasin, keyin ozgina kechikib yopamiz (qulaylik uchun)
+    if (e.target.closest('a,button,select')) {
+      setTimeout(() => nav.classList.add(HIDE), 250);
+    }
+  }, { passive: true });
+
+  // Desktop xulqi (xohlasangiz qoldiring yoki olib tashlang)
+  if (!isMobile()) {
+    let last = window.pageYOffset || document.documentElement.scrollTop;
+    let ticking = false;
     window.addEventListener('scroll', () => {
-      if (window.innerWidth < 768) return;    // на мобилках не трогаем
+      if (isMobile()) return; // desktop-gina
       if (ticking) return;
       ticking = true;
-      window.requestAnimationFrame(() => {
-        const currentScroll = window.pageYOffset || document.documentElement.scrollTop;
-        const delta = currentScroll - lastScroll;
-
+      requestAnimationFrame(() => {
+        const cur = window.pageYOffset || document.documentElement.scrollTop;
+        const delta = cur - last;
         if (Math.abs(delta) > 5) {
-          if (delta > 0 && currentScroll > navHeight) {
-            // скролл вниз — скрываем
-            nav.classList.add('-translate-y-full');
-          } else if (delta < 0) {
-            // скролл вверх — показываем
-            nav.classList.remove('-translate-y-full');
-          }
-          lastScroll = currentScroll;
+          if (delta > 0 && cur > nav.offsetHeight) nav.classList.add(HIDE);
+          else if (delta < 0) nav.classList.remove(HIDE);
+          last = cur;
         }
-
         ticking = false;
       });
     }, { passive: true });
-
-    // 2) Тап-логика (мобильные устройства)
-    if ('ontouchstart' in window) {
-      let startY = 0;
-      document.addEventListener('touchstart', e => {
-        startY = e.changedTouches[0].clientY;
-      });
-      document.addEventListener('touchend', e => {
-        const endY = e.changedTouches[0].clientY;
-        // если вертикальный «дрож» менее 5px — считаем тапом
-        if (Math.abs(endY - startY) < 5) {
-          nav.classList.toggle('-translate-y-full');
-        }
-      });
-    }
-  })();
+  }
+})();
 </script>
-
 </body>
 </html>
