@@ -3,12 +3,15 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
 from django.contrib.auth.decorators import login_required
+from django.urls import reverse
 from django.views.decorators.http import require_POST
-from django.http import JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.db.models import Prefetch
 import os
 from django.conf import settings
-from .models import ChapterPurchase, Manga, Chapter, Genre, ReadingProgress, Tag
+
+from manga.service import can_read
+from .models import ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, ReadingProgress, Tag
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 from django.db.models import Count, Sum
 from django.utils.timezone import now, timedelta
@@ -24,6 +27,37 @@ from django.utils.timezone import now, timedelta
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.cache import cache_page
 
+@login_required
+@require_POST
+def toggle_manga_like(request, slug):
+    manga = get_object_or_404(Manga, slug=slug)
+
+    # 1) Agar Manga.likes (M2M -> User) mavjud bo'lsa:
+    if hasattr(manga, "likes"):
+        if manga.likes.filter(pk=request.user.pk).exists():
+            manga.likes.remove(request.user)
+            liked = False
+        else:
+            manga.likes.add(request.user)
+            liked = True
+        likes_count = manga.likes.count()
+        return JsonResponse({"success": True, "liked": liked, "likes_count": likes_count})
+
+    # 2) Fallback: alohida MangaLike modeli bo'lsa
+    try:
+        from .models import MangaLike  # agar mavjud bo'lmasa ImportError bo'ladi
+    except Exception:
+        return JsonResponse({"success": False, "error": "Like modeli topilmadi"}, status=400)
+
+    obj, created = MangaLike.objects.get_or_create(manga=manga, user=request.user)
+    if created:
+        liked = True
+    else:
+        obj.delete()
+        liked = False
+    likes_count = MangaLike.objects.filter(manga=manga).count()
+    return JsonResponse({"success": True, "liked": liked, "likes_count": likes_count})
+
 def get_cached_or_query(cache_key, queryset_func, timeout):
     """
     Helper function to get cached data or execute queryset and cache it
@@ -34,28 +68,116 @@ def get_cached_or_query(cache_key, queryset_func, timeout):
         cache.set(cache_key, data, timeout)
     return data
 
-def manga_list(request):
-    # 1) Generate cache key based on request parameters and user auth status
-    cache_key = f"manga_list_{urlencode(request.GET)}_{request.user.is_authenticated}"
-    
-    # For anonymous users, try to get cached response
+
+
+
+# ====== Umumiy yordamchi funksiyalar (Discover + Browse uchun qayta ishlatiladi) ======
+
+def _get_top_translators():
+    return (
+        UserProfile.objects
+        .filter(is_translator=True)
+        .annotate(
+            manga_count    = Count("user__mangas_created", distinct=True),
+            follower_count = Count("followers", distinct=True),
+            likes_count    = Count("user__mangas_created__chapters__thanks", distinct=True),
+        )
+        .order_by("-likes_count", "-follower_count")[:4]
+    )
+
+def _get_trending_mangas():
+    trending = (
+        ReadingProgress.objects
+        .values("manga")
+        .annotate(readers=Count("user"))
+        .order_by("-readers")[:25]
+    )
+    return list(Manga.objects.filter(id__in=[x["manga"] for x in trending]))
+
+def _get_latest_mangas():
+    return list(
+        Manga.objects
+        .annotate(chap_count=Count("chapters"))
+        .filter(chap_count__gte=10)
+        .order_by("-id")[:25]
+    )
+
+
+
+def manga_discover(request):
+    """
+    Trendlar, hozir o‘qilayotganlar, top tarjimonlar, yangi qo‘shilganlar
+    — bularni alohida sahifaga olib chiqdik.
+    """
+
+    # (ixtiyoriy) foydalanuvchi profili
+    user_profile = None
+    if request.user.is_authenticated:
+        user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+    # Top tarjimonlar — 12 soat cache
+    top_translators = get_cached_or_query(
+        'top_translators',
+        _get_top_translators,
+        60*60*12
+    )
+
+    # Trendlar — 1 soat cache
+    trending_mangas = get_cached_or_query(
+        'trending_mangas',
+        _get_trending_mangas,
+        60*60
+    )
+
+    # Yangi qo‘shilganlar — 2 soat cache
+    latest_mangas = get_cached_or_query(
+        'latest_mangas',
+        _get_latest_mangas,
+        60*60*2
+    )
+
+    # Hozir o‘qilayotganlar — kesh qilmaymiz (dinamik)
+    active_progress = (
+        ReadingProgress.objects
+        .filter(updated_at__gte=now() - timedelta(hours=24))
+        .select_related("manga")
+        .order_by("-updated_at")[:6]
+    )
+
+    context = {
+        "top_translators": top_translators,
+        "trending_mangas": trending_mangas,
+        "latest_mangas": latest_mangas,
+        "active_progress": active_progress,
+    }
+    return render(request, "manga/discover.html", context)
+
+def manga_browse(request):
+    """
+    Barcha taytlar (grid) + qidiruv, filtrlar, sort va paginate.
+    Oldingi 'manga_list' funksiyasining ro‘yxatga oid qismi shu yerda.
+    """
+
+    # 1) Cache key (faqat anonim foydalanuvchiga to‘liq response-cache qo‘llaymiz)
+    cache_key = f"manga_browse_{urlencode(request.GET)}_{request.user.is_authenticated}"
+
     if not request.user.is_authenticated:
         cached_response = cache.get(cache_key)
         if cached_response:
             return cached_response
 
-    # 1) Get user profile
+    # 2) UserProfile (prefetch uchun kerak bo‘lishi mumkin)
     user_profile = None
     if request.user.is_authenticated:
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    # 2) Base queryset with caching for common parts
-    def get_base_queryset():
+    # 3) Bazaviy queryset (1 soat cache)
+    def _base_qs():
         return Manga.objects.all()
 
-    qs = get_cached_or_query('base_manga_queryset', get_base_queryset, 60*60)  # Cache for 1 hour
+    qs = get_cached_or_query('base_manga_queryset', _base_qs, 60*60)
 
-    # 0) Search by keyword
+    # 4) Qidiruv
     search_query = request.GET.get('search', '').strip()
     if search_query:
         qs = qs.filter(
@@ -64,7 +186,7 @@ def manga_list(request):
             Q(description__icontains=search_query)
         ).distinct()
 
-    # 1) Checkbox filters
+    # 5) Checkbox filtrlar
     filter_mappings = {
         'genre': ('genres__name', True),
         'age_rating': ('age_rating', False),
@@ -73,16 +195,14 @@ def manga_list(request):
         'status': ('status', False),
         'translation_status': ('translation_status', False),
     }
-
-    for param, (field, distinct) in filter_mappings.items():
-        filter_list = request.GET.getlist(param)
-        if filter_list:
-            filter_kwargs = {f"{field}__in": filter_list}
-            qs = qs.filter(**filter_kwargs)
-            if distinct:
+    for param, (field, need_distinct) in filter_mappings.items():
+        values = request.GET.getlist(param)
+        if values:
+            qs = qs.filter(**{f"{field}__in": values})
+            if need_distinct:
                 qs = qs.distinct()
 
-    # 2) Chapter count range
+    # 6) Boblar soni oralig‘i
     min_chap = request.GET.get('min_chapters')
     max_chap = request.GET.get('max_chapters')
     if min_chap or max_chap:
@@ -102,7 +222,7 @@ def manga_list(request):
             except ValueError:
                 pass
 
-    # 3) Publication year range
+    # 7) Noshirlik yili oralig‘i
     min_year = request.GET.get('min_year')
     max_year = request.GET.get('max_year')
     if min_year:
@@ -120,10 +240,15 @@ def manga_list(request):
         except ValueError:
             pass
 
-    # 4) Sorting
+    # 8) Sortlash
     sort = request.GET.get('sort', 'chapters')
     if sort == 'chapters':
-        if not qs.query.annotations.get('chap_count'):
+        # agar chap_count annotatsiya qilinmagan bo‘lsa — qo‘shamiz
+        try:
+            exists = getattr(qs.query, "annotations", {}) and "chap_count" in qs.query.annotations
+        except Exception:
+            exists = False
+        if not exists:
             qs = qs.annotate(chap_count=Count('chapters'))
         qs = qs.order_by('-chap_count', 'title')
     elif sort == 'title_asc':
@@ -133,7 +258,7 @@ def manga_list(request):
     else:
         qs = qs.order_by('title')
 
-    # 5) Load ReadingStatus for current user
+    # 9) Prefetch: foydalanuvchi statusi
     if user_profile:
         qs = qs.prefetch_related(
             Prefetch(
@@ -143,104 +268,21 @@ def manga_list(request):
             )
         )
 
-    # 6) Pagination
+    # 10) Paginatsiya
     paginator = Paginator(qs, 16)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    # 7) Prepare template references with caching
-    def get_choices(field_name):
-        return Manga._meta.get_field(field_name).choices
+    # 11) Checkboxlar uchun choices (24 soat cache)
+    def _choices(field): return Manga._meta.get_field(field).choices
 
-    status_choices = get_cached_or_query(
-        'status_choices',
-        lambda: get_choices('status'),
-        60*60*24
-    )
-    
-    age_rating_choices = get_cached_or_query(
-        'age_rating_choices',
-        lambda: get_choices('age_rating'),
-        60*60*24
-    )
-    
-    type_choices = get_cached_or_query(
-        'type_choices',
-        lambda: get_choices('type'),
-        60*60*24
-    )
-    
-    translation_choices = get_cached_or_query(
-        'translation_choices',
-        lambda: get_choices('translation_status'),
-        60*60*24
-    )
+    status_choices = get_cached_or_query('status_choices', lambda: _choices('status'), 60*60*24)
+    age_rating_choices = get_cached_or_query('age_rating_choices', lambda: _choices('age_rating'), 60*60*24)
+    type_choices = get_cached_or_query('type_choices', lambda: _choices('type'), 60*60*24)
+    translation_choices = get_cached_or_query('translation_choices', lambda: _choices('translation_status'), 60*60*24)
 
-    # Cache top translators
-    def get_top_translators():
-        return (
-            UserProfile.objects
-            .filter(is_translator=True)
-            .annotate(
-                manga_count   = Count("user__mangas_created", distinct=True),
-                follower_count= Count("followers",         distinct=True),
-                likes_count   = Count("user__mangas_created__chapters__thanks", distinct=True),
-            )
-            .order_by("-likes_count", "-follower_count")[:4]
-        )
-
-    top_translators = get_cached_or_query(
-        'top_translators',
-        get_top_translators,
-        60*60*12  # 12 hours
-    )
-
-    # Currently reading (last 24 hours) - don't cache as it's highly dynamic
-    active_progress = (
-        ReadingProgress.objects
-        .filter(updated_at__gte=now()-timedelta(hours=24))
-        .select_related("manga")
-        .order_by("-updated_at")[:6]
-    )
-
-    # Trending mangas - cache for 1 hour
-    def get_trending_mangas():
-        trending = (
-            ReadingProgress.objects
-            .values("manga")
-            .annotate(readers=Count("user"))
-            .order_by("-readers")[:25]
-        )
-        return list(Manga.objects.filter(id__in=[x["manga"] for x in trending]))
-
-    trending_mangas = get_cached_or_query(
-        'trending_mangas',
-        get_trending_mangas,
-        60*60  # 1 hour
-    )
-
-    # Latest added titles (with >=10 chapters) - cache for 6 hours
-    def get_latest_mangas():
-        return list(
-            Manga.objects.annotate(chap_count=Count("chapters"))
-            .filter(chap_count__gte=10)
-            .order_by("-id")[:10]
-        )
-
-    latest_mangas = get_cached_or_query(
-        'latest_mangas',
-        get_latest_mangas,
-        60*60*6  # 6 hours
-    )
-
-    # Get genres and tags with caching
-    def get_all_genres():
-        return list(Genre.objects.all())
-
-    def get_all_tags():
-        return list(Tag.objects.all())
-
-    genres = get_cached_or_query('all_genres', get_all_genres, 60*60*24)
-    tags = get_cached_or_query('all_tags', get_all_tags, 60*60*24)
+    # 12) Janr va teglar (24 soat cache)
+    genres = get_cached_or_query('all_genres', lambda: list(Genre.objects.all()), 60*60*24)
+    tags   = get_cached_or_query('all_tags',   lambda: list(Tag.objects.all()),   60*60*24)
 
     context = {
         'genres': genres,
@@ -249,7 +291,7 @@ def manga_list(request):
         'search': search_query,
         'sort': sort,
 
-        # Selected filters
+        # Tanlangan filtrlar
         'genre_filter_list': request.GET.getlist('genre'),
         'tag_filter_list': request.GET.getlist('tag'),
         'age_rating_filter_list': request.GET.getlist('age_rating'),
@@ -257,105 +299,434 @@ def manga_list(request):
         'status_filter_list': request.GET.getlist('status'),
         'translation_filter_list': request.GET.getlist('translation_status'),
 
-        # Ranges
+        # Oraliqlar
         'min_chapters': request.GET.get('min_chapters', ''),
         'max_chapters': request.GET.get('max_chapters', ''),
         'min_year': request.GET.get('min_year', ''),
         'max_year': request.GET.get('max_year', ''),
 
-        # Choices for checkboxes
+        # Checkbox tanlovlari
         'status_choices': status_choices,
         'age_rating_choices': age_rating_choices,
         'type_choices': type_choices,
         'translation_choices': translation_choices,
-
-        "top_translators": top_translators,
-        "active_progress": active_progress,
-        "trending_mangas": trending_mangas,
-        "latest_mangas": latest_mangas,
     }
 
-    response = render(request, 'manga/manga_list.html', context)
-    
-    # Cache full response only for anonymous users
+    response = render(request, 'manga/browse.html', context)
+
+    # 13) To‘liq response-cache (faqat anonim) — 15 daqiqa
     if not request.user.is_authenticated:
-        cache.set(cache_key, response, 60*15)  # Cache for 15 minutes
-        
+        cache.set(cache_key, response, 60*15)
+
     return response
+
+
+
+
+
+
+
+
+# def manga_list(request):
+#     # 1) Generate cache key based on request parameters and user auth status
+#     cache_key = f"manga_list_{urlencode(request.GET)}_{request.user.is_authenticated}"
+    
+#     # For anonymous users, try to get cached response
+#     if not request.user.is_authenticated:
+#         cached_response = cache.get(cache_key)
+#         if cached_response:
+#             return cached_response
+
+#     # 1) Get user profile
+#     user_profile = None
+#     if request.user.is_authenticated:
+#         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+
+#     # 2) Base queryset with caching for common parts
+#     def get_base_queryset():
+#         return Manga.objects.all()
+
+#     qs = get_cached_or_query('base_manga_queryset', get_base_queryset, 60*60)  # Cache for 1 hour
+
+#     # 0) Search by keyword
+#     search_query = request.GET.get('search', '').strip()
+#     if search_query:
+#         qs = qs.filter(
+#             Q(title__icontains=search_query) |
+#             Q(author__icontains=search_query) |
+#             Q(description__icontains=search_query)
+#         ).distinct()
+
+#     # 1) Checkbox filters
+#     filter_mappings = {
+#         'genre': ('genres__name', True),
+#         'age_rating': ('age_rating', False),
+#         'type': ('type', False),
+#         'tag': ('tags__name', True),
+#         'status': ('status', False),
+#         'translation_status': ('translation_status', False),
+#     }
+
+#     for param, (field, distinct) in filter_mappings.items():
+#         filter_list = request.GET.getlist(param)
+#         if filter_list:
+#             filter_kwargs = {f"{field}__in": filter_list}
+#             qs = qs.filter(**filter_kwargs)
+#             if distinct:
+#                 qs = qs.distinct()
+
+#     # 2) Chapter count range
+#     min_chap = request.GET.get('min_chapters')
+#     max_chap = request.GET.get('max_chapters')
+#     if min_chap or max_chap:
+#         qs = qs.annotate(chap_count=Count('chapters'))
+#         if min_chap:
+#             try:
+#                 iv = int(min_chap)
+#                 if iv > 0:
+#                     qs = qs.filter(chap_count__gte=iv)
+#             except ValueError:
+#                 pass
+#         if max_chap:
+#             try:
+#                 iv = int(max_chap)
+#                 if iv > 0:
+#                     qs = qs.filter(chap_count__lte=iv)
+#             except ValueError:
+#                 pass
+
+#     # 3) Publication year range
+#     min_year = request.GET.get('min_year')
+#     max_year = request.GET.get('max_year')
+#     if min_year:
+#         try:
+#             iy = int(min_year)
+#             if iy >= 1:
+#                 qs = qs.filter(publication_date__year__gte=iy)
+#         except ValueError:
+#             pass
+#     if max_year:
+#         try:
+#             iy = int(max_year)
+#             if iy >= 1:
+#                 qs = qs.filter(publication_date__year__lte=iy)
+#         except ValueError:
+#             pass
+
+#     # 4) Sorting
+#     sort = request.GET.get('sort', 'chapters')
+#     if sort == 'chapters':
+#         if not qs.query.annotations.get('chap_count'):
+#             qs = qs.annotate(chap_count=Count('chapters'))
+#         qs = qs.order_by('-chap_count', 'title')
+#     elif sort == 'title_asc':
+#         qs = qs.order_by('title')
+#     elif sort == 'title_desc':
+#         qs = qs.order_by('-title')
+#     else:
+#         qs = qs.order_by('title')
+
+#     # 5) Load ReadingStatus for current user
+#     if user_profile:
+#         qs = qs.prefetch_related(
+#             Prefetch(
+#                 'readingstatus_set',
+#                 queryset=ReadingStatus.objects.filter(user_profile=user_profile),
+#                 to_attr='user_status'
+#             )
+#         )
+
+#     # 6) Pagination
+#     paginator = Paginator(qs, 16)
+#     page_obj = paginator.get_page(request.GET.get('page'))
+
+#     # 7) Prepare template references with caching
+#     def get_choices(field_name):
+#         return Manga._meta.get_field(field_name).choices
+
+#     status_choices = get_cached_or_query(
+#         'status_choices',
+#         lambda: get_choices('status'),
+#         60*60*24
+#     )
+    
+#     age_rating_choices = get_cached_or_query(
+#         'age_rating_choices',
+#         lambda: get_choices('age_rating'),
+#         60*60*24
+#     )
+    
+#     type_choices = get_cached_or_query(
+#         'type_choices',
+#         lambda: get_choices('type'),
+#         60*60*24
+#     )
+    
+#     translation_choices = get_cached_or_query(
+#         'translation_choices',
+#         lambda: get_choices('translation_status'),
+#         60*60*24
+#     )
+
+#     # Cache top translators
+#     def get_top_translators():
+#         return (
+#             UserProfile.objects
+#             .filter(is_translator=True)
+#             .annotate(
+#                 manga_count   = Count("user__mangas_created", distinct=True),
+#                 follower_count= Count("followers",         distinct=True),
+#                 likes_count   = Count("user__mangas_created__chapters__thanks", distinct=True),
+#             )
+#             .order_by("-likes_count", "-follower_count")[:4]
+#         )
+
+#     top_translators = get_cached_or_query(
+#         'top_translators',
+#         get_top_translators,
+#         60*60*12  # 12 hours
+#     )
+
+#     # Currently reading (last 24 hours) - don't cache as it's highly dynamic
+#     active_progress = (
+#         ReadingProgress.objects
+#         .filter(updated_at__gte=now()-timedelta(hours=24))
+#         .select_related("manga")
+#         .order_by("-updated_at")[:6]
+#     )
+
+#     # Trending mangas - cache for 1 hour
+#     def get_trending_mangas():
+#         trending = (
+#             ReadingProgress.objects
+#             .values("manga")
+#             .annotate(readers=Count("user"))
+#             .order_by("-readers")[:25]
+#         )
+#         return list(Manga.objects.filter(id__in=[x["manga"] for x in trending]))
+
+#     trending_mangas = get_cached_or_query(
+#         'trending_mangas',
+#         get_trending_mangas,
+#         60*60  # 1 hour
+#     )
+
+#     # Latest added titles (with >=10 chapters) - cache for 6 hours
+#     def get_latest_mangas():
+#         return list(
+#             Manga.objects.annotate(chap_count=Count("chapters"))
+#             .filter(chap_count__gte=10)
+#             .order_by("-id")[:10]
+#         )
+
+#     latest_mangas = get_cached_or_query(
+#         'latest_mangas',
+#         get_latest_mangas,
+#         60*60*6  # 6 hours
+#     )
+
+#     # Get genres and tags with caching
+#     def get_all_genres():
+#         return list(Genre.objects.all())
+
+#     def get_all_tags():
+#         return list(Tag.objects.all())
+
+#     genres = get_cached_or_query('all_genres', get_all_genres, 60*60*24)
+#     tags = get_cached_or_query('all_tags', get_all_tags, 60*60*24)
+
+#     context = {
+#         'genres': genres,
+#         'tags': tags,
+#         'page_obj': page_obj,
+#         'search': search_query,
+#         'sort': sort,
+
+#         # Selected filters
+#         'genre_filter_list': request.GET.getlist('genre'),
+#         'tag_filter_list': request.GET.getlist('tag'),
+#         'age_rating_filter_list': request.GET.getlist('age_rating'),
+#         'type_filter_list': request.GET.getlist('type'),
+#         'status_filter_list': request.GET.getlist('status'),
+#         'translation_filter_list': request.GET.getlist('translation_status'),
+
+#         # Ranges
+#         'min_chapters': request.GET.get('min_chapters', ''),
+#         'max_chapters': request.GET.get('max_chapters', ''),
+#         'min_year': request.GET.get('min_year', ''),
+#         'max_year': request.GET.get('max_year', ''),
+
+#         # Choices for checkboxes
+#         'status_choices': status_choices,
+#         'age_rating_choices': age_rating_choices,
+#         'type_choices': type_choices,
+#         'translation_choices': translation_choices,
+
+#         "top_translators": top_translators,
+#         "active_progress": active_progress,
+#         "trending_mangas": trending_mangas,
+#         "latest_mangas": latest_mangas,
+#     }
+
+#     response = render(request, 'manga/manga_list.html', context)
+    
+#     # Cache full response only for anonymous users
+#     if not request.user.is_authenticated:
+#         cache.set(cache_key, response, 60*15)  # Cache for 15 minutes
+        
+#     return response
 
 # ====== детали манги ========================================================
 def manga_details(request, manga_slug):
     """
-    Detail view with *no caching*.
-    Retrieves all data directly from the database each request.
+    Detail view (cache-siz).
+    - Like holati/soni (Manga.likes M2M orqali)
+    - Foydalanuvchining oxirgi ochgan joyi (faqat bitta 'current' bob)
+    - 'O‘qilgan' belgisi faqat ChapterVisit bor bo‘lsa
+    - Ko‘rinadigan ruxsat: can_read() orqali (free / muallif / xarid qilingan)
     """
-    # --- Base objects -------------------------------------------------------
-    order = request.GET.get("order", "desc")
-    manga = get_object_or_404(Manga, slug=manga_slug)
+    # --- Base ---------------------------------------------------------------
+    order = request.GET.get("order", "desc").lower()
+    manga = get_object_or_404(
+        Manga.objects.select_related("created_by").prefetch_related("genres", "tags", "telegram_links"),
+        slug=manga_slug
+    )
 
-    # --- User-specific data --------------------------------------------------
+    # --- User-specific ------------------------------------------------------
     reading_status = None
-    purchased_chapter_ids = []
+    is_liked = False
+    likes_count = manga.likes.count()
+    like_toggle_url = None
+
+    reading_progress = None
+    progress_current_chapter_id = None
+    progress_current_page = None
+    visited_chapter_ids = []
 
     if request.user.is_authenticated:
+        # Profile mavjud bo'lsin (statuslar uchun)
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
+        # Reading status (planned/reading/completed/favorite)
         reading_status = (
-            ReadingStatus.objects.filter(user_profile=user_profile, manga=manga)
+            ReadingStatus.objects
+            .filter(user_profile=user_profile, manga=manga)
             .select_related("user_profile", "manga")
             .first()
         )
 
-        purchased_chapter_ids = list(
-            ChapterPurchase.objects.filter(
-                user=request.user, chapter__manga=manga
-            ).values_list("chapter_id", flat=True)
+        # Likes (foydalanuvchi like bosganmi)
+        is_liked = manga.likes.filter(pk=request.user.pk).exists()
+        # Toggle URL bo'lmasa sahifa yiqilmasin:
+        try:
+            like_toggle_url = reverse("manga:manga_like_toggle", kwargs={"slug": manga.slug})
+        except Exception:
+            like_toggle_url = None
+
+        # Progress (resume tugmasi uchun)
+        reading_progress = (
+            ReadingProgress.objects
+            .filter(user=request.user, manga=manga)
+            .select_related("last_read_chapter")
+            .first()
+        )
+        if reading_progress and reading_progress.last_read_chapter_id:
+            progress_current_chapter_id = reading_progress.last_read_chapter_id
+            progress_current_page = reading_progress.last_read_page
+
+        # Visited chapters (o‘qilganlar)
+        visited_chapter_ids = list(
+            ChapterVisit.objects
+            .filter(user=request.user, chapter__manga=manga)
+            .values_list("chapter_id", flat=True)
         )
 
-    # --- Chapters -----------------------------------------------------------
-    chapters_qs = manga.chapters.order_by(
-        "volume", "chapter_number"
-    ) if order == "asc" else manga.chapters.order_by("-volume", "-chapter_number")
+    # --- Chapters (ordering) ------------------------------------------------
+    if order == "asc":
+        chapters_qs = manga.chapters.order_by("volume", "chapter_number")
+    else:
+        chapters_qs = manga.chapters.order_by("-volume", "-chapter_number")
 
-    # Add simple access flags
     chapters = []
     for ch in chapters_qs:
-        if request.user.is_authenticated and ch.manga.created_by == request.user:
-            ch.can_read = True
-        else:
-            ch.can_read = ch.price_tanga == 0 or ch.id in purchased_chapter_ids
+        # Markaziy ruxsat siyosati
+        ch.can_read = can_read(request.user, manga, ch)
+
+        # Faqat bitta bobni current (resume)
+        ch.is_current = (progress_current_chapter_id == ch.id)
+        ch.current_page = progress_current_page if ch.is_current else None
+
+        # O‘qilgan belgisi (Visit mavjud bo'lsa)
+        ch.is_visited = (ch.id in visited_chapter_ids)
+
         chapters.append(ch)
 
-    first_chapter = manga.chapters.order_by("volume", "chapter_number").first()
+    # Eng birinchi bob (boshlash uchun)
+    first_chapter = (
+        manga.chapters.order_by("volume", "chapter_number").first()
+    )
 
-    # --- Similar mangas -----------------------------------------------------
+    # Start/Continue tugma maqsadi va label’i (templatega tayyor)
+    start_button_url = None
+    start_button_label = "O'qishni boshlash"
+    if progress_current_chapter_id:
+        # resume bobini topamiz (chapters ichidan)
+        resume = next((c for c in chapters if c.id == progress_current_chapter_id), None)
+        if resume:
+            start_button_url = reverse(
+                "manga:chapter_read",
+                kwargs={"manga_slug": manga.slug, "volume": resume.volume, "chapter_number": resume.chapter_number}
+            )
+            start_button_label = f"Davom ettirish (Bob {resume.chapter_number})"
+    elif first_chapter:
+        start_button_url = reverse(
+            "manga:chapter_read",
+            kwargs={"manga_slug": manga.slug, "volume": first_chapter.volume, "chapter_number": first_chapter.chapter_number}
+        )
+        start_button_label = "O'qishni boshlash"
+
+    # --- Similar mangas (janr bo‘yicha) ------------------------------------
     user_genres = manga.genres.all()
     similar_mangas = (
         Manga.objects.exclude(pk=manga.pk)
-        .annotate(
-            shared_genres=Count(
-                "genres", filter=Q(genres__in=user_genres), distinct=True
-            )
-        )
+        .annotate(shared_genres=Count("genres", filter=Q(genres__in=user_genres), distinct=True))
         .filter(shared_genres__gt=0)
         .order_by("-shared_genres", "title")[:10]
     )
 
-    # --- Telegram links & translator profile --------------------------------
+    # --- Telegram & translator ---------------------------------------------
     telegram_links = list(manga.telegram_links.all())
-    translator_profile = (
-        getattr(manga.created_by, "userprofile", None) if manga.created_by else None
-    )
+    translator_profile = getattr(manga.created_by, "userprofile", None) if manga.created_by else None
 
-    # --- Render -------------------------------------------------------------
+    # --- Context ------------------------------------------------------------
     context = {
         "manga": manga,
+
+        # reading list/status
         "reading_status": reading_status,
-        "first_chapter": first_chapter,
-        "chapters": chapters,
-        "current_order": order,
-        "similar_mangas": similar_mangas,
         "READING_STATUSES": READING_STATUSES,
+
+        # chapters / order
+        "chapters": chapters,
+        "first_chapter": first_chapter,
+        "current_order": order,
+
+        # visited + progress (template “O‘qilgan/Kelgan” belgisi uchun)
+        "visited_chapter_ids": visited_chapter_ids,
+        "progress_current_chapter_id": progress_current_chapter_id,
+        "progress_current_page": progress_current_page,
+
+        # Start/Continue action (templateda to‘g‘ridan-to‘g‘ri ishlating)
+        "start_button_url": start_button_url,
+        "start_button_label": start_button_label,
+
+        # likes
+        "is_liked": is_liked,
+        "likes_count": likes_count,
+        "like_toggle_url": like_toggle_url,
+
+        # extra blocks
+        "similar_mangas": similar_mangas,
         "telegram_links": telegram_links,
         "translator_profile": translator_profile,
     }
@@ -419,399 +790,46 @@ def thank_chapter(request, chapter_id):
     # Иначе — редирект как раньше
     return redirect('manga:chapter_read', chapter_id=chapter.id)
 
-# def chapter_read(request, manga_slug, volume, chapter_number):
-#     # Generate cache key based on chapter and user auth status
-#     cache_key = f"chapter_read_{manga_slug}_{volume}_{chapter_number}_{request.user.is_authenticated}"
-    
-#     # For anonymous users, try to get cached response
-#     if not request.user.is_authenticated:
-#         cached_response = cache.get(cache_key)
-#         if cached_response:
-#             return cached_response
-
-#     # Get manga with basic caching
-#     manga = get_object_or_404(Manga, slug=manga_slug)
-    
-#     # Get chapter with caching
-#     chapter = get_cached_or_query(
-#         f'chapter_{manga_slug}_{volume}_{chapter_number}',
-#         lambda: get_object_or_404(Chapter, manga=manga, volume=volume, chapter_number=chapter_number),
-#         60 * 60 * 24  # 24 hours
-#     )
-
-#     # === Paid chapter check ===
-#     if chapter.price_tanga > 0:
-#         if not request.user.is_authenticated:
-#             messages.warning(request, "Bobni o'qish uchun tizimga kiring!")
-#             return redirect("login")
-
-#         if chapter.created_by != request.user:
-#             is_purchased = get_cached_or_query(
-#                 f'chapter_purchased_{request.user.pk}_{chapter.pk}',
-#                 lambda: ChapterPurchase.objects.filter(
-#                     user=request.user, 
-#                     chapter=chapter
-#                 ).exists(),
-#                 60 * 60 * 3  # 3 hours
-#             )
-#             if not is_purchased:
-#                 return redirect("manga:purchase_chapter",
-#                               manga_slug=manga.slug,
-#                               volume=chapter.volume,
-#                               chapter_number=chapter.chapter_number)
-
-#     # === All chapters list ===
-#     all_chapters = get_cached_or_query(
-#         f'all_chapters_{manga_slug}',
-#         lambda: list(Chapter.objects.filter(manga=manga).order_by('-volume', '-chapter_number')),
-#         60 * 60 * 12  # 12 hours
-#     )
-
-#     # === Previous chapter ===
-#     previous_chapter = get_cached_or_query(
-#         f'prev_chapter_{manga_slug}_{volume}_{chapter_number}',
-#         lambda: Chapter.objects.filter(
-#             manga=manga
-#         ).filter(
-#             Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
-#             Q(volume__lt=chapter.volume)
-#         ).order_by('-volume', '-chapter_number').first(),
-#         60 * 60 * 24  # 24 hours
-#     )
-
-#     # === Next chapter ===
-#     next_chapter = get_cached_or_query(
-#         f'next_chapter_{manga_slug}_{volume}_{chapter_number}',
-#         lambda: (
-#             Chapter.objects.filter(
-#                 manga=manga,
-#                 volume=chapter.volume,
-#                 chapter_number__gt=chapter.chapter_number
-#             ).order_by('chapter_number').first() or
-#             Chapter.objects.filter(
-#                 manga=manga,
-#                 volume__gt=chapter.volume
-#             ).order_by('volume', 'chapter_number').first()
-#         ),
-#         60 * 60 * 24  # 24 hours
-#     )
-
-#     # === Next chapter price ===
-#     next_chapter_price = None
-#     if next_chapter and next_chapter.price_tanga > 0:
-#         if request.user.is_authenticated and next_chapter.created_by != request.user:
-#             is_purchased = get_cached_or_query(
-#                 f'chapter_purchased_{request.user.pk}_{next_chapter.pk}',
-#                 lambda: ChapterPurchase.objects.filter(
-#                     user=request.user, 
-#                     chapter=next_chapter
-#                 ).exists(),
-#                 60 * 60 * 3  # 3 hours
-#             )
-#             if not is_purchased:
-#                 next_chapter_price = next_chapter.price_tanga
-
-#     # === Reading progress ===
-#     progress = None
-#     user_read_chapters = []
-    
-#     if request.user.is_authenticated:
-#         # Don't cache progress as it's user-specific
-#         progress, created = ReadingProgress.objects.get_or_create(
-#             user=request.user,
-#             manga=manga,
-#             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
-#         )
-
-#         if not created and progress.last_read_chapter:
-#             is_newer = (
-#                 chapter.volume > progress.last_read_chapter.volume or
-#                 (chapter.volume == progress.last_read_chapter.volume and
-#                  chapter.chapter_number > progress.last_read_chapter.chapter_number)
-#             )
-#             if is_newer:
-#                 progress.last_read_chapter = chapter
-#                 progress.last_read_page = 1
-#                 progress.save()
-
-#         # Read chapters list (cache per user)
-#         user_read_chapters = get_cached_or_query(
-#             f'user_read_{request.user.pk}_{manga_slug}',
-#             lambda: list(
-#                 Chapter.objects.filter(manga=manga).filter(
-#                     Q(volume__lt=progress.last_read_chapter.volume) |
-#                     Q(volume=progress.last_read_chapter.volume,
-#                       chapter_number__lte=progress.last_read_chapter.chapter_number)
-#                 ).values_list('id', flat=True)
-#             ),
-#             60 * 60 * 6  # 6 hours
-#         )
-
-#     # === Pages ===
-#     pages = get_cached_or_query(
-#         f'pages_{manga_slug}_{volume}_{chapter_number}',
-#         lambda: list(chapter.pages.all().order_by('page_number')),
-#         60 * 60 * 24  # 24 hours
-#     )
-
-#     # === Purchased chapters ===
-#     purchased_chapters = []
-#     if request.user.is_authenticated:
-#         purchased_chapters = get_cached_or_query(
-#             f'purchased_{request.user.pk}_{manga_slug}',
-#             lambda: list(
-#                 ChapterPurchase.objects.filter(
-#                     user=request.user,
-#                     chapter__manga=manga
-#                 ).values_list("chapter_id", flat=True)
-#             ),
-#             60 * 60 * 3  # 3 hours
-#         )
-
-#     is_last_chapter = not next_chapter
-
-#     context = {
-#         'manga': manga,
-#         'chapter': chapter,
-#         'all_chapters': all_chapters,
-#         'previous_chapter': previous_chapter,
-#         'next_chapter': next_chapter,
-#         'next_chapter_price': next_chapter_price,
-#         'reading_progress': progress,
-#         'user_read_chapters': user_read_chapters,
-#         'pages': pages,
-#         'purchased_chapters': purchased_chapters,
-#         'is_last_chapter': is_last_chapter,
-#     }
-
-#     response = render(request, 'manga/chapter_read.html', context)
-    
-#     # Cache full response only for anonymous users
-#     if not request.user.is_authenticated:
-#         cache.set(cache_key, response, 60 * 15)  # 15 minutes
-        
-#     return response
-
-# def chapter_read(request, manga_slug, volume, chapter_number):
-#     # 1) Cache kaliti va anonimizmga qarab oldindan tekshiruv
-#     cache_key = f"chapter_read_{manga_slug}_{volume}_{chapter_number}_{request.user.is_authenticated}"
-#     if not request.user.is_authenticated:
-#         cached = cache.get(cache_key)
-#         if cached:
-#             return cached
-
-#     # 2) Manga va Chapter obyektlarini olish (cache bilan)
-#     manga = get_object_or_404(Manga, slug=manga_slug)
-#     chapter = get_cached_or_query(
-#         cache_key=f'chapter_{manga_slug}_{volume}_{chapter_number}',
-#         queryset_func=lambda: get_object_or_404(
-#             Chapter,
-#             manga=manga,
-#             volume=volume,
-#             chapter_number=chapter_number
-#         ),
-#         timeout=60*60*24
-#     )
-
-#     # 3) Pullik bobga ruxsat tekshiruvi
-#     if chapter.price_tanga > 0:
-#         if not request.user.is_authenticated:
-#             messages.warning(request, "Bobni o'qish uchun tizimga kiring!")
-#             return redirect("login")
-
-#         # agar siz bob yaratgan emas, balki manga muallifi bo‘lmasangiz — sotib olishga yo‘naltir
-#         if manga.created_by != request.user:
-#             purchased = ChapterPurchase.objects.filter(
-#                 user=request.user,
-#                 chapter=chapter
-#             ).exists()
-#             if not purchased:
-#                 messages.warning(
-#                     request,
-#                     f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling."
-#                 )
-#                 return redirect(
-#                     "manga:purchase_chapter",
-#                     manga_slug=manga.slug,
-#                     volume=chapter.volume,
-#                     chapter_number=chapter.chapter_number
-#                 )
-
-#     # 4) Barchа boblarni ro‘yxat uchun olish (navigatsiya uchun)
-#     all_chapters = get_cached_or_query(
-#         cache_key=f'all_chapters_{manga_slug}',
-#         queryset_func=lambda: list(
-#             Chapter.objects
-#                    .filter(manga=manga)
-#                    .order_by('-volume', '-chapter_number')
-#         ),
-#         timeout=60*60*12
-#     )
-
-#     # 5) Oldingi va keyingi boblarni aniqlash
-#     previous_chapter = get_cached_or_query(
-#         cache_key=f'prev_chapter_{manga_slug}_{volume}_{chapter_number}',
-#         queryset_func=lambda: (
-#             Chapter.objects
-#                    .filter(manga=manga)
-#                    .filter(
-#                        Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
-#                        Q(volume__lt=chapter.volume)
-#                    )
-#                    .order_by('-volume', '-chapter_number')
-#                    .first()
-#         ),
-#         timeout=60*60*24
-#     )
-
-#     next_chapter = get_cached_or_query(
-#         cache_key=f'next_chapter_{manga_slug}_{volume}_{chapter_number}',
-#         queryset_func=lambda: (
-#             Chapter.objects
-#                    .filter(manga=manga,
-#                            volume=chapter.volume,
-#                            chapter_number__gt=chapter.chapter_number)
-#                    .order_by('chapter_number')
-#                    .first()
-#             or
-#             Chapter.objects
-#                    .filter(manga=manga,
-#                            volume__gt=chapter.volume)
-#                    .order_by('volume', 'chapter_number')
-#                    .first()
-#         ),
-#         timeout=60*60*24
-#     )
-
-#     # 6) Keyingi bob uchun narxini qayta tekshirish
-#     next_chapter_price = None
-#     if next_chapter and next_chapter.price_tanga > 0 \
-#        and request.user.is_authenticated \
-#        and manga.created_by != request.user:
-#         bought = ChapterPurchase.objects.filter(
-#             user=request.user,
-#             chapter=next_chapter
-#         ).exists()
-#         if not bought:
-#             next_chapter_price = next_chapter.price_tanga
-
-#     # 7) O‘qish progress’ini saqlash/yangilash
-#     progress, created = ReadingProgress.objects.get_or_create(
-#         user=request.user,
-#         manga=manga,
-#         defaults={'last_read_chapter': chapter, 'last_read_page': 1}
-#     )
-#     if not created:
-#         # agar ilgari hech bob o‘qilmagan bo‘lsa, birinchi marta belgilaymiz
-#         if progress.last_read_chapter is None:
-#             progress.last_read_chapter = chapter
-#             progress.last_read_page = 1
-#         else:
-#             # agar hozirgi bob ilgari o‘qilganidan keyinroq bo‘lsa, yangilaymiz
-#             prev = progress.last_read_chapter
-#             if (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
-#                 progress.last_read_chapter = chapter
-#                 progress.last_read_page = 1
-#         progress.save(update_fields=['last_read_chapter', 'last_read_page'])
-
-#     # 8) Foydalanuvchi ko‘rgan boblar ro‘yxati
-#     user_read_chapters = list(
-#         Chapter.objects
-#                .filter(manga=manga)
-#                .filter(
-#                    Q(volume__lt=progress.last_read_chapter.volume) |
-#                    Q(volume=progress.last_read_chapter.volume,
-#                      chapter_number__lte=progress.last_read_chapter.chapter_number)
-#                )
-#                .values_list('id', flat=True)
-#     )
-
-#     # 9) Bobning sahifalarini olish
-#     pages = get_cached_or_query(
-#         cache_key=f'pages_{manga_slug}_{volume}_{chapter_number}',
-#         queryset_func=lambda: list(
-#             chapter.pages.all().order_by('page_number')
-#         ),
-#         timeout=60*60*24
-#     )
-
-#     # 10) Allangan boblar ro‘yxati (chapters purchased)
-#     purchased_chapters = []
-#     if request.user.is_authenticated:
-#         purchased_chapters = list(
-#             ChapterPurchase.objects
-#                            .filter(user=request.user, chapter__manga=manga)
-#                            .values_list('chapter_id', flat=True)
-#         )
-
-#     # 11) oxirgi bobmi?
-#     is_last_chapter = (next_chapter is None)
-
-#     # 12) Kontekst va render
-#     context = {
-#         'manga': manga,
-#         'chapter': chapter,
-#         'all_chapters': all_chapters,
-#         'previous_chapter': previous_chapter,
-#         'next_chapter': next_chapter,
-#         'next_chapter_price': next_chapter_price,
-#         'reading_progress': progress,
-#         'user_read_chapters': user_read_chapters,
-#         'pages': pages,
-#         'purchased_chapters': purchased_chapters,
-#         'is_last_chapter': is_last_chapter,
-#     }
-#     response = render(request, 'manga/chapter_read.html', context)
-
-#     # 13) anonim foydalanuvchi uchun sahifani cache qilamiz
-#     if not request.user.is_authenticated:
-#         cache.set(cache_key, response, 60*15)
-
-#     return response
-
 
 def chapter_read(request, manga_slug, volume, chapter_number):
-    # 1) Manga va Chapter obyektlarini olish
+    # 1) Manga va Chapter
     manga = get_object_or_404(Manga, slug=manga_slug)
     chapter = get_object_or_404(
-        Chapter,
-        manga=manga,
-        volume=volume,
-        chapter_number=chapter_number
+        Chapter, manga=manga, volume=volume, chapter_number=chapter_number
     )
 
-    # 2) Pullik bobga ruxsat tekshiruvi
-    if chapter.price_tanga > 0:
+    # 2) Ruxsat: markaziy siyosat
+    #    - Free (price_tanga == 0) — ruxsat
+    #    - Muallif yoki superuser — ruxsat
+    #    - Xarid qilingan bo‘lsa — ruxsat
+    #    - Aks holda:
+    #        * not auth -> login sahifasiga
+    #        * auth -> purchase sahifasiga yo‘naltirish
+    if not can_read(request.user, manga, chapter):
         if not request.user.is_authenticated:
-            messages.warning(request, "Bobni o'qish uchun tizimga kiring!")
+            messages.warning(request, "Bobni o‘qish uchun tizimga kiring!")
             return redirect("login")
+        # Auth bo‘lsa — purchase view’ga yo‘naltiramiz
+        messages.warning(
+            request,
+            f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling."
+        )
+        return redirect(
+            "manga:purchase_chapter",
+            manga_slug=manga.slug,
+            volume=chapter.volume,
+            chapter_number=chapter.chapter_number,
+        )
 
-        # agar siz bob yaratgan emas, balki manga muallifi bo'lmasangiz — sotib olishga yo'naltir
-        if manga.created_by != request.user:
-            purchased = ChapterPurchase.objects.filter(
-                user=request.user,
-                chapter=chapter
-            ).exists()
-            if not purchased:
-                messages.warning(
-                    request,
-                    f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling."
-                )
-                return redirect(
-                    "manga:purchase_chapter",
-                    manga_slug=manga.slug,
-                    volume=chapter.volume,
-                    chapter_number=chapter.chapter_number
-                )
-
-    # 3) Barchа boblarni ro'yxat uchun olish (navigatsiya uchun)
+    # 3) Navigatsiya uchun barcha boblar (dropdown)
+    #    (desc tartib — siz hohlasangiz asc ham qilishingiz mumkin)
     all_chapters = list(
         Chapter.objects
                .filter(manga=manga)
                .order_by('-volume', '-chapter_number')
     )
 
-    # 4) Oldingi va keyingi boblarni aniqlash
+    # 4) Oldingi / Keyingi boblar
     previous_chapter = (
         Chapter.objects
                .filter(manga=manga)
@@ -825,71 +843,61 @@ def chapter_read(request, manga_slug, volume, chapter_number):
 
     next_chapter = (
         Chapter.objects
-               .filter(manga=manga,
-                       volume=chapter.volume,
-                       chapter_number__gt=chapter.chapter_number)
+               .filter(manga=manga, volume=chapter.volume, chapter_number__gt=chapter.chapter_number)
                .order_by('chapter_number')
                .first()
         or
         Chapter.objects
-               .filter(manga=manga,
-                       volume__gt=chapter.volume)
+               .filter(manga=manga, volume__gt=chapter.volume)
                .order_by('volume', 'chapter_number')
                .first()
     )
 
-    # 5) Keyingi bob uchun narxini qayta tekshirish
+    # 5) Keyingi bob pullik bo‘lsa — modalda ko‘rsatish uchun narx
+    #    Faqat autentifikatsiyadan o‘tgan user’ga ko‘rsatamiz (anon uchun modal yo‘q).
     next_chapter_price = None
-    if next_chapter and next_chapter.price_tanga > 0 \
-       and request.user.is_authenticated \
-       and manga.created_by != request.user:
-        bought = ChapterPurchase.objects.filter(
-            user=request.user,
-            chapter=next_chapter
-        ).exists()
-        if not bought:
-            next_chapter_price = next_chapter.price_tanga
+    if request.user.is_authenticated and next_chapter:
+        # agar keyingi bobga can_read yo‘q bo‘lsa va pullik bo‘lsa
+        if next_chapter.price_tanga > 0 and not can_read(request.user, manga, next_chapter):
+            # xarid qilinmagan (yoki muallif emas) holatda narx ko‘rsatamiz
+            purchased = ChapterPurchase.objects.filter(
+                user=request.user, chapter=next_chapter
+            ).exists()
+            if not purchased and manga.created_by != request.user:
+                next_chapter_price = next_chapter.price_tanga
 
-    # 6) O'qish progress'ini saqlash/yangilash
+    # 6) Visit + Progress (faqat oldinga)
     if request.user.is_authenticated:
+        # — bu bob ochildi (o‘qilganlar ro‘yxati uchun)
+        ChapterVisit.objects.get_or_create(user=request.user, chapter=chapter)
+
+        # — progress faqat oldinga yangilanadi
         progress, created = ReadingProgress.objects.get_or_create(
-            user=request.user,
-            manga=manga,
+            user=request.user, manga=manga,
             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
         )
         if not created:
-            # agar ilgari hech bob o'qilmagan bo'lsa, birinchi marta belgilaymiz
-            if progress.last_read_chapter is None:
+            prev = progress.last_read_chapter
+            if prev is None or (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
                 progress.last_read_chapter = chapter
                 progress.last_read_page = 1
-            else:
-                # agar hozirgi bob ilgari o'qilganidan keyinroq bo'lsa, yangilaymiz
-                prev = progress.last_read_chapter
-                if (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
-                    progress.last_read_chapter = chapter
-                    progress.last_read_page = 1
             progress.save(update_fields=['last_read_chapter', 'last_read_page'])
     else:
         progress = None
 
-    # 7) Foydalanuvchi ko'rgan boblar ro'yxati
+    # 7) Foydalanuvchi ochgan (visited) boblar ID’lari
     user_read_chapters = []
-    if request.user.is_authenticated and progress and progress.last_read_chapter:
+    if request.user.is_authenticated:
         user_read_chapters = list(
-            Chapter.objects
-                   .filter(manga=manga)
-                   .filter(
-                       Q(volume__lt=progress.last_read_chapter.volume) |
-                       Q(volume=progress.last_read_chapter.volume,
-                         chapter_number__lte=progress.last_read_chapter.chapter_number)
-                   )
-                   .values_list('id', flat=True)
+            ChapterVisit.objects
+                        .filter(user=request.user, chapter__manga=manga)
+                        .values_list('chapter_id', flat=True)
         )
 
-    # 8) Bobning sahifalarini olish
+    # 8) Sahifalar
     pages = list(chapter.pages.all().order_by('page_number'))
 
-    # 9) Sotib olingan boblar ro'yxati (chapters purchased)
+    # 9) Sotib olingan boblar
     purchased_chapters = []
     if request.user.is_authenticated:
         purchased_chapters = list(
@@ -898,10 +906,10 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                            .values_list('chapter_id', flat=True)
         )
 
-    # 10) oxirgi bobmi?
+    # 10) Oxirgi bobmi?
     is_last_chapter = (next_chapter is None)
 
-    # 11) Kontekst va render
+    # 11) Render
     context = {
         'manga': manga,
         'chapter': chapter,
@@ -910,10 +918,9 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'next_chapter': next_chapter,
         'next_chapter_price': next_chapter_price,
         'reading_progress': progress,
-        'user_read_chapters': user_read_chapters,
+        'user_read_chapters': user_read_chapters,   # (visited IDs)
         'pages': pages,
         'purchased_chapters': purchased_chapters,
         'is_last_chapter': is_last_chapter,
     }
-    
     return render(request, 'manga/chapter_read.html', context)
