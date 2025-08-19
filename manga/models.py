@@ -45,6 +45,19 @@ class MangaTelegramLink(models.Model):
     def __str__(self):
         return self.name or self.link
 
+class MangaLike(models.Model):
+    manga = models.ForeignKey("Manga", on_delete=models.CASCADE, related_name="like_set")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="manga_likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("manga", "user")
+        verbose_name = "Manga like"
+        verbose_name_plural = "Manga likelar"
+
+    def __str__(self):
+        return f"{self.user.username} ❤ {self.manga.title}"
+
 class Manga(models.Model): 
     title = models.CharField(max_length=255, verbose_name="Nomi")
     author = models.CharField(max_length=255, verbose_name="Muallifi")
@@ -87,6 +100,13 @@ class Manga(models.Model):
         default="Not Translated",
         verbose_name="Tarjima holati"
     )
+    likes = models.ManyToManyField(
+        User,
+        through='MangaLike',
+        related_name='liked_mangas',
+        blank=True,
+        verbose_name="Like qilgan foydalanuvchilar"
+    )
     slug = models.SlugField(max_length=255, unique=True, blank=True)
 
     created_by = models.ForeignKey(
@@ -126,6 +146,26 @@ class Manga(models.Model):
             self.cover_image.save(webp_name, ContentFile(buffer.read()), save=False)
 
         super().save(*args, **kwargs)
+
+    @property
+    def likes_count(self) -> int:
+        return self.likes.count()
+
+    # def is_liked_by(self, user: User) -> bool:
+    #     if not user or not user.is_authenticated:
+    #         return False
+    #     return self.likes.filter(pk=user.pk).exists()
+
+    # def toggle_like(self, user: User) -> bool:
+    #     """
+    #     True qaytarsa — like qo'yildi
+    #     False qaytarsa — like olib tashlandi
+    #     """
+    #     obj, created = MangaLike.objects.get_or_create(manga=self, user=user)
+    #     if created:
+    #         return True
+    #     obj.delete()
+    #     return False
 
 class Genre(models.Model):
     name = models.CharField(max_length=50, unique=True, verbose_name="Janr nomi")
@@ -186,6 +226,17 @@ class Chapter(models.Model):
     def thanks_count(self):
         return self.thanks.count()
     
+class ChapterVisit(models.Model):
+    user    = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chapter_visits")
+    chapter = models.ForeignKey("manga.Chapter", on_delete=models.CASCADE, related_name="visits")
+    visited_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "chapter")
+        indexes = [models.Index(fields=("user","chapter"))]
+
+    def __str__(self):
+        return f"{self.user} → {self.chapter}"
 
 class ChapterPurchase(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="purchased_chapters")
