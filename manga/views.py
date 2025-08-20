@@ -235,11 +235,19 @@ def manga_discover(request):
     )
 
     # ---------------- TOP KUN / HAFTA / OY (ChapterVisit) ------------------
-    def _top_by_period(hours: int, limit: int = 12):
-        since = now() - timedelta(hours=hours)
+    def _top_by_period(hours: int, offset_hours: int = 0, limit: int = 12):
+        """
+        Disjoint oraliq:
+          - end = now() - offset_hours
+          - since = end - hours
+          -> [since, end) oralig‘idagi vizitlar olinadi
+        """
+        end = now() - timedelta(hours=offset_hours)
+        since = end - timedelta(hours=hours)
+    
         agg = (
             ChapterVisit.objects
-            .filter(visited_at__gte=since)
+            .filter(visited_at__gte=since, visited_at__lt=end)
             .values("chapter__manga")
             .annotate(
                 readers=Count("user", distinct=True),
@@ -247,8 +255,10 @@ def manga_discover(request):
             )
             .order_by("-readers", "-last")[:limit]
         )
+    
         ids = [row["chapter__manga"] for row in agg]
         m_map = {m.id: m for m in Manga.objects.filter(id__in=ids)}
+    
         ranked = []
         for row in agg:
             m = m_map.get(row["chapter__manga"])
@@ -259,10 +269,22 @@ def manga_discover(request):
                     "last": row["last"],
                 })
         return ranked
-
-    top_day   = get_cached_or_query("discover_top_day",   lambda: _top_by_period(24,   12), 60 * 60)        # 1 soat
-    top_week  = get_cached_or_query("discover_top_week",  lambda: _top_by_period(24*7, 12), 60 * 60 * 3)    # 3 soat
-    top_month = get_cached_or_query("discover_top_month", lambda: _top_by_period(24*30,12), 60 * 60 * 6)    # 6 soat
+    
+    # Disjoint chaqiruvlar:
+    #  - Kun: [now-24h, now)
+    #  - Haftalik: [now-7d, now-24h)
+    #  - Oylik: [now-30d, now-7d)
+    top_day   = get_cached_or_query("discover_top_day_v2",
+                                    lambda: _top_by_period(24,      0,   12),
+                                    60 * 60)
+    
+    top_week  = get_cached_or_query("discover_top_week_v2",
+                                    lambda: _top_by_period(24*6,   24,   12),
+                                    60 * 60 * 3)
+    
+    top_month = get_cached_or_query("discover_top_month_v2",
+                                    lambda: _top_by_period(24*23, 24*7,  12),
+                                    60 * 60 * 6)
 
     # ---------------- TOP LIKED (MangaLike / Manga.likes) ------------------
     def _get_top_liked():
