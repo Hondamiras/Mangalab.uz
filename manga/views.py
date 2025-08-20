@@ -117,7 +117,7 @@ def manga_discover(request):
     Agar user kirgan bo‘lsa — 'Mening ro‘yxatim' (ReadingStatus bo‘yicha tab+karusel).
     """
 
-    # — foydalanuvchi profili (kerak bo‘lib qoladi)
+    # Profil (kerak bo‘lib qolsa)
     if request.user.is_authenticated:
         UserProfile.objects.get_or_create(user=request.user)
 
@@ -131,9 +131,9 @@ def manga_discover(request):
                 .annotate(
                     manga_count=Count("user__mangas_created", distinct=True),
                     follower_count=Count("followers", distinct=True),
-                    # MangaLike bo‘yicha
+                    # MangaLike orqali translator chiqarayotgan barcha manga-lardagi like-larni yig‘indisi
                     likes_count=Count("user__mangas_created__likes", distinct=True),
-                    # Agar denormal `likes_count` maydoni bo‘lsa, yuqoridagining o‘rniga:
+                    # Agar denormal likes_count bo‘lsa:
                     # likes_count=Coalesce(Sum("user__mangas_created__likes_count"), 0),
                 )
                 .order_by("-likes_count", "-follower_count")[:4]
@@ -157,10 +157,9 @@ def manga_discover(request):
             .order_by("-readers")[:25]
         )
         ids = [row["manga"] for row in trending]
-        # tartib saqlansin (simple)
-        id_pos = {i: p for p, i in enumerate(ids)}
+        id_pos = {i: p for p, i in enumerate(ids)}           # tartibni saqlash
         items = list(Manga.objects.filter(id__in=ids))
-        items.sort(key=lambda m: id_pos.get(m.id, 1_000_000))
+        items.sort(key=lambda m: id_pos.get(m.id, 10**9))
         return items
 
     trending_mangas = get_cached_or_query(
@@ -170,11 +169,10 @@ def manga_discover(request):
     )
 
     # ---------------- LATEST TITLES (2 soat cache) -------------------------
-    # Oxirgi qo‘shilgan taytlar (karusel uchun ~16 ta)
     def _get_latest_mangas():
         return list(
             Manga.objects
-            .annotate(chap_count=Count("chapters"))
+            .annotate(chap_count=Count("chapters", distinct=True))
             .filter(chap_count__gte=1)
             .order_by("-id")[:16]
         )
@@ -186,32 +184,33 @@ def manga_discover(request):
     )
 
     # ---------------- HOZIR O‘QILAYOTGANLAR (unique by manga) --------------
-    base_qs = ReadingProgress.objects.filter(updated_at__gte=now() - timedelta(hours=24))
-
-    if connection.vendor == "postgresql":
-        rp = (
-            base_qs
-            .select_related("manga")
-            .order_by("manga", "-updated_at")
-            .distinct("manga")[:18]
-        )
-        active_progress = [{"manga": r.manga, "updated_at": r.updated_at} for r in rp]
-    else:
+    # DISTINCT ON o‘rniga — guruhlash + Max(updated_at), har DB’da ishlaydi
+    def _get_active_progress():
+        since = now() - timedelta(hours=24)
         recent = (
-            base_qs.values("manga")
+            ReadingProgress.objects
+            .filter(updated_at__gte=since)
+            .values("manga")
             .annotate(last=Max("updated_at"))
             .order_by("-last")[:18]
         )
         manga_ids = [row["manga"] for row in recent]
-        manga_map = {m.id: m for m in Manga.objects.filter(id__in=manga_ids)}
-        active_progress = []
+        m_map = {m.id: m for m in Manga.objects.filter(id__in=manga_ids)}
+        out = []
         for row in recent:
-            mid = row["manga"]
-            m = manga_map.get(mid)
+            m = m_map.get(row["manga"])
             if m:
-                active_progress.append({"manga": m, "updated_at": row["last"]})
+                out.append({"manga": m, "updated_at": row["last"]})
+        return out
+
+    active_progress = get_cached_or_query(
+        "discover_active_progress_24h",
+        _get_active_progress,
+        15 * 60,  # 15 daqiqa
+    )
 
     # ---------------- YANGI 15 TA QO‘SHILGAN BOB (unique by manga) --------
+    # Tez va sodda: oxirgi 300 bobdan har mangadan bittadan terib chiqamiz
     def _get_latest_updates_unique():
         raw = (
             Chapter.objects
@@ -221,10 +220,9 @@ def manga_discover(request):
         seen = set()
         items = []
         for ch in raw:
-            mid = ch.manga_id
-            if mid in seen:
+            if ch.manga_id in seen:
                 continue
-            seen.add(mid)
+            seen.add(ch.manga_id)
             items.append({"manga": ch.manga, "chapter": ch})
             if len(items) >= 15:
                 break
@@ -250,18 +248,21 @@ def manga_discover(request):
             .order_by("-readers", "-last")[:limit]
         )
         ids = [row["chapter__manga"] for row in agg]
-        manga_map = {m.id: m for m in Manga.objects.filter(id__in=ids)}
+        m_map = {m.id: m for m in Manga.objects.filter(id__in=ids)}
         ranked = []
         for row in agg:
-            mid = row["chapter__manga"]
-            m = manga_map.get(mid)
+            m = m_map.get(row["chapter__manga"])
             if m:
-                ranked.append({"manga": m, "readers": row["readers"], "last": row["last"]})
+                ranked.append({
+                    "manga": m,
+                    "readers": row["readers"],
+                    "last": row["last"],
+                })
         return ranked
 
-    top_day   = get_cached_or_query("discover_top_day",   lambda: _top_by_period(24,  12), 60 * 60)       # 1 soat
-    top_week  = get_cached_or_query("discover_top_week",  lambda: _top_by_period(24*7, 12), 60 * 60 * 3)  # 3 soat
-    top_month = get_cached_or_query("discover_top_month", lambda: _top_by_period(24*30,12), 60 * 60 * 6)  # 6 soat
+    top_day   = get_cached_or_query("discover_top_day",   lambda: _top_by_period(24,   12), 60 * 60)        # 1 soat
+    top_week  = get_cached_or_query("discover_top_week",  lambda: _top_by_period(24*7, 12), 60 * 60 * 3)    # 3 soat
+    top_month = get_cached_or_query("discover_top_month", lambda: _top_by_period(24*30,12), 60 * 60 * 6)    # 6 soat
 
     # ---------------- TOP LIKED (MangaLike / Manga.likes) ------------------
     def _get_top_liked():
@@ -280,30 +281,28 @@ def manga_discover(request):
     # ---------------- MY LIST (ReadingStatus) ------------------------------
     my_list = {}
     if request.user.is_authenticated:
-        # Eng ko‘p ishlatiladigan to‘rtta statusni tab qilib ko‘rsatamiz
         wanted = ["reading", "planned", "completed", "favorite"]
-        qs = (
+        rs_qs = (
             ReadingStatus.objects
             .filter(user_profile__user=request.user, status__in=wanted)
             .select_related("manga")
             .order_by("-id")
         )
-
-        # status bo‘yicha 15 tadan ajratib beramiz
+        # status bo‘yicha 15 tadan
         for st in wanted:
-            st_list = []
-            for rs in qs:
+            group = []
+            for rs in rs_qs:
                 if rs.status == st and rs.manga:
-                    st_list.append(rs.manga)
-                if len(st_list) >= 15:
+                    group.append(rs.manga)
+                if len(group) >= 15:
                     break
-            my_list[st] = st_list
+            my_list[st] = group
 
     status_tabs = [
-    ("reading",   "O‘qilmoqda"),
-    ("planned",   "Rejada"),
-    ("completed", "Tugallangan"),
-    ("favorite",  "Sevimli"),
+        ("reading",   "O‘qilmoqda"),
+        ("planned",   "Rejada"),
+        ("completed", "Tugallangan"),
+        ("favorite",  "Sevimli"),
     ]
 
     context = {
