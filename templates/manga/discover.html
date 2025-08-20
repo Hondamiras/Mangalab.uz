@@ -447,14 +447,10 @@
     <h2 class="text-lg sm:text-xl font-semibold text-white tracking-tight">
       <span class="inline-flex items-center gap-2">
         <svg class="h-5 w-5 text-pink-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v2H3zM7 7h14v2H7zM3 11h18v2H3zM7 15h14v2H7zM3 19h18v2H3z"/></svg>
-        TOP Kun / TOP Haftalik / TOP Oylik
+        TOP Kun
       </span>
     </h2>
-  </div>
-
-  <div class="mb-6">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-gray-200">TOP Kun</h3>
       <div class="flex gap-2">
         <button id="topDayPrev" class="navbtn" aria-label="Oldingi">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -470,6 +466,10 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <div class="mb-6">
+
     <div id="topDayRow" class="row-scroll no-scrollbar flex gap-3 snap-x snap-mandatory scroll-p-4 pr-1">
       {% for it in top_day %}
         <div class="snap-start w-44 sm:w-48 flex-shrink-0">
@@ -479,81 +479,6 @@
                 <img src="{{ it.manga.cover_image.url }}" class="w-full h-full object-cover" alt="{{ it.manga.title }}">
                 <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
                   <h4 class="text-white text-sm font-semibold truncate">{{ it.manga.title }}</h4>
-                  <div class="mt-1 text-xs text-purple-300">{{ it.readers }} o‘quvchi</div>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <div class="mb-6">
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-gray-200">TOP Haftalik</h3>
-      <div class="flex gap-2">
-        <button id="topWeekPrev" class="navbtn" aria-label="Oldingi">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button id="topWeekNext" class="navbtn" aria-label="Keyingi">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-    <div id="topWeekRow" class="row-scroll no-scrollbar flex gap-3 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for it in top_week %}
-        <div class="snap-start w-44 sm:w-48 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' it.manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ it.manga.cover_image.url }}" class="w-full h-full object-cover" alt="{{ it.manga.title }}">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h4 class="text-white text-sm font-semibold truncate">{{ it.manga.title }}</h4>
-                  <div class="mt-1 text-xs text-purple-300">{{ it.readers }} o‘quvchi</div>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <div>
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-gray-200">TOP Oylik</h3>
-      <div class="flex gap-2">
-        <button id="topMonthPrev" class="navbtn" aria-label="Oldingi">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button id="topMonthNext" class="navbtn" aria-label="Keyingi">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-    <div id="topMonthRow" class="row-scroll no-scrollbar flex gap-3 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for it in top_month %}
-        <div class="snap-start w-44 sm:w-48 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' it.manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ it.manga.cover_image.url }}" class="w-full h-full object-cover" alt="{{ it.manga.title }}">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h4 class="text-white text-sm font-semibold truncate">{{ it.manga.title }}</h4>
-                  <div class="mt-1 text-xs text-purple-300">{{ it.readers }} o‘quvchi</div>
                 </div>
               </div>
             </div>
