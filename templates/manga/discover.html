@@ -26,164 +26,7 @@
   .navbtn svg{ width: 1.25rem; height: 1.25rem; display:block; }
 </style>
 
-<div class="container mx-auto max-w-screen-2xl px-4 py-6">
-
-{% if my_list.reading or my_list.planned or my_list.completed or my_list.favorite %}
-<section class="mb-10" x-data="{tab:'reading'}">
-  <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    <h2 class="text-lg sm:text-xl font-semibold text-white tracking-tight">
-      <span class="inline-flex items-center gap-2">
-        <svg class="h-5 w-5 text-purple-400" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4h10v2H7zM7 8h10v2H7zM7 12h10v2H7zM7 16h10v2H7z"/></svg>
-        Mening ro‘yxatim
-      </span>
-    </h2>
-
-    <div class="flex flex-wrap gap-2 sm:ml-auto">
-      {% for key,label in status_tabs %}
-        <button class="px-3 py-1 rounded-md text-sm"
-                :class="tab==='{{ key }}' ? 'bg-purple-700 text-white' : 'bg-gray-800 text-gray-300'"
-                @click="tab='{{ key }}'">{{ label }}</button>
-      {% endfor %}
-    </div>
-  </div>
-
-  {# reading #}
-  <div x-show="tab==='reading'" x-cloak>
-    <div class="flex items-center justify-end gap-2 mb-2">
-      <button id="myReadingPrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="myReadingNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-    <div id="myReadingRow" class="row-scroll no-scrollbar flex gap-4 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for manga in my_list.reading %}
-        <div class="snap-start w-36 sm:w-40 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% empty %}<p class="text-gray-400">Bo‘sh.</p>{% endfor %}
-    </div>
-  </div>
-
-  {# planned #}
-  <div x-show="tab==='planned'" x-cloak>
-    <div class="flex items-center justify-end gap-2 mb-2">
-      <button id="myPlannedPrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="myPlannedNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-    <div id="myPlannedRow" class="row-scroll no-scrollbar flex gap-4 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for manga in my_list.planned %}
-        <div class="snap-start w-36 sm:w-40 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% empty %}<p class="text-gray-400">Bo‘sh.</p>{% endfor %}
-    </div>
-  </div>
-
-  {# completed #}
-  <div x-show="tab==='completed'" x-cloak>
-    <div class="flex items-center justify-end gap-2 mb-2">
-      <button id="myCompletedPrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="myCompletedNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-    <div id="myCompletedRow" class="row-scroll no-scrollbar flex gap-4 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for manga in my_list.completed %}
-        <div class="snap-start w-36 sm:w-40 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% empty %}<p class="text-gray-400">Bo‘sh.</p>{% endfor %}
-    </div>
-  </div>
-
-  {# favorite #}
-  <div x-show="tab==='favorite'" x-cloak>
-    <div class="flex items-center justify-end gap-2 mb-2">
-      <button id="myFavoritePrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="myFavoriteNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-    <div id="myFavoriteRow" class="row-scroll no-scrollbar flex gap-4 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for manga in my_list.favorite %}
-        <div class="snap-start w-36 sm:w-40 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% empty %}<p class="text-gray-400">Bo‘sh.</p>{% endfor %}
-    </div>
-  </div>
-</section>
-{% endif %}
+<div class="mx-auto px-4 py-6 sm:px-20">
 
 {% cache 3600 trending_manga_section %}
 <section aria-labelledby="trending-title" class="mb-10">
@@ -346,233 +189,208 @@
 </section>
 {% endcache %}
 
-{% cache 7200 latest_manga_section_carousel %}
-<section aria-labelledby="latest-title" class="mb-10">
+
+<section aria-labelledby="recent-title" class="mb-10">
   <div class="flex items-center justify-between mb-3">
-    <h2 id="latest-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
+    <h2 id="recent-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
       <span class="inline-flex items-center gap-2">
-        <svg class="h-5 w-5 text-green-400" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10S22 17.52 22 12 17.52 2 11.99 2z"/></svg>
-        Yangi qo‘shilgan taytlar
+        <svg class="h-5 w-5 text-sky-400" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M3 12l9-9 9 9-9 9-9-9z"/>
+        </svg>
+        Yaqinda qo‘shilganlar
       </span>
     </h2>
-    <div class="flex items-center gap-2">
-      <button id="latestPrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="latestNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
   </div>
 
-  <div id="latestRow" class="row-scroll no-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-p-4 pr-1" role="list">
-    {% for manga in latest_mangas %}
-      <div role="listitem" class="snap-start w-36 sm:w-40 flex-shrink-0">
-        <a href="{% url 'manga:manga_details' manga.slug %}" class="block">
-          <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition-transform hover:scale-[1.03]">
-            <div class="relative aspect-[3/4]">
-              <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}" class="w-full h-full object-cover">
-              <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                <h3 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h3>
-                <div class="mt-1 text-xs flex items-center justify-between">
-                  <span class="text-gray-300">{{ manga.type }}</span>
-                  <span class="text-purple-300">{{ manga.chapters.count }} Bob</span>
-                </div>
-              </div>
+  {# Desktop sarlavha qatori #}
+  <div class="hidden md:grid md:grid-cols-12 px-3 py-2 border-b border-gray-800 text-gray-400 text-sm">
+    <div class="col-span-5">Taytl</div>
+    <div class="col-span-4 text-center"></div>
+    <div class="col-span-3 text-right">Yangilangan vaqti</div>
+  </div>
+
+  <div class="flex flex-col divide-y divide-gray-800">
+    {% for item in recent_feed %}
+      {% with m=item.manga chs=item.chapters last=item.last total=item.total more=item.more %}
+      {# ===================== Mobile (≤ md) kartochka ===================== #}
+      <div class="md:hidden px-3 py-3">
+        <div class="grid grid-cols-[72px,1fr] gap-3">
+          <a href="{% url 'manga:manga_details' m.slug %}" class="col-span-1">
+            <img src="{{ m.cover_image.url }}" alt="{{ m.title }}"
+                 class="w-[72px] h-[100px] rounded-lg object-cover shadow" loading="lazy">
+          </a>
+
+          <div class="col-span-1 min-w-0">
+            <div class="flex items-center justify-between text-[11px] text-gray-400 mb-1">
+              <span class="truncate">{{ m.type }}</span>
+              <span class="flex items-center gap-1 shrink-0">
+                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 8V12l3 3 1-1-3-3V8z"/><path d="M12 2a10 10 0 100 20 10 10 0 000-20z"/>
+                </svg>
+                {{ last|timesince }} oldin
+              </span>
+            </div>
+
+            <a href="{% url 'manga:manga_details' m.slug %}"
+               class="block text-white font-semibold text-[15px] leading-snug line-clamp-2 hover:underline">
+              {{ m.title }}
+            </a>
+
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              {% for c in chs %}
+                <a href="{% url 'manga:chapter_read' m.slug c.obj.volume c.obj.chapter_number %}"
+                   class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-800/80 hover:bg-gray-700 text-[12px] text-purple-200">
+                  <span>Bob {{ c.obj.chapter_number }}</span>
+                </a>
+              {% endfor %}
+
+              {% if more %}
+                <a href="{% url 'manga:manga_details' m.slug %}"
+                   class="inline-flex items-center px-2 py-1 rounded-md text-[12px] text-gray-300 underline">
+                  Yana {{ more }}…
+                </a>
+              {% elif total > chs|length %}
+                <a href="{% url 'manga:manga_details' m.slug %}"
+                   class="inline-flex items-center px-2 py-1 rounded-md text-[12px] text-gray-300 underline">
+                  Yana boblar…
+                </a>
+              {% endif %}
             </div>
           </div>
-        </a>
+        </div>
       </div>
-    {% endfor %}
-  </div>
-</section>
-{% endcache %}
 
-<section aria-labelledby="updates-title" class="mb-10">
-  <div class="flex items-center justify-between mb-3">
-    <h2 id="updates-title" class="text-lg sm:text-xl font-semibold text-white tracking-tight">
-      <span class="inline-flex items-center gap-2">
-        <svg class="h-5 w-5 text-sky-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12l9-9 9 9-9 9-9-9z"/></svg>
-        Yangi qo‘shilgan boblar
-      </span>
-    </h2>
-    <div class="flex items-center gap-2">
-      <button id="updatesPrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="updatesNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-  </div>
-
-  <div id="updatesRow" class="row-scroll no-scrollbar flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-p-4 pr-1">
-    {% for item in latest_updates %}
-      {% with m=item.manga ch=item.chapter %}
-      <div class="snap-start w-44 sm:w-48 flex-shrink-0">
-        <a href="{% url 'manga:chapter_read' m.slug ch.volume ch.chapter_number %}">
-          <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-            <div class="relative aspect-[3/4]">
-              <img src="{{ m.cover_image.url }}" alt="{{ m.title }}" class="w-full h-full object-cover">
-              <div class="absolute top-2 left-2">
-                <span class="px-2 py-0.5 text-xs font-bold rounded-md bg-amber-600/90 text-white">Bob {{ ch.chapter_number }}</span>
-              </div>
-              <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                <h3 class="text-white text-sm font-semibold truncate">{{ m.title }}</h3>
-                <div class="mt-1 text-xs text-gray-300">{{ ch.release_date|date:"d.m.Y" }}</div>
-              </div>
-            </div>
-          </div>
+      {# ===================== Desktop (md+) eski qatordagi dizayn ===================== #}
+      <div class="hidden md:grid md:grid-cols-12 gap-3 px-3 py-4">
+        <!-- Cover -->
+        <a href="{% url 'manga:manga_details' m.slug %}" class="md:col-span-1">
+          <img src="{{ m.cover_image.url }}" alt="{{ m.title }}"
+               class="w-16 h-24 rounded-lg object-cover shadow" loading="lazy">
         </a>
+
+        <!-- Chap blok -->
+        <div class="md:col-span-4 min-w-0">
+          <a href="{% url 'manga:manga_details' m.slug %}"
+             class="block text-white font-semibold text-lg truncate hover:underline">
+            {{ m.title }}
+          </a>
+          <div class="text-gray-400 text-sm mt-1">
+            {{ total }} ta yangi bob
+          </div>
+        </div>
+
+        <!-- O‘rta blok: oxirgi 3 bob -->
+        <div class="md:col-span-5">
+          <div class="w-full">
+            {% for c in chs %}
+              <div class="flex items-center py-1.5">
+                {% if c.translators %}
+                  <div class="-space-x-2 flex flex-shrink-0">
+                    {% for t in c.translators %}
+                      {% if t.avatar %}
+                        <img src="{{ t.avatar.url }}" class="w-6 h-6 rounded-full ring-1 ring-gray-900"
+                             alt="{{ t.user.username }}" title="{{ t.user.username }}">
+                      {% else %}
+                        <div title="{{ t.user.username }}"
+                             class="w-6 h-6 rounded-full ring-1 ring-gray-900 bg-gray-700 text-white text-[10px] flex items-center justify-center">
+                          {{ t.user.username|first|upper }}
+                        </div>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="w-6"></div>
+                {% endif %}
+
+                <a href="{% url 'manga:chapter_read' m.slug c.obj.volume c.obj.chapter_number %}"
+                   class="ml-3 text-sm text-purple-200 hover:text-purple-100 truncate">
+                  {% if c.obj.volume %}Jild {{ c.obj.volume }}.{% endif %} Bob {{ c.obj.chapter_number }}
+                </a>
+              </div>
+            {% endfor %}
+
+            {% if more %}
+              <div class="pt-1">
+                <a href="{% url 'manga:manga_details' m.slug %}"
+                   class="ml-9 text-xs text-gray-400 hover:text-gray-200">
+                  Yana {{ more }} bob…
+                </a>
+              </div>
+            {% elif total > chs|length %}
+              <div class="pt-1">
+                <a href="{% url 'manga:manga_details' m.slug %}"
+                   class="ml-9 text-xs text-gray-400 hover:text-gray-200">
+                  Yana boblar…
+                </a>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- O‘ng blok: vaqt -->
+        <div class="md:col-span-2 flex items-start justify-end">
+          <div class="text-gray-400 text-sm flex items-center gap-1">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 8V12l3 3 1-1-3-3V8z"/>
+              <path d="M12 2a10 10 0 100 20 10 10 0 000-20zM12 20a8 8 0 110-16 8 8 0 010 16z"/>
+            </svg>
+            {{ last|timesince }} oldin
+          </div>
+        </div>
       </div>
       {% endwith %}
+    {% empty %}
+      <div class="px-3 py-6 text-gray-400">Hozircha yangilanish yo‘q.</div>
     {% endfor %}
   </div>
 </section>
 
-<section class="mb-10">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-lg sm:text-xl font-semibold text-white tracking-tight">
-      <span class="inline-flex items-center gap-2">
-        <svg class="h-5 w-5 text-pink-400" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h18v2H3zM7 7h14v2H7zM3 11h18v2H3zM7 15h14v2H7zM3 19h18v2H3z"/></svg>
-        TOP Kun
-      </span>
-    </h2>
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex gap-2">
-        <button id="topDayPrev" class="navbtn" aria-label="Oldingi">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <button id="topDayNext" class="navbtn" aria-label="Keyingi">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </div>
 
-  <div class="mb-6">
-
-    <div id="topDayRow" class="row-scroll no-scrollbar flex gap-3 snap-x snap-mandatory scroll-p-4 pr-1">
-      {% for it in top_day %}
-        <div class="snap-start w-44 sm:w-48 flex-shrink-0">
-          <a href="{% url 'manga:manga_details' it.manga.slug %}">
-            <div class="bg-gray-800 rounded-lg overflow-hidden shadow">
-              <div class="relative aspect-[3/4]">
-                <img src="{{ it.manga.cover_image.url }}" class="w-full h-full object-cover" alt="{{ it.manga.title }}">
-                <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                  <h4 class="text-white text-sm font-semibold truncate">{{ it.manga.title }}</h4>
-                </div>
-              </div>
-            </div>
-          </a>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
-</section>
-
-<section class="mb-4">
-  <div class="flex items-center justify-between mb-3">
-    <h2 class="text-lg sm:text-xl font-semibold text-white tracking-tight">
-      <span class="inline-flex items-center gap-2">
-        <svg class="h-5 w-5 text-red-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12.1 8.64l-.1.1-.11-.1C10.14 6.6 7.1 6.24 5.14 8.2c-2.07 2.07-1.48 5.44 1.06 7.32L12 21l5.8-5.48c2.54-1.88 3.13-5.25 1.06-7.32-1.96-1.96-5-1.6-6.76.44z"/></svg>
-        Eng ko‘p like bosilgan taytlar
-      </span>
-    </h2>
-    <div class="flex gap-2">
-      <button id="topLikedPrev" class="navbtn" aria-label="Oldingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <button id="topLikedNext" class="navbtn" aria-label="Keyingi">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-  </div>
-
-  <div id="topLikedRow" class="row-scroll no-scrollbar flex gap-3 snap-x snap-mandatory scroll-p-4 pr-1">
-    {% for manga in top_liked %}
-      <div class="snap-start w-44 sm:w-48 flex-shrink-0">
-        <a href="{% url 'manga:manga_details' manga.slug %}">
-          <div class="bg-gray-800 rounded-lg overflow-hidden shadow">
-            <div class="relative aspect-[3/4]">
-              <img src="{{ manga.cover_image.url }}" class="w-full h-full object-cover" alt="{{ manga.title }}">
-              <div class="absolute top-2 left-2">
-                <span class="px-2 py-0.5 text-xs font-bold rounded-md bg-red-600/90 text-white">
-                  ❤ {{ manga.likes_sum|default:"0" }}
-                </span>
-              </div>
-              <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black to-transparent">
-                <h4 class="text-white text-sm font-semibold truncate">{{ manga.title }}</h4>
-              </div>
-            </div>
-          </div>
-        </a>
-      </div>
-    {% endfor %}
-  </div>
-</section>
 
 </div>
 
 <script>
   (function () {
-    function setupScroller(rowId, prevId, nextId) {
-      const row  = document.getElementById(rowId);
-      const prev = document.getElementById(prevId);
-      const next = document.getElementById(nextId);
+    // Bitta karuselni ulash
+    function wire(base) {
+      const row  = document.getElementById(base + 'Row');
+      const prev = document.getElementById(base + 'Prev');
+      const next = document.getElementById(base + 'Next');
       if (!row || !prev || !next) return;
 
       const update = () => {
-        const max = row.scrollWidth - row.clientWidth - 1;
+        const max = Math.max(0, row.scrollWidth - row.clientWidth - 1);
         prev.disabled = row.scrollLeft <= 0;
         next.disabled = row.scrollLeft >= max;
       };
 
-      prev.addEventListener('click', () => row.scrollBy({ left: -row.clientWidth, behavior: 'smooth' }));
-      next.addEventListener('click', () => row.scrollBy({ left:  row.clientWidth, behavior: 'smooth' }));
-      row.addEventListener('scroll', update);
+      const scrollByPage = (dir) =>
+        row.scrollBy({ left: dir * row.clientWidth, behavior: 'smooth' });
+
+      prev.addEventListener('click', () => scrollByPage(-1));
+      next.addEventListener('click', () => scrollByPage(1));
+
+      // Performance uchun passiv listener
+      row.addEventListener('scroll', update, { passive: true });
       window.addEventListener('resize', update);
-      update();
+
+      // Ba’zi brauzerlarda scroll tugaganini ushlash (agar bo‘lsa)
+      row.addEventListener?.('scrollend', update);
+
+      // Dastlabki holat
+      requestAnimationFrame(update);
     }
 
-    // My list tabs (agar bor bo'lsa)
-    setupScroller('myReadingRow',  'myReadingPrev',  'myReadingNext');
-    setupScroller('myPlannedRow',  'myPlannedPrev',  'myPlannedNext');
-    setupScroller('myCompletedRow','myCompletedPrev','myCompletedNext');
-    setupScroller('myFavoriteRow', 'myFavoritePrev', 'myFavoriteNext');
+    // ID nomlash sharti: <prefix>Row / <prefix>Prev / <prefix>Next
+    // Masalan: trendingRow, trendingPrev, trendingNext
+    const bases = new Set(
+      Array.from(
+        document.querySelectorAll('button.navbtn[id$="Prev"], button.navbtn[id$="Next"]')
+      ).map(btn => btn.id.replace(/(Prev|Next)$/, ''))
+    );
 
-    // Sections
-    setupScroller('trendingRow', 'trendingPrev', 'trendingNext');
-    setupScroller('latestRow',   'latestPrev',   'latestNext');
-    setupScroller('updatesRow',  'updatesPrev',  'updatesNext');
-    setupScroller('topDayRow',   'topDayPrev',   'topDayNext');
-    setupScroller('topWeekRow',  'topWeekPrev',  'topWeekNext');
-    setupScroller('topMonthRow', 'topMonthPrev', 'topMonthNext');
-    setupScroller('topLikedRow', 'topLikedPrev', 'topLikedNext');
+    bases.forEach(wire);
   })();
 </script>
+
 {% endblock %}
