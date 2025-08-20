@@ -236,15 +236,8 @@ def manga_discover(request):
 
     # ---------------- TOP KUN / HAFTA / OY (ChapterVisit) ------------------
     def _top_by_period(hours: int, offset_hours: int = 0, limit: int = 12):
-        """
-        Disjoint oraliq:
-          - end = now() - offset_hours
-          - since = end - hours
-          -> [since, end) oralig‘idagi vizitlar olinadi
-        """
         end = now() - timedelta(hours=offset_hours)
         since = end - timedelta(hours=hours)
-    
         agg = (
             ChapterVisit.objects
             .filter(visited_at__gte=since, visited_at__lt=end)
@@ -255,36 +248,21 @@ def manga_discover(request):
             )
             .order_by("-readers", "-last")[:limit]
         )
-    
         ids = [row["chapter__manga"] for row in agg]
         m_map = {m.id: m for m in Manga.objects.filter(id__in=ids)}
-    
         ranked = []
         for row in agg:
             m = m_map.get(row["chapter__manga"])
             if m:
-                ranked.append({
-                    "manga": m,
-                    "readers": row["readers"],
-                    "last": row["last"],
-                })
+                ranked.append({"manga": m, "readers": row["readers"], "last": row["last"]})
         return ranked
-    
-    # Disjoint chaqiruvlar:
-    #  - Kun: [now-24h, now)
-    #  - Haftalik: [now-7d, now-24h)
-    #  - Oylik: [now-30d, now-7d)
-    top_day   = get_cached_or_query("discover_top_day_v2",
-                                    lambda: _top_by_period(24,      0,   12),
-                                    60 * 60)
-    
-    top_week  = get_cached_or_query("discover_top_week_v2",
-                                    lambda: _top_by_period(24*6,   24,   12),
-                                    60 * 60 * 3)
-    
-    top_month = get_cached_or_query("discover_top_month_v2",
-                                    lambda: _top_by_period(24*23, 24*7,  12),
-                                    60 * 60 * 6)
+
+    # faqat kunlik (oxirgi 24 soat)
+    top_day = get_cached_or_query(
+        "discover_top_day_only",                   # yangi cache key
+        lambda: _top_by_period(24, 0, 12),
+        60 * 60,                                   # 1 soat
+    )
 
     # ---------------- TOP LIKED (MangaLike / Manga.likes) ------------------
     def _get_top_liked():
@@ -334,8 +312,6 @@ def manga_discover(request):
         "active_progress": active_progress,   # [{manga, updated_at}]
         "latest_updates": latest_updates,     # [{manga, chapter}]
         "top_day": top_day,                   # [{manga, readers, last}]
-        "top_week": top_week,
-        "top_month": top_month,
         "top_liked": top_liked,               # [Manga, likes_sum]
         "my_list": my_list,                   # {"reading":[Manga...], ...}
         "status_tabs": status_tabs,
