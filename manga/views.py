@@ -107,12 +107,14 @@ from django.db import connection
 from collections import defaultdict
 TOP_TRANSLATORS_KEY = "top_translators_v1"   # versiya uchun suffix qo'yib boring
 TOP_TRANSLATORS_TTL = 300                    # 5 daqiqa (xohlagancha)
+RECENT_FEED_KEY = "discover_recent_feed_v1"
+RECENT_FEED_TTL = 60 * 30  # 30 daqiqa
 
 def manga_discover(request):
     """
     Trendlar, hozir o‘qilayotganlar, top tarjimonlar, yangi qo‘shilganlar (karusel),
     yangi qo‘shilgan boblar (15 ta, har taytdan oxirgi bitta),
-    Top Kun/Hafta/Oy (ChapterVisit bo‘yicha),
+    recent feed (har taytdan 3 ta oxirgi bob) — cache,
     Top Layklar (MangaLike bo‘yicha).
     Agar user kirgan bo‘lsa — 'Mening ro‘yxatim' (ReadingStatus bo‘yicha tab+karusel).
     """
@@ -131,7 +133,7 @@ def manga_discover(request):
                 .annotate(
                     manga_count=Count("user__mangas_created", distinct=True),
                     follower_count=Count("followers", distinct=True),
-                    # MangaLike orqali translator chiqarayotgan barcha manga-lardagi like-larni yig‘indisi
+                    # Translator chiqargan barcha mangalardagi like-lar yig‘indisi
                     likes_count=Count("user__mangas_created__likes", distinct=True),
                     # Agar denormal likes_count bo‘lsa:
                     # likes_count=Coalesce(Sum("user__mangas_created__likes_count"), 0),
@@ -148,7 +150,6 @@ def manga_discover(request):
     )
 
     # ---------------- TRENDING (1 soat cache) ------------------------------
-    # ReadingProgress bo‘yicha eng ko‘p o‘qilayotgan taytlar
     def _get_trending_mangas():
         trending = (
             ReadingProgress.objects
@@ -157,7 +158,7 @@ def manga_discover(request):
             .order_by("-readers")[:25]
         )
         ids = [row["manga"] for row in trending]
-        id_pos = {i: p for p, i in enumerate(ids)}           # tartibni saqlash
+        id_pos = {i: p for p, i in enumerate(ids)}  # tartibni saqlash
         items = list(Manga.objects.filter(id__in=ids))
         items.sort(key=lambda m: id_pos.get(m.id, 10**9))
         return items
@@ -184,7 +185,6 @@ def manga_discover(request):
     )
 
     # ---------------- HOZIR O‘QILAYOTGANLAR (unique by manga) --------------
-    # DISTINCT ON o‘rniga — guruhlash + Max(updated_at), har DB’da ishlaydi
     def _get_active_progress():
         since = now() - timedelta(hours=24)
         recent = (
@@ -210,7 +210,6 @@ def manga_discover(request):
     )
 
     # ---------------- YANGI 15 TA QO‘SHILGAN BOB (unique by manga) --------
-    # Tez va sodda: oxirgi 300 bobdan har mangadan bittadan terib chiqamiz
     def _get_latest_updates_unique():
         raw = (
             Chapter.objects
@@ -234,76 +233,58 @@ def manga_discover(request):
         60 * 30,  # 30 daqiqa
     )
 
-    # ---------------- TOP KUN / HAFTA / OY (ChapterVisit) ------------------
-    def _top_by_period(hours: int, offset_hours: int = 0, limit: int = 12):
-        end = now() - timedelta(hours=offset_hours)
-        since = end - timedelta(hours=hours)
-        agg = (
-            ChapterVisit.objects
-            .filter(visited_at__gte=since, visited_at__lt=end)
-            .values("chapter__manga")
-            .annotate(
-                readers=Count("user", distinct=True),
-                last=Max("visited_at"),
+    # ---------------- RECENT FEED (yepadagi ko‘rinish) ---------------------
+    def _build_recent_feed(limit_titles=10, per_title=3, window_hours=72):
+        """
+        Oxirgi `window_hours` ichidagi boblar bo‘yicha taytlarni guruhlaydi.
+        Har taytdan `per_title` ta oxirgi bob ko‘rsatiladi, qolganlari uchun 'Yana N bob…'
+        """
+        since = now() - timedelta(hours=window_hours)
+
+        qs = (
+            Chapter.objects.select_related("manga")
+            .filter(release_date__gte=since)
+            .order_by("-release_date", "-id")[:800]  # safety cap
+        )
+
+        feed_map = {}  # mid -> {"manga": m, "chapters":[{"obj": ch, "translators":[...] }], "last": dt, "total": int}
+        for ch in qs:
+            m = ch.manga
+            if not m:
+                continue
+
+            box = feed_map.setdefault(
+                m.id,
+                {"manga": m, "chapters": [], "last": ch.release_date, "total": 0},
             )
-            .order_by("-readers", "-last")[:limit]
-        )
-        ids = [row["chapter__manga"] for row in agg]
-        m_map = {m.id: m for m in Manga.objects.filter(id__in=ids)}
-        ranked = []
-        for row in agg:
-            m = m_map.get(row["chapter__manga"])
-            if m:
-                ranked.append({"manga": m, "readers": row["readers"], "last": row["last"]})
-        return ranked
+            box["total"] += 1
+            if ch.release_date and ch.release_date > box["last"]:
+                box["last"] = ch.release_date
 
-    # faqat kunlik (oxirgi 24 soat)
-    top_day = get_cached_or_query(
-        "discover_top_day_only",                   # yangi cache key
-        lambda: _top_by_period(24, 0, 12),
-        60 * 60,                                   # 1 soat
-    )
+            # ko‘rsatish uchun faqat per_title gacha
+            if len(box["chapters"]) < per_title:
+                translators = []
+                try:
+                    # agar Chapter.translators M2M bor bo‘lsa, 3 taga qadar avtarlari
+                    translators = list(ch.translators.all()[:3])
+                except Exception:
+                    pass
 
-    # ---------------- TOP LIKED (MangaLike / Manga.likes) ------------------
-    def _get_top_liked():
-        return list(
-            Manga.objects
-                 .annotate(likes_sum=Count("likes", distinct=True))  # through=MangaLike
-                 .order_by("-likes_sum", "title")[:12]
-        )
+                box["chapters"].append({"obj": ch, "translators": translators})
 
-    top_liked = get_cached_or_query(
-        "discover_top_liked_mangas",
-        _get_top_liked,
-        60 * 60,  # 1 soat
-    )
+        items = list(feed_map.values())
+        for it in items:
+            it["shown"] = len(it["chapters"])
+            it["more"] = max(0, it["total"] - it["shown"])
 
-    # ---------------- MY LIST (ReadingStatus) ------------------------------
-    my_list = {}
-    if request.user.is_authenticated:
-        wanted = ["reading", "planned", "completed", "favorite"]
-        rs_qs = (
-            ReadingStatus.objects
-            .filter(user_profile__user=request.user, status__in=wanted)
-            .select_related("manga")
-            .order_by("-id")
-        )
-        # status bo‘yicha 15 tadan
-        for st in wanted:
-            group = []
-            for rs in rs_qs:
-                if rs.status == st and rs.manga:
-                    group.append(rs.manga)
-                if len(group) >= 15:
-                    break
-            my_list[st] = group
+        items.sort(key=lambda x: x["last"], reverse=True)
+        return items[:limit_titles]
 
-    status_tabs = [
-        ("reading",   "O‘qilmoqda"),
-        ("planned",   "Rejada"),
-        ("completed", "Tugallangan"),
-        ("favorite",  "Sevimli"),
-    ]
+    recent_feed = cache.get(RECENT_FEED_KEY)
+    if recent_feed is None:
+        recent_feed = _build_recent_feed(limit_titles=10, per_title=3, window_hours=72)
+        cache.set(RECENT_FEED_KEY, recent_feed, RECENT_FEED_TTL)
+
 
     context = {
         "top_translators": top_translators,
@@ -311,13 +292,9 @@ def manga_discover(request):
         "latest_mangas": latest_mangas,       # karusel
         "active_progress": active_progress,   # [{manga, updated_at}]
         "latest_updates": latest_updates,     # [{manga, chapter}]
-        "top_day": top_day,                   # [{manga, readers, last}]
-        "top_liked": top_liked,               # [Manga, likes_sum]
-        "my_list": my_list,                   # {"reading":[Manga...], ...}
-        "status_tabs": status_tabs,
+        "recent_feed": recent_feed,           # yup-variant
     }
     return render(request, "manga/discover.html", context)
-
 
 def manga_browse(request):
     """
