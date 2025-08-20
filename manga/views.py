@@ -102,80 +102,245 @@ def _get_latest_mangas():
         .order_by("-id")[:25]
     )
 
-
+from django.db.models import Count, Max
+from django.db import connection
+from collections import defaultdict
+TOP_TRANSLATORS_KEY = "top_translators_v1"   # versiya uchun suffix qo'yib boring
+TOP_TRANSLATORS_TTL = 300                    # 5 daqiqa (xohlagancha)
 
 def manga_discover(request):
     """
-    Trendlar, hozir o‘qilayotganlar, top tarjimonlar, yangi qo‘shilganlar
-    — bularni alohida sahifaga olib chiqdik.
+    Trendlar, hozir o‘qilayotganlar, top tarjimonlar, yangi qo‘shilganlar (karusel),
+    yangi qo‘shilgan boblar (15 ta, har taytdan oxirgi bitta),
+    Top Kun/Hafta/Oy (ChapterVisit bo‘yicha),
+    Top Layklar (MangaLike bo‘yicha).
+    Agar user kirgan bo‘lsa — 'Mening ro‘yxatim' (ReadingStatus bo‘yicha tab+karusel).
     """
 
-    # (ixtiyoriy) foydalanuvchi profili
-    user_profile = None
+    # — foydalanuvchi profili (kerak bo‘lib qoladi)
     if request.user.is_authenticated:
-        user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        UserProfile.objects.get_or_create(user=request.user)
 
-    # Top tarjimonlar — 12 soat cache
+    # ---------------- TOP TRANSLATORS (12 soat cache) ----------------------
+    def _get_top_translators():
+        data = cache.get(TOP_TRANSLATORS_KEY)
+        if data is None:
+            data = list(
+                UserProfile.objects.filter(is_translator=True)
+                .select_related("user")
+                .annotate(
+                    manga_count=Count("user__mangas_created", distinct=True),
+                    follower_count=Count("followers", distinct=True),
+                    # MangaLike bo‘yicha
+                    likes_count=Count("user__mangas_created__likes", distinct=True),
+                    # Agar denormal `likes_count` maydoni bo‘lsa, yuqoridagining o‘rniga:
+                    # likes_count=Coalesce(Sum("user__mangas_created__likes_count"), 0),
+                )
+                .order_by("-likes_count", "-follower_count")[:4]
+            )
+            cache.set(TOP_TRANSLATORS_KEY, data, TOP_TRANSLATORS_TTL)
+        return data
+
     top_translators = get_cached_or_query(
-        'top_translators',
+        "discover_top_translators",
         _get_top_translators,
-        60*60*12
+        60 * 60 * 12,
     )
 
-    # Trendlar — 1 soat cache
+    # ---------------- TRENDING (1 soat cache) ------------------------------
+    # ReadingProgress bo‘yicha eng ko‘p o‘qilayotgan taytlar
+    def _get_trending_mangas():
+        trending = (
+            ReadingProgress.objects
+            .values("manga")
+            .annotate(readers=Count("user", distinct=True))
+            .order_by("-readers")[:25]
+        )
+        ids = [row["manga"] for row in trending]
+        # tartib saqlansin (simple)
+        id_pos = {i: p for p, i in enumerate(ids)}
+        items = list(Manga.objects.filter(id__in=ids))
+        items.sort(key=lambda m: id_pos.get(m.id, 1_000_000))
+        return items
+
     trending_mangas = get_cached_or_query(
-        'trending_mangas',
+        "discover_trending_mangas",
         _get_trending_mangas,
-        60*60
+        60 * 60,
     )
 
-    # Yangi qo‘shilganlar — 2 soat cache
+    # ---------------- LATEST TITLES (2 soat cache) -------------------------
+    # Oxirgi qo‘shilgan taytlar (karusel uchun ~16 ta)
+    def _get_latest_mangas():
+        return list(
+            Manga.objects
+            .annotate(chap_count=Count("chapters"))
+            .filter(chap_count__gte=1)
+            .order_by("-id")[:16]
+        )
+
     latest_mangas = get_cached_or_query(
-        'latest_mangas',
+        "discover_latest_mangas_carousel",
         _get_latest_mangas,
-        60*60*2
+        60 * 60 * 2,
     )
 
-    # Hozir o‘qilayotganlar — kesh qilmaymiz (dinamik)
-    active_progress = (
-        ReadingProgress.objects
-        .filter(updated_at__gte=now() - timedelta(hours=24))
-        .select_related("manga")
-        .order_by("-updated_at")[:6]
+    # ---------------- HOZIR O‘QILAYOTGANLAR (unique by manga) --------------
+    base_qs = ReadingProgress.objects.filter(updated_at__gte=now() - timedelta(hours=24))
+
+    if connection.vendor == "postgresql":
+        rp = (
+            base_qs
+            .select_related("manga")
+            .order_by("manga", "-updated_at")
+            .distinct("manga")[:18]
+        )
+        active_progress = [{"manga": r.manga, "updated_at": r.updated_at} for r in rp]
+    else:
+        recent = (
+            base_qs.values("manga")
+            .annotate(last=Max("updated_at"))
+            .order_by("-last")[:18]
+        )
+        manga_ids = [row["manga"] for row in recent]
+        manga_map = {m.id: m for m in Manga.objects.filter(id__in=manga_ids)}
+        active_progress = []
+        for row in recent:
+            mid = row["manga"]
+            m = manga_map.get(mid)
+            if m:
+                active_progress.append({"manga": m, "updated_at": row["last"]})
+
+    # ---------------- YANGI 15 TA QO‘SHILGAN BOB (unique by manga) --------
+    def _get_latest_updates_unique():
+        raw = (
+            Chapter.objects
+            .select_related("manga")
+            .order_by("-release_date", "-volume", "-chapter_number", "-id")[:300]
+        )
+        seen = set()
+        items = []
+        for ch in raw:
+            mid = ch.manga_id
+            if mid in seen:
+                continue
+            seen.add(mid)
+            items.append({"manga": ch.manga, "chapter": ch})
+            if len(items) >= 15:
+                break
+        return items
+
+    latest_updates = get_cached_or_query(
+        "discover_latest_updates_unique",
+        _get_latest_updates_unique,
+        60 * 30,  # 30 daqiqa
     )
+
+    # ---------------- TOP KUN / HAFTA / OY (ChapterVisit) ------------------
+    def _top_by_period(hours: int, limit: int = 12):
+        since = now() - timedelta(hours=hours)
+        agg = (
+            ChapterVisit.objects
+            .filter(visited_at__gte=since)
+            .values("chapter__manga")
+            .annotate(
+                readers=Count("user", distinct=True),
+                last=Max("visited_at"),
+            )
+            .order_by("-readers", "-last")[:limit]
+        )
+        ids = [row["chapter__manga"] for row in agg]
+        manga_map = {m.id: m for m in Manga.objects.filter(id__in=ids)}
+        ranked = []
+        for row in agg:
+            mid = row["chapter__manga"]
+            m = manga_map.get(mid)
+            if m:
+                ranked.append({"manga": m, "readers": row["readers"], "last": row["last"]})
+        return ranked
+
+    top_day   = get_cached_or_query("discover_top_day",   lambda: _top_by_period(24,  12), 60 * 60)       # 1 soat
+    top_week  = get_cached_or_query("discover_top_week",  lambda: _top_by_period(24*7, 12), 60 * 60 * 3)  # 3 soat
+    top_month = get_cached_or_query("discover_top_month", lambda: _top_by_period(24*30,12), 60 * 60 * 6)  # 6 soat
+
+    # ---------------- TOP LIKED (MangaLike / Manga.likes) ------------------
+    def _get_top_liked():
+        return list(
+            Manga.objects
+                 .annotate(likes_sum=Count("likes", distinct=True))  # through=MangaLike
+                 .order_by("-likes_sum", "title")[:12]
+        )
+
+    top_liked = get_cached_or_query(
+        "discover_top_liked_mangas",
+        _get_top_liked,
+        60 * 60,  # 1 soat
+    )
+
+    # ---------------- MY LIST (ReadingStatus) ------------------------------
+    my_list = {}
+    if request.user.is_authenticated:
+        # Eng ko‘p ishlatiladigan to‘rtta statusni tab qilib ko‘rsatamiz
+        wanted = ["reading", "planned", "completed", "favorite"]
+        qs = (
+            ReadingStatus.objects
+            .filter(user_profile__user=request.user, status__in=wanted)
+            .select_related("manga")
+            .order_by("-id")
+        )
+
+        # status bo‘yicha 15 tadan ajratib beramiz
+        for st in wanted:
+            st_list = []
+            for rs in qs:
+                if rs.status == st and rs.manga:
+                    st_list.append(rs.manga)
+                if len(st_list) >= 15:
+                    break
+            my_list[st] = st_list
+
+    status_tabs = [
+    ("reading",   "O‘qilmoqda"),
+    ("planned",   "Rejada"),
+    ("completed", "Tugallangan"),
+    ("favorite",  "Sevimli"),
+    ]
 
     context = {
         "top_translators": top_translators,
         "trending_mangas": trending_mangas,
-        "latest_mangas": latest_mangas,
-        "active_progress": active_progress,
+        "latest_mangas": latest_mangas,       # karusel
+        "active_progress": active_progress,   # [{manga, updated_at}]
+        "latest_updates": latest_updates,     # [{manga, chapter}]
+        "top_day": top_day,                   # [{manga, readers, last}]
+        "top_week": top_week,
+        "top_month": top_month,
+        "top_liked": top_liked,               # [Manga, likes_sum]
+        "my_list": my_list,                   # {"reading":[Manga...], ...}
+        "status_tabs": status_tabs,
     }
     return render(request, "manga/discover.html", context)
+
 
 def manga_browse(request):
     """
     Barcha taytlar (grid) + qidiruv, filtrlar, sort va paginate.
-    Oldingi 'manga_list' funksiyasining ro‘yxatga oid qismi shu yerda.
     """
 
-    # 1) Cache key (faqat anonim foydalanuvchiga to‘liq response-cache qo‘llaymiz)
-    cache_key = f"manga_browse_{urlencode(request.GET)}_{request.user.is_authenticated}"
-
+    # 1) Response-cache faqat anonim uchun (GET paramlar hammasi kiritiladi)
+    cache_key = f"manga_browse:{request.user.is_authenticated}:{urlencode(request.GET, doseq=True)}"
     if not request.user.is_authenticated:
-        cached_response = cache.get(cache_key)
-        if cached_response:
-            return cached_response
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
 
-    # 2) UserProfile (prefetch uchun kerak bo‘lishi mumkin)
+    # 2) UserProfile (foydalanuvchi statusini ko‘rsatish uchun)
     user_profile = None
     if request.user.is_authenticated:
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    # 3) Bazaviy queryset (1 soat cache)
-    def _base_qs():
-        return Manga.objects.all()
-
-    qs = get_cached_or_query('base_manga_queryset', _base_qs, 60*60)
+    # 3) Bazaviy queryset
+    qs = Manga.objects.all()
 
     # 4) Qidiruv
     search_query = request.GET.get('search', '').strip()
@@ -196,9 +361,9 @@ def manga_browse(request):
         'translation_status': ('translation_status', False),
     }
     for param, (field, need_distinct) in filter_mappings.items():
-        values = request.GET.getlist(param)
-        if values:
-            qs = qs.filter(**{f"{field}__in": values})
+        vals = request.GET.getlist(param)
+        if vals:
+            qs = qs.filter(**{f"{field}__in": vals})
             if need_distinct:
                 qs = qs.distinct()
 
@@ -206,19 +371,19 @@ def manga_browse(request):
     min_chap = request.GET.get('min_chapters')
     max_chap = request.GET.get('max_chapters')
     if min_chap or max_chap:
-        qs = qs.annotate(chap_count=Count('chapters'))
+        qs = qs.annotate(chap_count=Count('chapters', distinct=True))
         if min_chap:
             try:
-                iv = int(min_chap)
-                if iv > 0:
-                    qs = qs.filter(chap_count__gte=iv)
+                v = int(min_chap)
+                if v > 0:
+                    qs = qs.filter(chap_count__gte=v)
             except ValueError:
                 pass
         if max_chap:
             try:
-                iv = int(max_chap)
-                if iv > 0:
-                    qs = qs.filter(chap_count__lte=iv)
+                v = int(max_chap)
+                if v > 0:
+                    qs = qs.filter(chap_count__lte=v)
             except ValueError:
                 pass
 
@@ -243,14 +408,7 @@ def manga_browse(request):
     # 8) Sortlash
     sort = request.GET.get('sort', 'chapters')
     if sort == 'chapters':
-        # agar chap_count annotatsiya qilinmagan bo‘lsa — qo‘shamiz
-        try:
-            exists = getattr(qs.query, "annotations", {}) and "chap_count" in qs.query.annotations
-        except Exception:
-            exists = False
-        if not exists:
-            qs = qs.annotate(chap_count=Count('chapters'))
-        qs = qs.order_by('-chap_count', 'title')
+        qs = qs.annotate(chap_count=Count('chapters', distinct=True)).order_by('-chap_count', 'title')
     elif sort == 'title_asc':
         qs = qs.order_by('title')
     elif sort == 'title_desc':
@@ -272,26 +430,37 @@ def manga_browse(request):
     paginator = Paginator(qs, 16)
     page_obj = paginator.get_page(request.GET.get('page'))
 
-    # 11) Checkboxlar uchun choices (24 soat cache)
-    def _choices(field): return Manga._meta.get_field(field).choices
+    # Elided page range (… bilan qisqartirilgan raqamlar)
+    elided_page_range = list(
+        paginator.get_elided_page_range(number=page_obj.number, on_each_side=1, on_ends=1)
+    )
 
-    status_choices = get_cached_or_query('status_choices', lambda: _choices('status'), 60*60*24)
-    age_rating_choices = get_cached_or_query('age_rating_choices', lambda: _choices('age_rating'), 60*60*24)
-    type_choices = get_cached_or_query('type_choices', lambda: _choices('type'), 60*60*24)
-    translation_choices = get_cached_or_query('translation_choices', lambda: _choices('translation_status'), 60*60*24)
+    # 11) Choices (24 soat cache)
+    def _choices(field): return Manga._meta.get_field(field).choices
+    status_choices      = get_cached_or_query('choices_status',      lambda: _choices('status'),              60*60*24)
+    age_rating_choices  = get_cached_or_query('choices_age_rating',  lambda: _choices('age_rating'),          60*60*24)
+    type_choices        = get_cached_or_query('choices_type',        lambda: _choices('type'),                60*60*24)
+    translation_choices = get_cached_or_query('choices_translation', lambda: _choices('translation_status'),  60*60*24)
 
     # 12) Janr va teglar (24 soat cache)
     genres = get_cached_or_query('all_genres', lambda: list(Genre.objects.all()), 60*60*24)
     tags   = get_cached_or_query('all_tags',   lambda: list(Tag.objects.all()),   60*60*24)
 
+    # 13) Paginatsiya linklarida GET’larni saqlash (page’dan tashqari)
+    qs_preserve = request.GET.copy()
+    qs_preserve.pop('page', None)
+    preserve_qs = qs_preserve.urlencode()
+
     context = {
         'genres': genres,
         'tags': tags,
         'page_obj': page_obj,
+        'elided_page_range': elided_page_range,  # <-- template shu bilan ishlaydi
+        'preserve_qs': preserve_qs,              # <-- "?{preserve}&page=N"
         'search': search_query,
         'sort': sort,
 
-        # Tanlangan filtrlar
+        # Tanlangan filtrlar (checkboxlar uchun)
         'genre_filter_list': request.GET.getlist('genre'),
         'tag_filter_list': request.GET.getlist('tag'),
         'age_rating_filter_list': request.GET.getlist('age_rating'),
@@ -305,7 +474,7 @@ def manga_browse(request):
         'min_year': request.GET.get('min_year', ''),
         'max_year': request.GET.get('max_year', ''),
 
-        # Checkbox tanlovlari
+        # Choices
         'status_choices': status_choices,
         'age_rating_choices': age_rating_choices,
         'type_choices': type_choices,
@@ -314,267 +483,11 @@ def manga_browse(request):
 
     response = render(request, 'manga/browse.html', context)
 
-    # 13) To‘liq response-cache (faqat anonim) — 15 daqiqa
+    # 14) To‘liq response-cache (anonim) — 15 daqiqa
     if not request.user.is_authenticated:
         cache.set(cache_key, response, 60*15)
 
     return response
-
-
-
-
-
-
-
-
-# def manga_list(request):
-#     # 1) Generate cache key based on request parameters and user auth status
-#     cache_key = f"manga_list_{urlencode(request.GET)}_{request.user.is_authenticated}"
-    
-#     # For anonymous users, try to get cached response
-#     if not request.user.is_authenticated:
-#         cached_response = cache.get(cache_key)
-#         if cached_response:
-#             return cached_response
-
-#     # 1) Get user profile
-#     user_profile = None
-#     if request.user.is_authenticated:
-#         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
-
-#     # 2) Base queryset with caching for common parts
-#     def get_base_queryset():
-#         return Manga.objects.all()
-
-#     qs = get_cached_or_query('base_manga_queryset', get_base_queryset, 60*60)  # Cache for 1 hour
-
-#     # 0) Search by keyword
-#     search_query = request.GET.get('search', '').strip()
-#     if search_query:
-#         qs = qs.filter(
-#             Q(title__icontains=search_query) |
-#             Q(author__icontains=search_query) |
-#             Q(description__icontains=search_query)
-#         ).distinct()
-
-#     # 1) Checkbox filters
-#     filter_mappings = {
-#         'genre': ('genres__name', True),
-#         'age_rating': ('age_rating', False),
-#         'type': ('type', False),
-#         'tag': ('tags__name', True),
-#         'status': ('status', False),
-#         'translation_status': ('translation_status', False),
-#     }
-
-#     for param, (field, distinct) in filter_mappings.items():
-#         filter_list = request.GET.getlist(param)
-#         if filter_list:
-#             filter_kwargs = {f"{field}__in": filter_list}
-#             qs = qs.filter(**filter_kwargs)
-#             if distinct:
-#                 qs = qs.distinct()
-
-#     # 2) Chapter count range
-#     min_chap = request.GET.get('min_chapters')
-#     max_chap = request.GET.get('max_chapters')
-#     if min_chap or max_chap:
-#         qs = qs.annotate(chap_count=Count('chapters'))
-#         if min_chap:
-#             try:
-#                 iv = int(min_chap)
-#                 if iv > 0:
-#                     qs = qs.filter(chap_count__gte=iv)
-#             except ValueError:
-#                 pass
-#         if max_chap:
-#             try:
-#                 iv = int(max_chap)
-#                 if iv > 0:
-#                     qs = qs.filter(chap_count__lte=iv)
-#             except ValueError:
-#                 pass
-
-#     # 3) Publication year range
-#     min_year = request.GET.get('min_year')
-#     max_year = request.GET.get('max_year')
-#     if min_year:
-#         try:
-#             iy = int(min_year)
-#             if iy >= 1:
-#                 qs = qs.filter(publication_date__year__gte=iy)
-#         except ValueError:
-#             pass
-#     if max_year:
-#         try:
-#             iy = int(max_year)
-#             if iy >= 1:
-#                 qs = qs.filter(publication_date__year__lte=iy)
-#         except ValueError:
-#             pass
-
-#     # 4) Sorting
-#     sort = request.GET.get('sort', 'chapters')
-#     if sort == 'chapters':
-#         if not qs.query.annotations.get('chap_count'):
-#             qs = qs.annotate(chap_count=Count('chapters'))
-#         qs = qs.order_by('-chap_count', 'title')
-#     elif sort == 'title_asc':
-#         qs = qs.order_by('title')
-#     elif sort == 'title_desc':
-#         qs = qs.order_by('-title')
-#     else:
-#         qs = qs.order_by('title')
-
-#     # 5) Load ReadingStatus for current user
-#     if user_profile:
-#         qs = qs.prefetch_related(
-#             Prefetch(
-#                 'readingstatus_set',
-#                 queryset=ReadingStatus.objects.filter(user_profile=user_profile),
-#                 to_attr='user_status'
-#             )
-#         )
-
-#     # 6) Pagination
-#     paginator = Paginator(qs, 16)
-#     page_obj = paginator.get_page(request.GET.get('page'))
-
-#     # 7) Prepare template references with caching
-#     def get_choices(field_name):
-#         return Manga._meta.get_field(field_name).choices
-
-#     status_choices = get_cached_or_query(
-#         'status_choices',
-#         lambda: get_choices('status'),
-#         60*60*24
-#     )
-    
-#     age_rating_choices = get_cached_or_query(
-#         'age_rating_choices',
-#         lambda: get_choices('age_rating'),
-#         60*60*24
-#     )
-    
-#     type_choices = get_cached_or_query(
-#         'type_choices',
-#         lambda: get_choices('type'),
-#         60*60*24
-#     )
-    
-#     translation_choices = get_cached_or_query(
-#         'translation_choices',
-#         lambda: get_choices('translation_status'),
-#         60*60*24
-#     )
-
-#     # Cache top translators
-#     def get_top_translators():
-#         return (
-#             UserProfile.objects
-#             .filter(is_translator=True)
-#             .annotate(
-#                 manga_count   = Count("user__mangas_created", distinct=True),
-#                 follower_count= Count("followers",         distinct=True),
-#                 likes_count   = Count("user__mangas_created__chapters__thanks", distinct=True),
-#             )
-#             .order_by("-likes_count", "-follower_count")[:4]
-#         )
-
-#     top_translators = get_cached_or_query(
-#         'top_translators',
-#         get_top_translators,
-#         60*60*12  # 12 hours
-#     )
-
-#     # Currently reading (last 24 hours) - don't cache as it's highly dynamic
-#     active_progress = (
-#         ReadingProgress.objects
-#         .filter(updated_at__gte=now()-timedelta(hours=24))
-#         .select_related("manga")
-#         .order_by("-updated_at")[:6]
-#     )
-
-#     # Trending mangas - cache for 1 hour
-#     def get_trending_mangas():
-#         trending = (
-#             ReadingProgress.objects
-#             .values("manga")
-#             .annotate(readers=Count("user"))
-#             .order_by("-readers")[:25]
-#         )
-#         return list(Manga.objects.filter(id__in=[x["manga"] for x in trending]))
-
-#     trending_mangas = get_cached_or_query(
-#         'trending_mangas',
-#         get_trending_mangas,
-#         60*60  # 1 hour
-#     )
-
-#     # Latest added titles (with >=10 chapters) - cache for 6 hours
-#     def get_latest_mangas():
-#         return list(
-#             Manga.objects.annotate(chap_count=Count("chapters"))
-#             .filter(chap_count__gte=10)
-#             .order_by("-id")[:10]
-#         )
-
-#     latest_mangas = get_cached_or_query(
-#         'latest_mangas',
-#         get_latest_mangas,
-#         60*60*6  # 6 hours
-#     )
-
-#     # Get genres and tags with caching
-#     def get_all_genres():
-#         return list(Genre.objects.all())
-
-#     def get_all_tags():
-#         return list(Tag.objects.all())
-
-#     genres = get_cached_or_query('all_genres', get_all_genres, 60*60*24)
-#     tags = get_cached_or_query('all_tags', get_all_tags, 60*60*24)
-
-#     context = {
-#         'genres': genres,
-#         'tags': tags,
-#         'page_obj': page_obj,
-#         'search': search_query,
-#         'sort': sort,
-
-#         # Selected filters
-#         'genre_filter_list': request.GET.getlist('genre'),
-#         'tag_filter_list': request.GET.getlist('tag'),
-#         'age_rating_filter_list': request.GET.getlist('age_rating'),
-#         'type_filter_list': request.GET.getlist('type'),
-#         'status_filter_list': request.GET.getlist('status'),
-#         'translation_filter_list': request.GET.getlist('translation_status'),
-
-#         # Ranges
-#         'min_chapters': request.GET.get('min_chapters', ''),
-#         'max_chapters': request.GET.get('max_chapters', ''),
-#         'min_year': request.GET.get('min_year', ''),
-#         'max_year': request.GET.get('max_year', ''),
-
-#         # Choices for checkboxes
-#         'status_choices': status_choices,
-#         'age_rating_choices': age_rating_choices,
-#         'type_choices': type_choices,
-#         'translation_choices': translation_choices,
-
-#         "top_translators": top_translators,
-#         "active_progress": active_progress,
-#         "trending_mangas": trending_mangas,
-#         "latest_mangas": latest_mangas,
-#     }
-
-#     response = render(request, 'manga/manga_list.html', context)
-    
-#     # Cache full response only for anonymous users
-#     if not request.user.is_authenticated:
-#         cache.set(cache_key, response, 60*15)  # Cache for 15 minutes
-        
-#     return response
 
 # ====== детали манги ========================================================
 def manga_details(request, manga_slug):
