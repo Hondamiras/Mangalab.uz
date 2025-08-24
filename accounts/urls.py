@@ -51,7 +51,8 @@ urlpatterns = [
 
     path("profile/<str:username>/translator/", views.translator_profile_view, name="translator_profile"),
     path("profile/<str:username>/follow/", views.follow_translator, name="follow_translator"),
-    path("translators/top/", views.top_translators, name="top_translators"),
+    path("tarjimon/top/", views.top_translators, name="top_translators"),
 
-    path("translator/owner/", views.translator_profile_owner_view, name="translator_profile_owner"),
+    path("tarjimon/owner/", views.translator_profile_owner_view, name="translator_profile_owner"),
+    path("jamoa/<slug:slug>/", views.team_profile_view, name="team_profile"),
 ]
