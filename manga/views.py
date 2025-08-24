@@ -105,6 +105,7 @@ from django.db import connection
 from collections import defaultdict
 # from datetime import timedelta
 from django.utils import timezone
+from datetime import datetime, date, time
 
 TOP_TRANSLATORS_KEY = "discover_top_translators_v1"
 RECENT_FEED_KEY     = "discover_recent_feed_v1"
@@ -112,15 +113,24 @@ RECENT_FEED_KEY     = "discover_recent_feed_v1"
 TOP_TRANSLATORS_TTL = 60 * 60 * 12   # 12 soat
 RECENT_FEED_TTL     = 60 * 30        # 30 daqiqa
 
+def _to_aware_dt(value):
+    """date/datetime kelishi mumkin — har doim aware datetime qaytaradi."""
+    if isinstance(value, datetime):
+        return timezone.localtime(value) if timezone.is_aware(value) else timezone.make_aware(value)
+    if isinstance(value, date):
+        naive = datetime.combine(value, time.min)
+        return timezone.make_aware(naive)
+    return None
+
 def _ago_uz(dt):
     """
-    'N daqiqa/soat/kun oldin' ko‘rinishida bitta birlik qaytaradi.
-    TZ-aware datetime bo‘lsa, lokal (Asia/Tashkent) ga o‘tkaziladi.
+    'N daqiqa/soat/kun oldin' — date ham, datetime ham qabul qiladi.
     """
     if not dt:
         return ""
-    if timezone.is_aware(dt):
-        dt = timezone.localtime(dt)
+    dt = _to_aware_dt(dt)
+    if not dt:
+        return ""
     now_local = timezone.localtime(timezone.now())
     delta = now_local - dt
     s = int(delta.total_seconds())
@@ -142,19 +152,10 @@ def _ago_uz(dt):
     y = mo // 12
     return f"{y} yil oldin"
 
-
 def manga_discover(request):
-    """
-    Trendlar, hozir o‘qilayotganlar, top tarjimonlar, yangi qo‘shilganlar (karusel),
-    yangi qo‘shilgan boblar (har taytdan bitta), recent feed (har taytdan 3 ta),
-    agar user kirgan bo‘lsa — 'Mening ro‘yxatim'.
-    """
-
-    # Profil (kerak bo‘lsa)
     if request.user.is_authenticated:
         UserProfile.objects.get_or_create(user=request.user)
 
-    # ---------------- TOP TRANSLATORS (12 soat cache) ----------------------
     def _get_top_translators():
         return list(
             UserProfile.objects.filter(is_translator=True)
@@ -162,9 +163,7 @@ def manga_discover(request):
             .annotate(
                 manga_count=Count("user__mangas_created", distinct=True),
                 follower_count=Count("followers", distinct=True),
-                # translator yaratgan barcha mangalardagi like'lar yig'indisi (through=MangaLike)
                 likes_count=Count("user__mangas_created__likes", distinct=True),
-                # Agar denormal maydon bo'lsa: Coalesce(Sum("user__mangas_created__likes_count"), 0)
             )
             .order_by("-likes_count", "-follower_count")[:4]
         )
@@ -173,7 +172,6 @@ def manga_discover(request):
         TOP_TRANSLATORS_KEY, _get_top_translators, TOP_TRANSLATORS_TTL
     )
 
-    # ---------------- TRENDING (1 soat cache) ------------------------------
     def _get_trending_mangas():
         trending = (
             ReadingProgress.objects
@@ -191,7 +189,6 @@ def manga_discover(request):
         "discover_trending_mangas_v1", _get_trending_mangas, 60 * 60
     )
 
-    # ---------------- LATEST TITLES (2 soat cache) -------------------------
     def _get_latest_mangas():
         return list(
             Manga.objects
@@ -204,7 +201,6 @@ def manga_discover(request):
         "discover_latest_mangas_carousel_v1", _get_latest_mangas, 60 * 60 * 2
     )
 
-    # ---------------- HOZIR O‘QILAYOTGANLAR (unique by manga) --------------
     def _get_active_progress():
         since = timezone.now() - timedelta(hours=24)
         recent = (
@@ -227,7 +223,6 @@ def manga_discover(request):
         "discover_active_progress_24h_v1", _get_active_progress, 15 * 60
     )
 
-    # ---------------- YANGI 15 TA QO‘SHILGAN BOB (unique by manga) --------
     def _get_latest_updates_unique():
         raw = (
             Chapter.objects
@@ -236,10 +231,9 @@ def manga_discover(request):
         )
         seen, items = set(), []
         for ch in raw:
-            mid = ch.manga_id
-            if mid in seen:
+            if ch.manga_id in seen:
                 continue
-            seen.add(mid)
+            seen.add(ch.manga_id)
             items.append({"manga": ch.manga, "chapter": ch})
             if len(items) >= 15:
                 break
@@ -249,32 +243,32 @@ def manga_discover(request):
         "discover_latest_updates_unique_v1", _get_latest_updates_unique, 60 * 30
     )
 
-    # ---------------- RECENT FEED (yepadagi uslub) -------------------------
     def _build_recent_feed(limit_titles=10, per_title=3, window_hours=72):
         since = timezone.now() - timedelta(hours=window_hours)
         qs = (
             Chapter.objects.select_related("manga")
-            .filter(release_date__gte=since)
-            .order_by("-release_date", "-id")[:800]  # safety cap
+            .filter(release_date__gte=since.date())        # DateField bilan solishtirish
+            .order_by("-release_date", "-id")[:800]
         )
 
-        feed_map = {}  # mid -> {"manga": m, "chapters":[{"obj": ch, "translators":[...] }], "last": dt, "total": int}
+        feed_map = {}
         for ch in qs:
             m = ch.manga
             if not m:
                 continue
 
+            ch_dt = _to_aware_dt(ch.release_date)          # date -> aware datetime
             box = feed_map.setdefault(
-                m.id, {"manga": m, "chapters": [], "last": ch.release_date, "total": 0}
+                m.id, {"manga": m, "chapters": [], "last": ch_dt, "total": 0}
             )
             box["total"] += 1
-            if ch.release_date and ch.release_date > box["last"]:
-                box["last"] = ch.release_date
+            if ch_dt and ch_dt > box["last"]:
+                box["last"] = ch_dt
 
             if len(box["chapters"]) < per_title:
                 translators = []
                 try:
-                    translators = list(ch.translators.all()[:3])  # mavjud bo'lsa
+                    translators = list(ch.translators.all()[:3])
                 except Exception:
                     pass
                 box["chapters"].append({"obj": ch, "translators": translators})
@@ -283,17 +277,17 @@ def manga_discover(request):
         for it in items:
             it["shown"] = len(it["chapters"])
             it["more"]  = max(0, it["total"] - it["shown"])
-            it["ago"]   = _ago_uz(it["last"])  # <<< templateda foydalanasiz
+            it["ago"]   = _ago_uz(it["last"])
 
         items.sort(key=lambda x: x["last"], reverse=True)
         return items[:limit_titles]
 
+    # ⚠️ Mana bu qismi funksiya tashqarisida bo‘lishi kerak
     recent_feed = cache.get(RECENT_FEED_KEY)
     if recent_feed is None:
         recent_feed = _build_recent_feed(limit_titles=10, per_title=3, window_hours=72)
         cache.set(RECENT_FEED_KEY, recent_feed, RECENT_FEED_TTL)
 
-    # ---------------- Context -------------------------
     context = {
         "top_translators": top_translators,
         "trending_mangas": trending_mangas,
@@ -303,6 +297,7 @@ def manga_discover(request):
         "recent_feed":     recent_feed,
     }
     return render(request, "manga/discover.html", context)
+
 
 def manga_browse(request):
     """
