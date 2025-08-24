@@ -10,7 +10,7 @@ from django.db.models import Prefetch
 import os
 from django.conf import settings
 
-from manga.service import can_read
+from manga.service import _is_translator, can_read
 from .models import ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, ReadingProgress, Tag
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 from django.db.models import Count, Sum
@@ -69,8 +69,6 @@ def get_cached_or_query(cache_key, queryset_func, timeout):
     return data
 
 
-
-
 # ====== Umumiy yordamchi funksiyalar (Discover + Browse uchun qayta ishlatiladi) ======
 
 def _get_top_translators():
@@ -105,48 +103,74 @@ def _get_latest_mangas():
 from django.db.models import Count, Max
 from django.db import connection
 from collections import defaultdict
-TOP_TRANSLATORS_KEY = "top_translators_v1"   # versiya uchun suffix qo'yib boring
-TOP_TRANSLATORS_TTL = 300                    # 5 daqiqa (xohlagancha)
-RECENT_FEED_KEY = "discover_recent_feed_v1"
-RECENT_FEED_TTL = 60 * 30  # 30 daqiqa
+# from datetime import timedelta
+from django.utils import timezone
+
+TOP_TRANSLATORS_KEY = "discover_top_translators_v1"
+RECENT_FEED_KEY     = "discover_recent_feed_v1"
+
+TOP_TRANSLATORS_TTL = 60 * 60 * 12   # 12 soat
+RECENT_FEED_TTL     = 60 * 30        # 30 daqiqa
+
+def _ago_uz(dt):
+    """
+    'N daqiqa/soat/kun oldin' ko‘rinishida bitta birlik qaytaradi.
+    TZ-aware datetime bo‘lsa, lokal (Asia/Tashkent) ga o‘tkaziladi.
+    """
+    if not dt:
+        return ""
+    if timezone.is_aware(dt):
+        dt = timezone.localtime(dt)
+    now_local = timezone.localtime(timezone.now())
+    delta = now_local - dt
+    s = int(delta.total_seconds())
+
+    if s < 60:
+        return f"{s} soniya oldin"
+    m = s // 60
+    if m < 60:
+        return f"{m} daqiqa oldin"
+    h = m // 60
+    if h < 24:
+        return f"{h} soat oldin"
+    d = h // 24
+    if d < 30:
+        return f"{d} kun oldin"
+    mo = d // 30
+    if mo < 12:
+        return f"{mo} oy oldin"
+    y = mo // 12
+    return f"{y} yil oldin"
+
 
 def manga_discover(request):
     """
     Trendlar, hozir o‘qilayotganlar, top tarjimonlar, yangi qo‘shilganlar (karusel),
-    yangi qo‘shilgan boblar (15 ta, har taytdan oxirgi bitta),
-    recent feed (har taytdan 3 ta oxirgi bob) — cache,
-    Top Layklar (MangaLike bo‘yicha).
-    Agar user kirgan bo‘lsa — 'Mening ro‘yxatim' (ReadingStatus bo‘yicha tab+karusel).
+    yangi qo‘shilgan boblar (har taytdan bitta), recent feed (har taytdan 3 ta),
+    agar user kirgan bo‘lsa — 'Mening ro‘yxatim'.
     """
 
-    # Profil (kerak bo‘lib qolsa)
+    # Profil (kerak bo‘lsa)
     if request.user.is_authenticated:
         UserProfile.objects.get_or_create(user=request.user)
 
     # ---------------- TOP TRANSLATORS (12 soat cache) ----------------------
     def _get_top_translators():
-        data = cache.get(TOP_TRANSLATORS_KEY)
-        if data is None:
-            data = list(
-                UserProfile.objects.filter(is_translator=True)
-                .select_related("user")
-                .annotate(
-                    manga_count=Count("user__mangas_created", distinct=True),
-                    follower_count=Count("followers", distinct=True),
-                    # Translator chiqargan barcha mangalardagi like-lar yig‘indisi
-                    likes_count=Count("user__mangas_created__likes", distinct=True),
-                    # Agar denormal likes_count bo‘lsa:
-                    # likes_count=Coalesce(Sum("user__mangas_created__likes_count"), 0),
-                )
-                .order_by("-likes_count", "-follower_count")[:4]
+        return list(
+            UserProfile.objects.filter(is_translator=True)
+            .select_related("user")
+            .annotate(
+                manga_count=Count("user__mangas_created", distinct=True),
+                follower_count=Count("followers", distinct=True),
+                # translator yaratgan barcha mangalardagi like'lar yig'indisi (through=MangaLike)
+                likes_count=Count("user__mangas_created__likes", distinct=True),
+                # Agar denormal maydon bo'lsa: Coalesce(Sum("user__mangas_created__likes_count"), 0)
             )
-            cache.set(TOP_TRANSLATORS_KEY, data, TOP_TRANSLATORS_TTL)
-        return data
+            .order_by("-likes_count", "-follower_count")[:4]
+        )
 
     top_translators = get_cached_or_query(
-        "discover_top_translators",
-        _get_top_translators,
-        60 * 60 * 12,
+        TOP_TRANSLATORS_KEY, _get_top_translators, TOP_TRANSLATORS_TTL
     )
 
     # ---------------- TRENDING (1 soat cache) ------------------------------
@@ -158,15 +182,13 @@ def manga_discover(request):
             .order_by("-readers")[:25]
         )
         ids = [row["manga"] for row in trending]
-        id_pos = {i: p for p, i in enumerate(ids)}  # tartibni saqlash
+        order = {mid: i for i, mid in enumerate(ids)}
         items = list(Manga.objects.filter(id__in=ids))
-        items.sort(key=lambda m: id_pos.get(m.id, 10**9))
+        items.sort(key=lambda m: order.get(m.id, 10**9))
         return items
 
     trending_mangas = get_cached_or_query(
-        "discover_trending_mangas",
-        _get_trending_mangas,
-        60 * 60,
+        "discover_trending_mangas_v1", _get_trending_mangas, 60 * 60
     )
 
     # ---------------- LATEST TITLES (2 soat cache) -------------------------
@@ -179,14 +201,12 @@ def manga_discover(request):
         )
 
     latest_mangas = get_cached_or_query(
-        "discover_latest_mangas_carousel",
-        _get_latest_mangas,
-        60 * 60 * 2,
+        "discover_latest_mangas_carousel_v1", _get_latest_mangas, 60 * 60 * 2
     )
 
     # ---------------- HOZIR O‘QILAYOTGANLAR (unique by manga) --------------
     def _get_active_progress():
-        since = now() - timedelta(hours=24)
+        since = timezone.now() - timedelta(hours=24)
         recent = (
             ReadingProgress.objects
             .filter(updated_at__gte=since)
@@ -204,9 +224,7 @@ def manga_discover(request):
         return out
 
     active_progress = get_cached_or_query(
-        "discover_active_progress_24h",
-        _get_active_progress,
-        15 * 60,  # 15 daqiqa
+        "discover_active_progress_24h_v1", _get_active_progress, 15 * 60
     )
 
     # ---------------- YANGI 15 TA QO‘SHILGAN BOB (unique by manga) --------
@@ -216,31 +234,24 @@ def manga_discover(request):
             .select_related("manga")
             .order_by("-release_date", "-volume", "-chapter_number", "-id")[:300]
         )
-        seen = set()
-        items = []
+        seen, items = set(), []
         for ch in raw:
-            if ch.manga_id in seen:
+            mid = ch.manga_id
+            if mid in seen:
                 continue
-            seen.add(ch.manga_id)
+            seen.add(mid)
             items.append({"manga": ch.manga, "chapter": ch})
             if len(items) >= 15:
                 break
         return items
 
     latest_updates = get_cached_or_query(
-        "discover_latest_updates_unique",
-        _get_latest_updates_unique,
-        60 * 30,  # 30 daqiqa
+        "discover_latest_updates_unique_v1", _get_latest_updates_unique, 60 * 30
     )
 
-    # ---------------- RECENT FEED (yepadagi ko‘rinish) ---------------------
+    # ---------------- RECENT FEED (yepadagi uslub) -------------------------
     def _build_recent_feed(limit_titles=10, per_title=3, window_hours=72):
-        """
-        Oxirgi `window_hours` ichidagi boblar bo‘yicha taytlarni guruhlaydi.
-        Har taytdan `per_title` ta oxirgi bob ko‘rsatiladi, qolganlari uchun 'Yana N bob…'
-        """
-        since = now() - timedelta(hours=window_hours)
-
+        since = timezone.now() - timedelta(hours=window_hours)
         qs = (
             Chapter.objects.select_related("manga")
             .filter(release_date__gte=since)
@@ -254,28 +265,25 @@ def manga_discover(request):
                 continue
 
             box = feed_map.setdefault(
-                m.id,
-                {"manga": m, "chapters": [], "last": ch.release_date, "total": 0},
+                m.id, {"manga": m, "chapters": [], "last": ch.release_date, "total": 0}
             )
             box["total"] += 1
             if ch.release_date and ch.release_date > box["last"]:
                 box["last"] = ch.release_date
 
-            # ko‘rsatish uchun faqat per_title gacha
             if len(box["chapters"]) < per_title:
                 translators = []
                 try:
-                    # agar Chapter.translators M2M bor bo‘lsa, 3 taga qadar avtarlari
-                    translators = list(ch.translators.all()[:3])
+                    translators = list(ch.translators.all()[:3])  # mavjud bo'lsa
                 except Exception:
                     pass
-
                 box["chapters"].append({"obj": ch, "translators": translators})
 
         items = list(feed_map.values())
         for it in items:
             it["shown"] = len(it["chapters"])
-            it["more"] = max(0, it["total"] - it["shown"])
+            it["more"]  = max(0, it["total"] - it["shown"])
+            it["ago"]   = _ago_uz(it["last"])  # <<< templateda foydalanasiz
 
         items.sort(key=lambda x: x["last"], reverse=True)
         return items[:limit_titles]
@@ -285,14 +293,14 @@ def manga_discover(request):
         recent_feed = _build_recent_feed(limit_titles=10, per_title=3, window_hours=72)
         cache.set(RECENT_FEED_KEY, recent_feed, RECENT_FEED_TTL)
 
-
+    # ---------------- Context -------------------------
     context = {
         "top_translators": top_translators,
         "trending_mangas": trending_mangas,
-        "latest_mangas": latest_mangas,       # karusel
-        "active_progress": active_progress,   # [{manga, updated_at}]
-        "latest_updates": latest_updates,     # [{manga, chapter}]
-        "recent_feed": recent_feed,           # yup-variant
+        "latest_mangas":   latest_mangas,
+        "active_progress": active_progress,
+        "latest_updates":  latest_updates,
+        "recent_feed":     recent_feed,
     }
     return render(request, "manga/discover.html", context)
 
@@ -687,16 +695,27 @@ def chapter_read(request, manga_slug, volume, chapter_number):
 
     # 2) Ruxsat: markaziy siyosat
     #    - Free (price_tanga == 0) — ruxsat
-    #    - Muallif yoki superuser — ruxsat
+    #    - Muallif / superuser / staff / tarjimon — ruxsat
     #    - Xarid qilingan bo‘lsa — ruxsat
-    #    - Aks holda:
-    #        * not auth -> login sahifasiga
-    #        * auth -> purchase sahifasiga yo‘naltirish
+    #    - Aks holda: guest -> login, auth -> purchase
+    def can_read(user, manga, ch) -> bool:
+        if ch.price_tanga == 0:
+            return True
+        if not user.is_authenticated:
+            return False
+        if (
+            user.is_superuser
+            or user.is_staff
+            or manga.created_by_id == getattr(user, "id", None)
+            or _is_translator(user)
+        ):
+            return True
+        return ChapterPurchase.objects.filter(user=user, chapter=ch).exists()
+
     if not can_read(request.user, manga, chapter):
         if not request.user.is_authenticated:
             messages.warning(request, "Bobni o‘qish uchun tizimga kiring!")
             return redirect("login")
-        # Auth bo‘lsa — purchase view’ga yo‘naltiramiz
         messages.warning(
             request,
             f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling."
@@ -709,11 +728,8 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         )
 
     # 3) Navigatsiya uchun barcha boblar (dropdown)
-    #    (desc tartib — siz hohlasangiz asc ham qilishingiz mumkin)
     all_chapters = list(
-        Chapter.objects
-               .filter(manga=manga)
-               .order_by('-volume', '-chapter_number')
+        Chapter.objects.filter(manga=manga).order_by('-volume', '-chapter_number')
     )
 
     # 4) Oldingi / Keyingi boblar
@@ -740,25 +756,16 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                .first()
     )
 
-    # 5) Keyingi bob pullik bo‘lsa — modalda ko‘rsatish uchun narx
-    #    Faqat autentifikatsiyadan o‘tgan user’ga ko‘rsatamiz (anon uchun modal yo‘q).
+    # 5) Keyingi bob pullik bo‘lsa — modalda ko‘rsatish uchun narx (faqat auth)
     next_chapter_price = None
     if request.user.is_authenticated and next_chapter:
-        # agar keyingi bobga can_read yo‘q bo‘lsa va pullik bo‘lsa
         if next_chapter.price_tanga > 0 and not can_read(request.user, manga, next_chapter):
-            # xarid qilinmagan (yoki muallif emas) holatda narx ko‘rsatamiz
-            purchased = ChapterPurchase.objects.filter(
-                user=request.user, chapter=next_chapter
-            ).exists()
-            if not purchased and manga.created_by != request.user:
-                next_chapter_price = next_chapter.price_tanga
+            next_chapter_price = next_chapter.price_tanga
 
     # 6) Visit + Progress (faqat oldinga)
     if request.user.is_authenticated:
-        # — bu bob ochildi (o‘qilganlar ro‘yxati uchun)
         ChapterVisit.objects.get_or_create(user=request.user, chapter=chapter)
 
-        # — progress faqat oldinga yangilanadi
         progress, created = ReadingProgress.objects.get_or_create(
             user=request.user, manga=manga,
             defaults={'last_read_chapter': chapter, 'last_read_page': 1}
@@ -784,7 +791,7 @@ def chapter_read(request, manga_slug, volume, chapter_number):
     # 8) Sahifalar
     pages = list(chapter.pages.all().order_by('page_number'))
 
-    # 9) Sotib olingan boblar
+    # 9) Sotib olingan boblar (faqat auth)
     purchased_chapters = []
     if request.user.is_authenticated:
         purchased_chapters = list(
@@ -792,6 +799,24 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                            .filter(user=request.user, chapter__manga=manga)
                            .values_list('chapter_id', flat=True)
         )
+
+    # 9.1) O‘qiy oladigan boblar (LOCK chiqmasligi kerak bo‘lganlar)
+    if request.user.is_authenticated:
+        is_privileged = (
+            request.user.is_superuser
+            or request.user.is_staff
+            or manga.created_by_id == request.user.id
+            or _is_translator(request.user)
+        )
+    else:
+        is_privileged = False
+
+    if is_privileged:
+        readable_chapter_ids = [c.id for c in all_chapters]
+    else:
+        free_ids = [c.id for c in all_chapters if c.price_tanga == 0]
+        # auth bo‘lsa purchased_chapters bilan birga, guest bo‘lsa faqat free
+        readable_chapter_ids = list(set(free_ids) | set(purchased_chapters))
 
     # 10) Oxirgi bobmi?
     is_last_chapter = (next_chapter is None)
@@ -805,9 +830,10 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'next_chapter': next_chapter,
         'next_chapter_price': next_chapter_price,
         'reading_progress': progress,
-        'user_read_chapters': user_read_chapters,   # (visited IDs)
+        'user_read_chapters': user_read_chapters,   # visited IDs
         'pages': pages,
         'purchased_chapters': purchased_chapters,
+        'readable_chapter_ids': readable_chapter_ids,  # 👈 LOCK tekshiruvi uchun
         'is_last_chapter': is_last_chapter,
     }
     return render(request, 'manga/chapter_read.html', context)
