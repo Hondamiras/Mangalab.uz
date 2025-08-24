@@ -8,7 +8,7 @@ from django.contrib.auth.forms import AuthenticationForm
 from manga.models import Chapter, ChapterPurchase, Manga, ReadingProgress
 
 from .forms import SignupForm
-from .models import PendingSignup, TranslatorFollower, UserProfile, ReadingStatus
+from .models import PendingSignup, TranslatorFollower, TranslatorTeam, UserProfile, ReadingStatus
 
 User = get_user_model()
 
@@ -167,6 +167,11 @@ def profile_view(request):
             )
             .order_by('chapter__manga__title', 'chapter__volume', 'chapter__chapter_number')
         )
+        
+        teams = (
+            user_profile.teams.all()
+            .annotate(members_cnt=Count('memberships', distinct=True))
+        )
 
         return render(request, "accounts/translators/translator_profile_owner.html", {
             'profile_user': request.user,
@@ -176,6 +181,7 @@ def profile_view(request):
             'total_income': total_income,
             'chapter_earnings': chapter_earnings,
             'is_self': True,
+            'teams': teams
         })
 
     # --- Oddiy foydalanuvchi uchun ---
@@ -225,6 +231,11 @@ def translator_profile_view(request, username):
         request.user.is_authenticated and request.user != profile_user and
         TranslatorFollower.objects.filter(translator=user_profile, user=request.user.userprofile).exists()
     )
+    
+    teams = (
+        user_profile.teams.all()
+        .annotate(members_cnt=Count('memberships', distinct=True))
+    )
 
     return render(request, "accounts/translators/translator_profile_public.html", {
         "profile_user": profile_user,
@@ -232,6 +243,7 @@ def translator_profile_view(request, username):
         "mangas": mangas,
         "follower_count": follower_count,
         "is_following": is_following,
+        "teams": teams,
     })
 
 
@@ -269,6 +281,11 @@ def translator_profile_owner_view(request):
 
     # Followerlar soni
     follower_count = TranslatorFollower.objects.filter(translator=user_profile).count()
+    
+    teams = (
+        user_profile.teams.all()
+        .annotate(members_cnt=Count('memberships', distinct=True))
+    )
 
     return render(request, "accounts/translators/translator_profile_owner.html", {
         "profile_user": profile_user,
@@ -277,6 +294,7 @@ def translator_profile_owner_view(request):
         "follower_count": follower_count,
         "total_income": total_income,
         "chapter_earnings": chapter_earnings,
+        "teams": teams,
     })
 
 
@@ -317,3 +335,26 @@ def top_translators(request):
         {"translators": translators},
     )
 
+def team_profile_view(request, slug):
+    team = get_object_or_404(
+        TranslatorTeam.objects.select_related().prefetch_related(
+            'memberships__profile__user'
+        ),
+        slug=slug
+    )
+
+    # Team a’zolari (faqat tarjimonlar), biroz metrik bilan
+    members = (
+        UserProfile.objects.filter(team_memberships__team=team, is_translator=True)
+        .select_related('user')
+        .annotate(
+            manga_count=Count('user__mangas_created', distinct=True),
+            follower_count=Count('followers', distinct=True),
+        )
+        .order_by('user__username')
+    )
+
+    return render(request, "accounts/translators/team_profile.html", {
+        "team": team,
+        "members": members,
+    })
