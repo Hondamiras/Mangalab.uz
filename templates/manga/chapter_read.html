@@ -46,9 +46,9 @@
             <ul class="divide-y divide-purple-800/50">
               {% for ch in all_chapters %}
                 {% comment %}
-                  LOCK holati: pullik + foydalanuvchi muallif emas + hali sotib olinmagan
+                  LOCK holati: pullik + O‘QIB BO‘LMAYDIGAN bob (readable_chapter_ids ichida yo‘q)
                 {% endcomment %}
-                {% if ch.price_tanga > 0 and request.user.is_authenticated and manga.created_by != request.user and ch.id not in purchased_chapters %}
+                {% if ch.price_tanga > 0 and request.user.is_authenticated and ch.id not in readable_chapter_ids %}
                   <li>
                     <button type="button"
                             class="js-open-purchase group flex items-center w-full text-left px-5 py-3.5 hover:bg-purple-900/20 transition"
@@ -324,80 +324,80 @@
   </script>
 
 <script>
-(function () {
-  const nav = document.getElementById('navbar');
-  const HIDE = '-translate-y-full';
-  const isMobile = () =>
-    window.matchMedia('(max-width: 767px)').matches || navigator.maxTouchPoints > 0;
+  (function () {
+    const nav = document.getElementById('navbar');
+    const HIDE = '-translate-y-full';
+    const isMobile = () =>
+      window.matchMedia('(max-width: 767px)').matches || navigator.maxTouchPoints > 0;
 
-  // mobilga kirganda — yashirin; desktopga o‘tganda — ko‘rinadigan holatni saqlaymiz
-  function syncState() {
-    if (isMobile()) nav.classList.add(HIDE);
-    else nav.classList.remove(HIDE);
-  }
-  syncState();
-  window.addEventListener('resize', syncState);
-
-  // ⛔ Hech qanday scroll listener yo‘q mobil uchun (faqat tap ishlaydi)
-
-  // Tap aniqlash (kaltagina bosish)
-  let sx = 0, sy = 0, st = 0;
-  document.addEventListener('touchstart', (e) => {
-    if (!isMobile()) return;
-    const t = e.changedTouches[0];
-    sx = t.clientX; sy = t.clientY; st = Date.now();
-  }, { passive: true });
-
-  document.addEventListener('touchend', (e) => {
-    if (!isMobile()) return;
-
-    const t = e.changedTouches[0];
-    const dx = Math.abs(t.clientX - sx);
-    const dy = Math.abs(t.clientY - sy);
-    const dt = Date.now() - st;
-    const isTap = dx < 6 && dy < 6 && dt < 300;
-
-    if (!isTap) return;
-
-    // modal ochiq bo‘lsa (sotib olish), navni o‘zgartirmaymiz
-    const modal = document.getElementById('buyModal');
-    if (modal && !modal.classList.contains('hidden')) return;
-
-    const insideNav = e.target.closest('#navbar');
-
-    // Tashqariga bosilsa: nav ko‘rinmasa — ko‘rsatamiz; ko‘rinib turgan bo‘lsa — yopamiz
-    if (!insideNav) {
-      nav.classList.toggle(HIDE);
-      return;
+    // mobilga kirganda — yashirin; desktopga o‘tganda — ko‘rinadigan holatni saqlaymiz
+    function syncState() {
+      if (isMobile()) nav.classList.add(HIDE);
+      else nav.classList.remove(HIDE);
     }
+    syncState();
+    window.addEventListener('resize', syncState);
 
-    // Nav ichida bosilsa: eventlar ishlasin, keyin ozgina kechikib yopamiz (qulaylik uchun)
-    if (e.target.closest('a,button,select')) {
-      setTimeout(() => nav.classList.add(HIDE), 250);
-    }
-  }, { passive: true });
+    // ⛔ Hech qanday scroll listener yo‘q mobil uchun (faqat tap ishlaydi)
 
-  // Desktop xulqi (xohlasangiz qoldiring yoki olib tashlang)
-  if (!isMobile()) {
-    let last = window.pageYOffset || document.documentElement.scrollTop;
-    let ticking = false;
-    window.addEventListener('scroll', () => {
-      if (isMobile()) return; // desktop-gina
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        const cur = window.pageYOffset || document.documentElement.scrollTop;
-        const delta = cur - last;
-        if (Math.abs(delta) > 5) {
-          if (delta > 0 && cur > nav.offsetHeight) nav.classList.add(HIDE);
-          else if (delta < 0) nav.classList.remove(HIDE);
-          last = cur;
-        }
-        ticking = false;
-      });
+    // Tap aniqlash (kaltagina bosish)
+    let sx = 0, sy = 0, st = 0;
+    document.addEventListener('touchstart', (e) => {
+      if (!isMobile()) return;
+      const t = e.changedTouches[0];
+      sx = t.clientX; sy = t.clientY; st = Date.now();
     }, { passive: true });
-  }
-})();
+
+    document.addEventListener('touchend', (e) => {
+      if (!isMobile()) return;
+
+      const t = e.changedTouches[0];
+      const dx = Math.abs(t.clientX - sx);
+      const dy = Math.abs(t.clientY - sy);
+      const dt = Date.now() - st;
+      const isTap = dx < 6 && dy < 6 && dt < 300;
+
+      if (!isTap) return;
+
+      // modal ochiq bo‘lsa (sotib olish), navni o‘zgartirmaymiz
+      const modal = document.getElementById('buyModal');
+      if (modal && !modal.classList.contains('hidden')) return;
+
+      const insideNav = e.target.closest('#navbar');
+
+      // Tashqariga bosilsa: nav ko‘rinmasa — ko‘rsatamiz; ko‘rinib turgan bo‘lsa — yopamiz
+      if (!insideNav) {
+        nav.classList.toggle(HIDE);
+        return;
+      }
+
+      // Nav ichida bosilsa: eventlar ishlasin, keyin ozgina kechikib yopamiz (qulaylik uchun)
+      if (e.target.closest('a,button,select')) {
+        setTimeout(() => nav.classList.add(HIDE), 250);
+      }
+    }, { passive: true });
+
+    // Desktop xulqi (xohlasangiz qoldiring yoki olib tashlang)
+    if (!isMobile()) {
+      let last = window.pageYOffset || document.documentElement.scrollTop;
+      let ticking = false;
+      window.addEventListener('scroll', () => {
+        if (isMobile()) return; // desktop-gina
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const cur = window.pageYOffset || document.documentElement.scrollTop;
+          const delta = cur - last;
+          if (Math.abs(delta) > 5) {
+            if (delta > 0 && cur > nav.offsetHeight) nav.classList.add(HIDE);
+            else if (delta < 0) nav.classList.remove(HIDE);
+            last = cur;
+          }
+          ticking = false;
+        });
+      }, { passive: true });
+    }
+  })();
 </script>
 </body>
 </html>
