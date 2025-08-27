@@ -323,6 +323,13 @@ class PageAdmin(admin.ModelAdmin):
     ordering = ("-chapter__id", "-page_number")
     list_filter = (IsWebPFilter,)
 
+    search_fields = (
+        "chapter__manga__title",          # manga nomi
+    )
+    search_help_text = (
+        "Manga nomi bo‘yicha qidiring."
+    )
+
     def get_queryset(self, request):
         qs = super().get_queryset(request).select_related("chapter", "chapter__manga")
         if request.user.is_superuser:
