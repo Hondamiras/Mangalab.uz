@@ -320,7 +320,7 @@ from django.core.files.storage import default_storage
 class PageAdmin(admin.ModelAdmin):
     list_display = ("chapter", "page_number", "image_size_mb")
     raw_id_fields = ("chapter",)
-    ordering = ("chapter", "page_number")
+    ordering = ("-chapter__id", "-page_number")
     list_filter = (IsWebPFilter,)
 
     def get_queryset(self, request):
