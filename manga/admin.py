@@ -314,6 +314,8 @@ class IsWebPFilter(admin.SimpleListFilter):
             return queryset.exclude(image__iendswith='.webp')
         return queryset
 
+from django.core.files.storage import default_storage
+
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
     list_display = ("chapter", "page_number", "image_size_mb")
@@ -322,19 +324,31 @@ class PageAdmin(admin.ModelAdmin):
     list_filter = (IsWebPFilter,)
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
+        qs = super().get_queryset(request).select_related("chapter", "chapter__manga")
         if request.user.is_superuser:
             return qs
-        # Chapter modelida `created_by` yo‘qligi uchun:
-        # manga.created_by ga qaraymiz
+        # Muallifga tegishli mangalar sahifalarinigina ko'rsatamiz
         return qs.filter(chapter__manga__created_by=request.user)
 
+    @admin.display(description="Image Size (MB)")
     def image_size_mb(self, obj):
-        if obj.image and os.path.isfile(obj.image.path):
-            size_mb = os.path.getsize(obj.image.path) / (1024 * 1024)
-            return f"{size_mb:.2f} MB"
-        return "No file"
-    image_size_mb.short_description = "Image Size (MB)"
+        f = getattr(obj, "image", None)
+        if not f:
+            return "No file"
+
+        # Masofaviy storage bilan xavfsiz tekshiruv va o'lcham
+        try:
+            if not default_storage.exists(f.name):
+                return "No file"
+            size_bytes = f.size  # storage.size() chaqiradi; S3/Spaces’da ishlaydi
+        except Exception:
+            # Zaxira varianti
+            try:
+                size_bytes = default_storage.size(f.name)
+            except Exception:
+                return "N/A"
+
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
 
 class MangaTelegramLinkInline(admin.TabularInline):
     model = MangaTelegramLink
