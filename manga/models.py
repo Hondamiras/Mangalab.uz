@@ -9,6 +9,7 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import os
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -40,7 +41,7 @@ class MangaTelegramLink(models.Model):
         verbose_name="Qaysi Manga uchun"
     )
     name = models.CharField(max_length=100, default="", verbose_name="Link nomi", blank=True)
-    link = models.URLField(verbose_name="Telegram havolasi")
+    link = models.URLField(verbose_name="Telegram havolasi", help_text="To'liq havolani kiriting, masalan: https://t.me/joinchat/AAAAAEg...", blank=True, null=True)
 
     def __str__(self):
         return self.name or self.link
@@ -80,13 +81,13 @@ class Manga(models.Model):
     )
     type = models.CharField(
         max_length=50,
-        choices=[("Manga", "Manga"), ("Manhwa", "Manhwa"), ("Manhua", "Manhua"), ("Komiks", "Komiks")],
+        choices=[("Manga", "Manga"), ("Manhwa", "Manhwa"), ("Manhua", "Manhua"), ("Komiks", "Komiks"), ("Novel", "Novel"), ("OEL-manga", "OEL-manga"), ("Rumanga", "Rumanga")],
         default="Manga",
     )
     age_rating = models.CharField(
         max_length=50,
         choices=[("Belgilanmagan", "Belgilanmagan"), ("6+", "6+"), ("12+", "12+"), ("16+", "16+"), ("18+", "18+")],
-        default="Belgilanmagan",
+        default="16+",
         verbose_name="Yosh chegarasi"
     )
     translation_status = models.CharField(
@@ -97,8 +98,15 @@ class Manga(models.Model):
             ("Completed", "Tarjima qilingan"),
             ("Dropped", "Tashlab qo'yilgan"),
         ],
-        default="Not Translated",
+        default="In Progress",
         verbose_name="Tarjima holati"
+    )
+    team = models.ForeignKey(
+        "accounts.TranslatorTeam",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="mangas",
+        verbose_name="Jamoa (agar jamoa nomidan bo‘lsa)"
     )
     likes = models.ManyToManyField(
         User,
@@ -151,22 +159,6 @@ class Manga(models.Model):
     def likes_count(self) -> int:
         return self.likes.count()
 
-    # def is_liked_by(self, user: User) -> bool:
-    #     if not user or not user.is_authenticated:
-    #         return False
-    #     return self.likes.filter(pk=user.pk).exists()
-
-    # def toggle_like(self, user: User) -> bool:
-    #     """
-    #     True qaytarsa — like qo'yildi
-    #     False qaytarsa — like olib tashlandi
-    #     """
-    #     obj, created = MangaLike.objects.get_or_create(manga=self, user=user)
-    #     if created:
-    #         return True
-    #     obj.delete()
-    #     return False
-
 class Genre(models.Model):
     name = models.CharField(max_length=50, unique=True, verbose_name="Janr nomi")
     
@@ -198,20 +190,14 @@ class Chapter(models.Model):
     chapter_number = models.PositiveIntegerField(verbose_name="Bob")
     price_tanga = models.PositiveIntegerField(default=0, verbose_name="Bob narxi (tanga)")
     release_date = models.DateField(default=date.today, verbose_name="Chiqarilgan sana (Tegilmasin!)")
+    published_at = models.DateTimeField(default=timezone.now, db_index=True, blank=True, null=True)  # <<— yangi
+    updated_at   = models.DateTimeField(auto_now=True)                         
 
     thanks = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="thanked_chapters",
         blank=True,
     )
-    # created_by = models.ForeignKey(
-    #     settings.AUTH_USER_MODEL,
-    #     on_delete=models.CASCADE,
-    #     # editable=False,
-    #     related_name="chapters_created",
-    #     null=True,
-    #     blank=True,
-    # )
 
     class Meta:
         unique_together = ("manga", "chapter_number", "volume")
@@ -251,7 +237,6 @@ class ChapterPurchase(models.Model):
 
     def __str__(self):
         return f"{self.user.username} → {self.chapter}"
-
 
 class Page(models.Model):
     """
@@ -317,7 +302,6 @@ class Page(models.Model):
 
         # Финальный save, чтобы обновлённое имя image записалось в БД
         super().save(update_fields=['image'])
-
 
 class ReadingProgress(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reading_progress")
