@@ -446,5 +446,26 @@
       });
     });
   </script>
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var scale = 0.75;
+    var body = document.body;
+
+    // Prefer browser zoom (better for fixed/positioned elements)
+    body.style.zoom = scale;
+
+    // Fallback for browsers that don't support zoom (e.g., Firefox)
+    if (!body.style.zoom) {
+      var wrap = document.createElement('div');
+      while (body.firstChild) wrap.appendChild(body.firstChild);
+      wrap.style.transform = 'scale(' + scale + ')';
+      wrap.style.transformOrigin = 'top center';
+      wrap.style.width = (100 / scale) + '%';
+      wrap.style.minHeight = (100 / scale) + 'vh';
+      body.appendChild(wrap);
+      body.style.overflowX = 'hidden';
+    }
+  });
+</script>
 </body>
 </html>
