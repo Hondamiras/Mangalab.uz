@@ -94,11 +94,26 @@
       </div>
     </div>
 
-    <!-- Right: follow/unfollow -->
+
+    <!-- Right: actions (Telegram + follow/unfollow) -->
     <div class="flex items-center gap-2 self-end md:self-auto mt-4 md:mt-0">
+
+      {% with tg_link=profile_user.userprofile.link|default:user_profile.link %}
+      {% if tg_link %}
+        <a href="{{ tg_link }}" target="_blank" rel="noopener nofollow"
+          class="inline-flex items-center justify-center gap-2 px-4 py-2.5
+                  rounded-xl text-white font-medium border bg-sky-600
+                  hover:bg-sky-500 border-sky-500/60">
+          
+          Telegram
+        </a>
+      {% endif %}
+      {% endwith %}
+
       {% if request.user.is_authenticated and request.user != profile_user %}
         <a href="{% url 'accounts:follow_translator' profile_user.username %}"
-           class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white font-medium border transition
+          class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl
+                  text-white font-medium border transition
                   {% if is_following %} bg-red-600 hover:bg-red-500 border-red-500/60
                   {% else %} bg-green-600 hover:bg-green-500 border-green-500/60 {% endif %}">
           {% if is_following %}
@@ -108,7 +123,9 @@
           {% endif %}
         </a>
       {% endif %}
+
     </div>
+
   </div>
 </section>
 
