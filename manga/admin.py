@@ -70,7 +70,8 @@ class MangaTelegramLinkInline(admin.TabularInline):
 # ===== Manga =====
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
-    list_display = ("title", "status", "created_by", "chapter_count")
+    list_display = ("title", "team", "status", "created_by", "chapter_count")
+    list_filter  = ("team", "type", "status", "translation_status")
     list_editable = ("created_by",)
     search_fields = ("title",)
     search_help_text = "Manga nomi bo‘yicha qidirish"
@@ -314,15 +315,14 @@ class IsWebPFilter(admin.SimpleListFilter):
             return queryset.exclude(image__iendswith='.webp')
         return queryset
 
-from django.core.files.storage import default_storage
-
+from django.core.files.storage import default_storage 
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
     list_display = ("chapter", "page_number", "image_size_mb")
     raw_id_fields = ("chapter",)
     ordering = ("-chapter__id", "-page_number")
     list_filter = (IsWebPFilter,)
-
+    
     search_fields = (
         "chapter__manga__title",          # manga nomi
     )
@@ -356,7 +356,8 @@ class PageAdmin(admin.ModelAdmin):
                 return "N/A"
 
         return f"{size_bytes / (1024 * 1024):.2f} MB"
-
+    
+    
 class MangaTelegramLinkInline(admin.TabularInline):
     model = MangaTelegramLink
     extra = 1   # yangi qo‘shish uchun bo‘sh qator
