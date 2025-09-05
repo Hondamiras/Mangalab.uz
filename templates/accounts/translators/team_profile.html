@@ -35,7 +35,7 @@
   </section>
 
   <!-- Members grid -->
-  <section>
+  <section class="mb-10">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-2xl font-bold text-white">
         <span class="pb-1 border-b-2 border-purple-500">A’zolar</span>
@@ -72,6 +72,49 @@
     {% else %}
       <div class="rounded-xl bg-gray-900/40 border border-gray-800 p-8 text-center text-gray-400">
         Hozircha a’zo yo‘q.
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- 🔥 Jamoa taytlari -->
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-2xl font-bold text-white">
+        <span class="pb-1 border-b-2 border-purple-500">Jamoa taytlari</span>
+      </h2>
+      {% if team_mangas %}
+        <span class="text-xs text-gray-400">{{ team_mangas|length }} ta</span>
+      {% endif %}
+    </div>
+
+    {% if team_mangas %}
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-4">
+        {% for manga in team_mangas %}
+          <a href="{% url 'manga:manga_details' manga.slug %}"
+             class="group block bg-gray-800 rounded-xl overflow-hidden border border-gray-700 hover:border-purple-500 transition">
+            <div class="relative aspect-[3/4]">
+              <img src="{{ manga.cover_image.url }}" alt="{{ manga.title }}"
+                   class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300">
+              <div class="absolute inset-x-0 bottom-0 p-2 bg-black/60">
+                <h3 class="text-white text-sm font-semibold truncate" title="{{ manga.title }}">{{ manga.title }}</h3>
+                <div class="mt-1 flex items-center justify-between text-[12px] text-gray-300">
+                  <span>{{ manga.chapter_count }} bob</span>
+                  <span class="inline-flex items-center gap-1">
+                    <!-- heart -->
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12.1 8.64l-.1.1-.11-.1C10.14 6.6 7.1 6.24 5.14 8.2c-2.07 2.07-1.48 5.44 1.06 7.32L12 21l5.8-5.48c2.54-1.88 3.13-5.25 1.06-7.32-1.96-1.96-5-1.6-6.76.44z"/>
+                    </svg>
+                    {{ manga.total_likes }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="rounded-xl bg-gray-900/40 border border-gray-800 p-8 text-center text-gray-400">
+        Hali bu jamoa taytl qo‘shmagan.
       </div>
     {% endif %}
   </section>
