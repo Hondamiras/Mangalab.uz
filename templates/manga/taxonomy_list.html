@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} – MangaLab{% endblock %}
+
+{% block content %}
+<div class="container mx-auto max-w-5xl px-4 py-6">
+  <!-- Sarlavha + son -->
+  <div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl sm:text-3xl font-bold text-white">{{ title }}</h1>
+    <span class="inline-flex items-center px-2 py-1 rounded-full bg-purple-700/30 text-purple-200 border border-purple-600/40 text-sm">
+      {{ total_count }}
+    </span>
+  </div>
+
+  <!-- Tablar -->
+  <div class="flex items-center gap-4 border-b border-gray-800 mb-6 text-gray-300">
+    <a href="?sort=alpha"
+       class="px-2 pb-3 -mb-px border-b-2 transition
+              {% if active_tab == 'alpha' %}border-purple-500 text-white{% else %}border-transparent hover:text-white{% endif %}">
+      Alifbo bo‘yicha
+    </a>
+    <a href="?sort=popular"
+       class="px-2 pb-3 -mb-px border-b-2 transition
+              {% if active_tab == 'popular' %}border-purple-500 text-white{% else %}border-transparent hover:text-white{% endif %}">
+      Mashhurlar
+    </a>
+  </div>
+
+  {% if active_tab == 'popular' %}
+    <!-- Mashhurlar: oddiy ro‘yxat -->
+    <ul class="space-y-2">
+      {% for it in items %}
+        <li>
+          <a href="{% url 'manga:browse' %}?{{ qparam }}={{ it.name|urlencode }}"
+             class="flex items-center justify-between px-4 py-3 rounded-lg bg-gray-800/50 border border-gray-700 hover:bg-gray-800 hover:border-gray-600 transition">
+            <span class="text-gray-100">{{ it.name }}</span>
+            <span class="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 rounded-md bg-purple-700/30 text-purple-200 border border-purple-600/40 text-sm">
+              {{ it.num }}
+            </span>
+          </a>
+        </li>
+      {% empty %}
+        <li class="text-gray-400">Hech narsa topilmadi.</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <!-- Alifbo bo‘yicha: guruhlangan bloklar -->
+    <div class="space-y-6">
+      {% for g in groups %}
+        <section class="rounded-xl bg-gray-900/50 border border-gray-800">
+          <header class="px-4 py-3 border-b border-gray-800">
+            <h2 class="text-lg font-semibold text-gray-200">{{ g.letter }}</h2>
+          </header>
+          <ul class="divide-y divide-gray-800">
+            {% for it in g.items %}
+              <li>
+                <a href="{% url 'manga:browse' %}?{{ qparam }}={{ it.name|urlencode }}"
+                   class="flex items-center justify-between px-4 py-3 hover:bg-gray-800/60 transition">
+                  <span class="text-gray-100">{{ it.name }}</span>
+                  <span class="inline-flex items-center justify-center min-w-[3rem] px-2 py-1 rounded-md bg-purple-700/30 text-purple-200 border border-purple-600/40 text-sm">
+                    {{ it.num }}
+                  </span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% empty %}
+        <p class="text-gray-400">Hech narsa topilmadi.</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
