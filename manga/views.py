@@ -1,7 +1,8 @@
 # apps/manga/views.py
+import random
 from django.shortcuts import render, get_object_or_404, redirect
 from django.core.paginator import Paginator
-from django.db.models import Q, Count
+from django.db.models import Q, Count, F
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -59,15 +60,26 @@ def toggle_manga_like(request, slug):
     return JsonResponse({"success": True, "liked": liked, "likes_count": likes_count})
 
 def get_cached_or_query(cache_key, queryset_func, timeout):
-    """
-    Helper function to get cached data or execute queryset and cache it
-    """
     data = cache.get(cache_key)
-    if not data:
+    if data is None:                     # <<— shuni ishlat
         data = queryset_func()
         cache.set(cache_key, data, timeout)
     return data
 
+
+
+
+
+def random_manga(request):
+    """Tasodifiy mangaga redirect qiladi."""
+    count = Manga.objects.count()
+    if count == 0:
+        return redirect("manga:discover")
+
+    # Tez va barqaror usul: ofset bilan olish
+    idx = random.randint(0, count - 1)
+    random_manga_obj = Manga.objects.order_by('id')[idx]
+    return redirect("manga:manga_details", manga_slug=random_manga_obj.slug)
 
 # ====== Umumiy yordamchi funksiyalar (Discover + Browse uchun qayta ishlatiladi) ======
 
@@ -113,27 +125,50 @@ RECENT_FEED_KEY     = "discover_recent_feed_v1"
 TOP_TRANSLATORS_TTL = 60 * 60 * 12   # 12 soat
 RECENT_FEED_TTL     = 60 * 30        # 30 daqiqa
 
-def _to_aware_dt(value):
-    """date/datetime kelishi mumkin — har doim aware datetime qaytaradi."""
-    if isinstance(value, datetime):
-        return timezone.localtime(value) if timezone.is_aware(value) else timezone.make_aware(value)
-    if isinstance(value, date):
-        naive = datetime.combine(value, time.min)
-        return timezone.make_aware(naive)
-    return None
+def _chapter_last_dt(ch):
+    dt = getattr(ch, "published_at", None)
+    if dt:
+        return timezone.localtime(dt) if timezone.is_aware(dt) else timezone.make_aware(dt)
+
+    rel = getattr(ch, "release_date", None)
+    if rel:
+        # fallback: kun boshi (yoki xohlasangiz time(12,0))
+        return timezone.make_aware(datetime.combine(rel, time(0, 0)))
+
+    return timezone.now()
 
 def _ago_uz(dt):
     """
     'N daqiqa/soat/kun oldin' — date ham, datetime ham qabul qiladi.
+    Chapter-logikani BU yerga kiritmang.
     """
     if not dt:
         return ""
-    dt = _to_aware_dt(dt)
-    if not dt:
-        return ""
+
     now_local = timezone.localtime(timezone.now())
-    delta = now_local - dt
-    s = int(delta.total_seconds())
+
+    # Agar faqat sana bo'lsa — kunlar bo'yicha hisoblaymiz
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        d = (now_local.date() - dt).days
+        if d <= 0:
+            return "bugun"
+        if d == 1:
+            return "kecha"
+        if d < 30:
+            return f"{d} kun oldin"
+        mo = d // 30
+        if mo < 12:
+            return f"{mo} oy oldin"
+        return f"{mo // 12} yil oldin"
+
+    # Datetime bo'lsa — aware/localtime ga o'tkazamiz
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    dt = timezone.localtime(dt)
+
+    s = int((now_local - dt).total_seconds())
+    if s <= 0:
+        return "hozir"
 
     if s < 60:
         return f"{s} soniya oldin"
@@ -246,10 +281,11 @@ def manga_discover(request):
     def _build_recent_feed(limit_titles=10, per_title=3, window_hours=72):
         since = timezone.now() - timedelta(hours=window_hours)
         qs = (
-            Chapter.objects.select_related("manga")
-            .filter(release_date__gte=since.date())        # DateField bilan solishtirish
-            .order_by("-release_date", "-id")[:800]
-        )
+        Chapter.objects.select_related("manga")
+        .filter(Q(published_at__gte=since) | Q(release_date__gte=since.date()))
+        .order_by(F("published_at").desc(nulls_last=True), "-id")[:800]
+    )
+
 
         feed_map = {}
         for ch in qs:
@@ -257,27 +293,24 @@ def manga_discover(request):
             if not m:
                 continue
 
-            ch_dt = _to_aware_dt(ch.release_date)          # date -> aware datetime
-            box = feed_map.setdefault(
-                m.id, {"manga": m, "chapters": [], "last": ch_dt, "total": 0}
-            )
+            ch_dt = _chapter_last_dt(ch)
+            box = feed_map.setdefault(m.id, {"manga": m, "chapters": [], "last": ch_dt, "total": 0})
             box["total"] += 1
             if ch_dt and ch_dt > box["last"]:
                 box["last"] = ch_dt
 
             if len(box["chapters"]) < per_title:
-                translators = []
                 try:
                     translators = list(ch.translators.all()[:3])
                 except Exception:
-                    pass
+                    translators = []
                 box["chapters"].append({"obj": ch, "translators": translators})
 
         items = list(feed_map.values())
         for it in items:
             it["shown"] = len(it["chapters"])
             it["more"]  = max(0, it["total"] - it["shown"])
-            it["ago"]   = _ago_uz(it["last"])
+            it["ago"]   = _ago_uz(it["last"])  # minut/soniyagacha to‘g‘ri
 
         items.sort(key=lambda x: x["last"], reverse=True)
         return items[:limit_titles]
@@ -832,3 +865,63 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'is_last_chapter': is_last_chapter,
     }
     return render(request, 'manga/chapter_read.html', context)
+
+
+
+def _make_alpha_groups(qs, name_field="name"):
+    """
+    Alfavit bo‘yicha guruhlash (A, B, ... #).
+    qs ichida .name va .num (manga soni) bo‘lishi kerak.
+    """
+    groups = defaultdict(list)
+    for obj in qs:
+        name = getattr(obj, name_field) or ""
+        first = name.strip()[:1].upper() if name else "#"
+        # agar harf/raqam bo‘lmasa -> '#'
+        if not first or not first.isalnum():
+            first = "#"
+        groups[first].append(obj)
+
+    # Har bir guruhni nom bo‘yicha sortlab chiqamiz
+    letters = sorted(groups.keys(), key=lambda x: x)
+    out = [{"letter": L, "items": sorted(groups[L], key=lambda o: getattr(o, name_field).lower())}
+           for L in letters]
+    return out
+
+def _taxonomy_context(model_cls, title, qparam, request):
+    """
+    model_cls: Genre yoki Tag
+    title: sahifa sarlavhasi
+    qparam: 'genre' yoki 'tag' (browse uchun GET nomi)
+    """
+    sort = request.GET.get("sort", "alpha")  # 'alpha' | 'popular'
+
+    # annotatsiya: shu janr/tegga bog‘langan taytlar soni
+    qs = model_cls.objects.annotate(num=Count("mangas", distinct=True))
+
+    total_count = qs.count()
+
+    if sort == "popular":
+        items = list(qs.order_by("-num", "name"))
+        groups = None
+    else:
+        # default: alpha
+        items = list(qs.order_by("name"))
+        groups = _make_alpha_groups(items)
+
+    return {
+        "title": title,
+        "qparam": qparam,
+        "active_tab": sort,
+        "total_count": total_count,
+        "groups": groups,       # alpha bo‘lsa to‘ladi
+        "items": items,         # popular bo‘lsa ishlatiladi
+    }
+
+def genre_index(request):
+    ctx = _taxonomy_context(Genre, "Janrlar", "genre", request)
+    return render(request, "manga/taxonomy_list.html", ctx)
+
+def tag_index(request):
+    ctx = _taxonomy_context(Tag, "Teglar", "tag", request)
+    return render(request, "manga/taxonomy_list.html", ctx)
