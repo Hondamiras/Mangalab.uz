@@ -343,7 +343,7 @@ def team_profile_view(request, slug):
         slug=slug
     )
 
-    # Team a’zolari (faqat tarjimonlar), biroz metrik bilan
+    # A’zolar ro‘yxati (mavjud edi)
     members = (
         UserProfile.objects.filter(team_memberships__team=team, is_translator=True)
         .select_related('user')
@@ -354,7 +354,19 @@ def team_profile_view(request, slug):
         .order_by('user__username')
     )
 
+    # 🔥 Shu jamoaga tegishli taytllar
+    team_mangas = (
+        Manga.objects.filter(team=team)
+        .annotate(
+            chapter_count=Count("chapters", distinct=True),
+            total_likes=Count("chapters__thanks", distinct=True),
+        )
+        .order_by("-id")
+    )
+
     return render(request, "accounts/translators/team_profile.html", {
         "team": team,
         "members": members,
-    })
+        "team_mangas": team_mangas,   # ⬅️ yuboramiz
+    })    
+    
