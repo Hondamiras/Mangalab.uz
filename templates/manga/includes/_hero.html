@@ -1,4 +1,5 @@
 {% load cache %}
+{% load numfmt %}
 {% load humanize %}
 
 {# ---------- HERO SECTION (split-cached for per-user safety) ---------- #}
@@ -142,44 +143,38 @@
     </div>
     {% endcache %}
 
-    {# ---------- MANGA STATS (NOT CACHED) ---------- #}
-{# agar yuqorida bo'lmasa qo'shing #}
-<div class="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-3">
-  <div class="px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-center">
-    <div class="text-2xl font-bold text-purple-300">{{ readers_all|intcomma }}</div>
-    <div class="text-xs text-gray-400 mt-1">O‘quvchi (jami)</div>
-  </div>
-  <div class="px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-center">
-    <div class="text-2xl font-bold text-purple-300">{{ reads_all|intcomma }}</div>
-    <div class="text-xs text-gray-400 mt-1">O‘qish (jami)</div>
-  </div>
-  <div class="px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-center">
-    <div class="text-2xl font-bold text-purple-300">{{ readers_30d|intcomma }}</div>
-    <div class="text-xs text-gray-400 mt-1">O‘quvchi (30 kun)</div>
-  </div>
-  <div class="px-4 py-3 rounded-2xl bg-gray-800 border border-gray-700 text-center">
-    <div class="text-2xl font-bold text-purple-300">{{ reads_30d|intcomma }}</div>
-    <div class="text-xs text-gray-400 mt-1">O‘qish (30 kun)</div>
-  </div>
-</div>
+
+
 
 
 {# ---------- ACTION BUTTONS (NOT CACHED; per-user) ---------- #}
 {% if first_chapter %}
-  <div
-    class="mt-3 grid grid-cols-1 gap-4
-           justify-items-center sm:justify-items-stretch
-           sm:grid-cols-2
-           lg:grid-cols-6">
+  <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+
+    {# 0) Stats: jami o‘qilganlar #}
+    <div class="lg:col-span-2">
+      <div
+        class="h-14 w-full flex items-center justify-center gap-2 rounded-2xl bg-gray-800 border border-gray-700
+               hover:border-purple-500 transition-colors"
+        title="{{ reads_all|default:0|intcomma }} ta o‘qish"
+        aria-label="Jami o‘qilganlar"
+      >
+        <i class="fas fa-eye text-sm text-purple-300"></i>
+        <span class="text-base sm:text-lg font-semibold text-purple-300">
+          {{ reads_all|default:0|short_number }}
+        </span>
+        <span class="text-xs text-gray-400">o‘qish</span>
+      </div>
+    </div>
 
     {# 1) Reading Status #}
-    <div class="w-[220px] sm:w-full lg:col-span-3">
+    <div class="lg:col-span-2">
       {% if request.user.is_authenticated %}
         <form method="post" action="{% url 'manga:add_to_reading_list' manga.slug %}">
           {% csrf_token %}
           <div class="relative">
             <select name="status" onchange="this.form.submit()"
-                    class="w-full h-14 pl-3 pr-10 text-sm bg-gray-800 border border-gray-700 rounded-2xl
+                    class="h-14 w-full pl-3 pr-10 text-sm bg-gray-800 border border-gray-700 rounded-2xl
                            text-purple-300 font-medium cursor-pointer focus:outline-none appearance-none">
               <option value="remove">Tanlanmagan</option>
               {% for val,label in READING_STATUSES %}
@@ -197,7 +192,7 @@
         </form>
       {% else %}
         <a href="{% url 'accounts:login' %}?next={% url 'manga:add_to_reading_list' manga.slug %}"
-           class="w-full h-14 flex items-center justify-center text-sm px-4 gap-2 bg-gray-900 text-purple-300
+           class="h-14 w-full flex items-center justify-center text-sm px-4 gap-2 bg-gray-900 text-purple-300
                   rounded-2xl hover:bg-gray-800 transition-colors duration-200 shadow-sm hover:shadow-md">
           <span class="font-medium text-center">Ro'yxatga qo'shish uchun kiring.</span>
         </a>
@@ -205,12 +200,12 @@
     </div>
 
     {# 2) Start / Continue #}
-    <div class="w-[220px] sm:w-full lg:col-span-3">
+    <div class="lg:col-span-2">
       {% if progress_current_chapter_id %}
         {% for c in chapters %}
           {% if c.id == progress_current_chapter_id %}
             <a href="{% url 'manga:chapter_read' manga.slug c.volume c.chapter_number %}"
-               class="w-full h-14 flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
+               class="h-14 w-full flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
                       hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md">
               <i class="fas fa-redo"></i>
               <span class="font-medium">Davom ettirish (Bob {{ c.chapter_number }})</span>
@@ -219,7 +214,7 @@
         {% endfor %}
       {% else %}
         <a href="{% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}"
-           class="w-full h-14 flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
+           class="h-14 w-full flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
                   hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md">
           <i class="fas fa-play"></i>
           <span class="font-medium">O'qishni boshlash</span>
@@ -229,10 +224,11 @@
 
     {# 3) Translator #}
     {% if translator_profile and translator_profile.is_translator %}
-      <div class="w-[220px] sm:w-full lg:col-span-2">
+      <div class="lg:col-span-2">
         <a href="{% url 'accounts:translator_profile' translator_profile.user.username %}"
-           class="w-full h-14 flex items-center justify-center gap-2 bg-gray-800 text-purple-300 border border-gray-700
+           class="h-14 w-full flex items-center justify-center gap-2 bg-gray-800 text-purple-300 border border-gray-700
                   rounded-2xl hover:bg-gray-700 hover:text-purple-200 transition-colors duration-200 shadow-sm hover:shadow-md">
+          <i class="fas fa-user-edit text-base"></i>
           <span class="font-medium">{{ translator_profile.user.username }}</span>
         </a>
       </div>
@@ -240,10 +236,10 @@
 
     {# 4) Telegram #}
     {% if telegram_links %}
-      <div class="w-[220px] sm:w-full lg:col-span-2">
+      <div class="lg:col-span-2">
         {% if telegram_links|length == 1 %}
           <a href="{{ telegram_links.0.link }}" target="_blank"
-             class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white
+             class="h-14 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white
                     rounded-2xl hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
             <i class="fab fa-telegram-plane text-xl"></i>
             <span class="font-medium">Telegram kanal</span>
@@ -251,7 +247,7 @@
         {% else %}
           <button type="button"
                   onclick="document.getElementById('telegramModal').classList.remove('hidden')"
-                  class="w-full h-14 flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white
+                  class="h-14 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white
                          rounded-2xl hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
             <i class="fab fa-telegram-plane text-xl"></i>
             <span class="font-medium">Telegram kanallar</span>
@@ -261,24 +257,25 @@
     {% endif %}
 
     {# 5) Like #}
-    <div class="w-[220px] sm:w-full lg:col-span-2">
+    <div class="lg:col-span-2">
       {% if request.user.is_authenticated %}
         <button id="likeBtn"
                 data-url="{% url 'manga:manga_like_toggle' slug=manga.slug %}"
                 title="{% if is_liked %}Liked{% else %}Like{% endif %}"
-                class="w-full h-14 inline-flex items-center justify-center gap-2 rounded-2xl border transition
+                class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl border transition
                        {% if is_liked %}
                          bg-pink-600 text-white border-pink-700 hover:opacity-90
                        {% else %}
                          bg-gray-800 text-pink-300 border-gray-700 hover:bg-gray-700
                        {% endif %}">
           <i class="fas fa-heart text-sm"></i>
+          <span class="font-medium">{% if is_liked %}Liked{% else %}Like{% endif %}</span>
           <span id="likeCount">{{ likes_count }}</span>
           <span class="sr-only">Like</span>
         </button>
       {% else %}
         <a href="{% url 'accounts:login' %}?next={{ request.path }}"
-           class="w-full h-14 inline-flex items-center justify-center gap-2 rounded-2xl bg-gray-800 hover:bg-gray-700
+           class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl bg-gray-800 hover:bg-gray-700
                   border border-gray-700 text-pink-300 transition">
           <i class="fas fa-heart text-base"></i>
           <span class="font-medium">Like uchun kiring</span>
@@ -293,11 +290,7 @@
   </p>
 {% endif %}
 
-
-
-
-
-  </div>
+</div>
 </div>
 
 {# (Optional) Like AJAX — ishlashi uchun qisqa skript #}
