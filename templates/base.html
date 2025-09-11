@@ -46,6 +46,12 @@
     .btn:hover { opacity: 0.9; transform: translateY(-1px); }
     .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
   </style>
+  <style>
+    /* faqat telefonlar uchun (Tailwind sm=640px) */
+    @media (max-width: 640px) {
+      html { font-size: 75%; } /* 16px -> 12px */
+    }
+  </style>
 </head>
 
 <body
@@ -99,7 +105,7 @@
 
   <!-- Navbar -->
   <nav class="shadow-lg bg-gray-900/80 backdrop-blur border-b border-gray-800">
-    <div class="container mx-auto flex items-center justify-between px-6 py-4">
+    <div class="px-4 py-6 sm:px-20 mx-auto flex items-center justify-between">
       <!-- Chap: logo -->
       <div class="flex items-center">
         <a href="{% url 'manga:discover' %}"
@@ -446,26 +452,6 @@
       });
     });
   </script>
-  <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    var scale = 0.75;
-    var body = document.body;
 
-    // Prefer browser zoom (better for fixed/positioned elements)
-    body.style.zoom = scale;
-
-    // Fallback for browsers that don't support zoom (e.g., Firefox)
-    if (!body.style.zoom) {
-      var wrap = document.createElement('div');
-      while (body.firstChild) wrap.appendChild(body.firstChild);
-      wrap.style.transform = 'scale(' + scale + ')';
-      wrap.style.transformOrigin = 'top center';
-      wrap.style.width = (100 / scale) + '%';
-      wrap.style.minHeight = (100 / scale) + 'vh';
-      body.appendChild(wrap);
-      body.style.overflowX = 'hidden';
-    }
-  });
-</script>
 </body>
 </html>
