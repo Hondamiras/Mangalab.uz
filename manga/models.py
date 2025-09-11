@@ -10,7 +10,15 @@ from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import InMemoryUploadedFile
 import os
 from django.utils import timezone
+from unidecode import unidecode
+from django.utils.text import slugify
+from django.db.models import Q
 
+def make_search_key(s: str) -> str:
+    # 'Bir zarbli odam' / 'One-Punch Man' / 'Ванпанчмен' / '원펀맨' → 'birzarbliodam' / 'onepunchman' / 'vanpanchmen' / 'wonpeonmaen'
+    return slugify(unidecode(s or ""), allow_unicode=False).replace("-", "")
+
+from django.utils.text import slugify
 User = get_user_model()
 
 class Tag(models.Model):
@@ -59,8 +67,35 @@ class MangaLike(models.Model):
     def __str__(self):
         return f"{self.user.username} ❤ {self.manga.title}"
 
+# apps/manga/models.py
+class MangaTitle(models.Model):
+    manga = models.ForeignKey("Manga", on_delete=models.CASCADE, related_name="titles")
+    name = models.CharField(max_length=255, db_index=True)
+    search_key = models.CharField(max_length=255, editable=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Manga qo'shimcha nomi"
+        verbose_name_plural = "Manga qo'shimcha nomlari"
+        constraints = [
+            models.UniqueConstraint(fields=["manga", "search_key"], name="uniq_manga_title_by_searchkey"),
+            models.CheckConstraint(check=~Q(search_key=""), name="mangatitle_search_key_not_blank"),
+        ]
+        indexes = [
+            models.Index(fields=["search_key"]),
+            models.Index(fields=["name"]),
+        ]
+
+    def save(self, *args, **kwargs):
+            self.search_key = make_search_key(self.name)   # <<< shu
+            super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
 class Manga(models.Model): 
     title = models.CharField(max_length=255, verbose_name="Nomi")
+    title_search_key = models.CharField(max_length=255, editable=False, db_index=True, default="", verbose_name="Qidirish uchun kalit so'z")
     author = models.CharField(max_length=255, verbose_name="Muallifi")
     description = models.TextField(verbose_name="Ta'rifi")
     cover_image = models.ImageField(upload_to="covers/", verbose_name="Poster rasmi")
@@ -153,6 +188,7 @@ class Manga(models.Model):
             webp_name = f"{slugify(base)}.webp"
             self.cover_image.save(webp_name, ContentFile(buffer.read()), save=False)
 
+        self.title_search_key = make_search_key(self.title)
         super().save(*args, **kwargs)
 
     @property
@@ -215,11 +251,14 @@ class Chapter(models.Model):
 class ChapterVisit(models.Model):
     user    = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chapter_visits")
     chapter = models.ForeignKey("manga.Chapter", on_delete=models.CASCADE, related_name="visits")
-    visited_at = models.DateTimeField(auto_now_add=True)
+    visited_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
         unique_together = ("user", "chapter")
-        indexes = [models.Index(fields=("user","chapter"))]
+        indexes = [
+            models.Index(fields=("user", "chapter")),
+            models.Index(fields=("chapter", "visited_at")),  # vaqtli kesim + chapter
+        ]
 
     def __str__(self):
         return f"{self.user} → {self.chapter}"
@@ -255,14 +294,6 @@ class Page(models.Model):
         help_text="Rasmni JPEG/PNG/WebP formatida yuklang.",
         verbose_name="Rasm (JPEG/PNG/WEBP formatida yuklang)"
     )
-    # created_by = models.ForeignKey(
-    #     settings.AUTH_USER_MODEL,
-    #     on_delete=models.CASCADE,
-    #     editable=False,
-    #     related_name="pages_created",
-    #     null=True,
-    #     blank=True,
-    # )
 
     class Meta:
         unique_together = ('chapter', 'page_number')
