@@ -12,7 +12,7 @@ import os
 from django.conf import settings
 
 from manga.service import _is_translator, can_read
-from .models import ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, ReadingProgress, Tag
+from .models import ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, ReadingProgress, Tag, make_search_key
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
 from django.db.models import Count, Sum
 from django.utils.timezone import now, timedelta
@@ -65,9 +65,6 @@ def get_cached_or_query(cache_key, queryset_func, timeout):
         data = queryset_func()
         cache.set(cache_key, data, timeout)
     return data
-
-
-
 
 
 def random_manga(request):
@@ -355,10 +352,12 @@ def manga_browse(request):
     # 4) Qidiruv
     search_query = request.GET.get('search', '').strip()
     if search_query:
+        norm = make_search_key(search_query)
         qs = qs.filter(
             Q(title__icontains=search_query) |
-            Q(author__icontains=search_query) |
-            Q(description__icontains=search_query)
+            Q(title_search_key__contains=norm) |
+            Q(titles__name__icontains=search_query) |
+            Q(titles__search_key__contains=norm)
         ).distinct()
 
     # 5) Checkbox filtrlar
@@ -502,7 +501,7 @@ def manga_browse(request):
 # ====== детали манги ========================================================
 def manga_details(request, manga_slug):
     """
-    Detail view (cache-siz).
+    Detail view (cache-siz asosiy qism).
     - Like holati/soni (Manga.likes M2M orqali)
     - Foydalanuvchining oxirgi ochgan joyi (faqat bitta 'current' bob)
     - 'O‘qilgan' belgisi faqat ChapterVisit bor bo‘lsa
@@ -527,7 +526,7 @@ def manga_details(request, manga_slug):
     visited_chapter_ids = []
 
     if request.user.is_authenticated:
-        # Profile mavjud bo'lsin (statuslar uchun)
+        # Profile (statuslar uchun)
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
         # Reading status (planned/reading/completed/favorite)
@@ -585,9 +584,7 @@ def manga_details(request, manga_slug):
         chapters.append(ch)
 
     # Eng birinchi bob (boshlash uchun)
-    first_chapter = (
-        manga.chapters.order_by("volume", "chapter_number").first()
-    )
+    first_chapter = manga.chapters.order_by("volume", "chapter_number").first()
 
     # Start/Continue tugma maqsadi va label’i (templatega tayyor)
     start_button_url = None
@@ -621,6 +618,33 @@ def manga_details(request, manga_slug):
     telegram_links = list(manga.telegram_links.all())
     translator_profile = getattr(manga.created_by, "userprofile", None) if manga.created_by else None
 
+    # --- Analytics (KESHLANGAN) --------------------------------------------
+    # TTL ni settings’dan sozlash mumkin: MANGA_STATS_TTL (sekundlarda). Default: 10 daqiqa.
+    ttl = getattr(settings, "MANGA_STATS_TTL", 60 * 10)
+    cache_key = f"manga:{manga.id}:stats:v1"  # versiya suffix — strukturani o‘zgartirsangiz yangilang
+
+    stats = cache.get(cache_key)
+    if stats is None:
+        # jami
+        agg_all = manga.chapters.aggregate(
+            readers_all=Count("visits__user", distinct=True),
+            reads_all=Count("visits"),
+        )
+        # Oxirgi 30 kun
+        since_30 = now() - timedelta(days=30)
+        agg_30d = manga.chapters.aggregate(
+            readers_30d=Count("visits__user", filter=Q(visits__visited_at__gte=since_30), distinct=True),
+            reads_30d=Count("visits", filter=Q(visits__visited_at__gte=since_30)),
+        )
+
+        stats = {
+            "readers_all": agg_all["readers_all"] or 0,
+            "reads_all":   agg_all["reads_all"] or 0,
+            "readers_30d": agg_30d["readers_30d"] or 0,
+            "reads_30d":   agg_30d["reads_30d"] or 0,
+        }
+        cache.set(cache_key, stats, ttl)
+
     # --- Context ------------------------------------------------------------
     context = {
         "manga": manga,
@@ -639,7 +663,7 @@ def manga_details(request, manga_slug):
         "progress_current_chapter_id": progress_current_chapter_id,
         "progress_current_page": progress_current_page,
 
-        # Start/Continue action (templateda to‘g‘ridan-to‘g‘ri ishlating)
+        # Start/Continue action
         "start_button_url": start_button_url,
         "start_button_label": start_button_label,
 
@@ -652,8 +676,15 @@ def manga_details(request, manga_slug):
         "similar_mangas": similar_mangas,
         "telegram_links": telegram_links,
         "translator_profile": translator_profile,
+
+        # analytics (keshlangan)
+        "readers_all": stats["readers_all"],
+        "reads_all":   stats["reads_all"],
+        "readers_30d": stats["readers_30d"],
+        "reads_30d":   stats["reads_30d"],
     }
     return render(request, "manga/manga_details.html", context)
+
 
 # ====== добавление в список чтения ==========================================
 @login_required
@@ -865,8 +896,6 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         'is_last_chapter': is_last_chapter,
     }
     return render(request, 'manga/chapter_read.html', context)
-
-
 
 def _make_alpha_groups(qs, name_field="name"):
     """
