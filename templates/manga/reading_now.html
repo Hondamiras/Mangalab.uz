@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Hozir o'qiyotganlar{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+  <h1 class="text-2xl md:text-3xl font-extrabold mb-6">Hozir o'qiyotganlar</h1>
+
+  <!-- Tabs -->
+  <div class="flex items-center gap-2 mb-6">
+    <a href="{% url 'manga:reading_now' %}?tab=latest"
+       class="px-3 py-1.5 rounded-lg border {% if active_tab == 'latest' %}bg-white/10 border-white/20{% else %}border-white/10 hover:bg-white/5{% endif %}">
+      Yangilari
+    </a>
+    <a href="{% url 'manga:reading_now' %}?tab=trending"
+       class="px-3 py-1.5 rounded-lg border {% if active_tab == 'trending' %}bg-white/10 border-white/20{% else %}border-white/10 hover:bg-white/5{% endif %}">
+      Ko'p o'qilayotganlari
+    </a>
+    <a href="{% url 'manga:reading_now' %}?tab=popular"
+       class="px-3 py-1.5 rounded-lg border {% if active_tab == 'popular' %}bg-white/10 border-white/20{% else %}border-white/10 hover:bg-white/5{% endif %}">
+      Mashhurlari
+    </a>
+  </div>
+
+  {% if active_tab == 'latest' %}
+    {% if feed %}
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {% for box in feed %}
+          <a href="{% url 'manga:manga_details' manga_slug=box.manga.slug %}"
+             class="group rounded-xl bg-white/5 border border-white/10 overflow-hidden hover:bg-white/10">
+            <div class="aspect-[3/4] w-full bg-white/5">
+              {% if box.manga.cover_image %}
+                <img src="{{ box.manga.cover_image.url }}" alt="{{ box.manga.title }}" class="w-full h-full object-cover">
+              {% endif %}
+            </div>
+            <div class="p-3">
+              <div class="font-semibold truncate">{{ box.manga.title }}</div>
+              <div class="text-xs text-slate-300 mt-1">Yangilangan: {{ box.ago }}</div>
+              {% if box.chapters %}
+                <div class="mt-2 text-xs text-slate-300 line-clamp-2">
+                  {% for ch in box.chapters %}
+                    <span class="inline-block mr-2">J{{ ch.obj.volume }}·B{{ ch.obj.chapter_number }}</span>
+                  {% endfor %}
+                  {% if box.more and box.more > 0 %}<span class="opacity-70">+{{ box.more }}</span>{% endif %}
+                </div>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-slate-300">Hozircha yangilanishlar topilmadi.</div>
+    {% endif %}
+  {% else %}
+    {% if items %}
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {% for row in items %}
+          <a href="{% url 'manga:manga_details' manga_slug=row.manga.slug %}"
+             class="group rounded-xl bg-white/5 border border-white/10 overflow-hidden hover:bg-white/10">
+            <div class="aspect-[3/4] w-full bg-white/5">
+              {% if row.manga.cover_image %}
+                <img src="{{ row.manga.cover_image.url }}" alt="{{ row.manga.title }}" class="w-full h-full object-cover">
+              {% endif %}
+            </div>
+            <div class="p-3">
+              <div class="font-semibold truncate">{{ row.manga.title }}</div>
+              <div class="text-xs text-slate-300 mt-1">Oxirgi faollik: {{ row.ago }}</div>
+              {% if active_tab == 'trending' %}
+                <div class="text-xs text-slate-300 mt-1">O‘quvchilar: {{ row.readers }}</div>
+              {% elif active_tab == 'popular' %}
+                <div class="text-xs text-slate-300 mt-1">O‘qishlar: {{ row.reads }} · O‘quvchilar: {{ row.readers }}</div>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-slate-300">Hozircha ma’lumot topilmadi.</div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
