@@ -1,13 +1,16 @@
 import os
 import re
+from django.db.models import Count, Q
 from django.contrib import admin, messages
 from django.db.models import Max
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import render, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
-from .models import ChapterPurchase, MangaTelegramLink, Tag, Genre, Manga, Chapter, Page
+from .models import ChapterPurchase, MangaTelegramLink, MangaTitle, Tag, Genre, Manga, Chapter, Page
 from .forms import MultiPageUploadForm
-
+from django.contrib.auth import get_user_model
+from django.utils.timezone import now, timedelta
 
 # ===== Global Admin Settings =====
 admin.site.site_header = "MangaLab Admin"
@@ -68,16 +71,91 @@ class MangaTelegramLinkInline(admin.TabularInline):
     min_num = 0
 
 # ===== Manga =====
+class MangaTitleInline(admin.TabularInline):
+    model = MangaTitle
+    extra = 1                      # bitta bo‘sh qator
+    fields = ("name", )
+    readonly_fields = ("created_at",)
+    ordering = ("name",)
+
+
 @admin.register(Manga)
 class MangaAdmin(OwnMixin, admin.ModelAdmin):
     list_display = ("title", "team", "status", "created_by", "chapter_count")
     list_filter  = ("team", "type", "status", "translation_status")
     list_editable = ("created_by",)
-    search_fields = ("title",)
+    search_fields = ("title", "titles__name")
     search_help_text = "Manga nomi bo‘yicha qidirish"
     list_filter = ("status", "type")
     prepopulated_fields = {"slug": ("title",)}
-    inlines = [MangaTelegramLinkInline]
+    inlines = [MangaTitleInline,MangaTelegramLinkInline]
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+
+        # Faqat o‘z mangasini ko‘rsin:
+        if not request.user.is_superuser:
+            qs = qs.filter(created_by=request.user)
+
+        # Davrni o‘qiymiz
+        param = request.GET.get("period", "7d")
+        if param == "7d":
+            since = now() - timedelta(days=7)
+        elif param == "30d":
+            since = now() - timedelta(days=30)
+        else:
+            since = None  # barchasi
+
+        visits_q = Q()
+        if since:
+            visits_q &= Q(chapters__visits__visited_at__gte=since)
+
+        # Annotatsiya: uniq o‘quvchi va jami o‘qishlar
+        return qs.annotate(
+            ann_unique_readers=Count("chapters__visits__user",
+                                     filter=visits_q,
+                                     distinct=True),
+            ann_reads=Count("chapters__visits", filter=visits_q)
+        ).select_related("created_by")
+
+    @admin.display(ordering="ann_unique_readers", description="O‘quvchilar (uniq)")
+    def unique_readers_count(self, obj):
+        return getattr(obj, "ann_unique_readers", 0)
+
+    @admin.display(ordering="ann_reads", description="O‘qishlar (jami)")
+    def reads_count(self, obj):
+        return getattr(obj, "ann_reads", 0)
+
+    def chapter_count(self, obj):
+        return obj.chapters.count()
+    chapter_count.short_description = "Boblar"
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+    # created_by dropdownda faqat tarjimonlar chiqsin
+        if db_field.name == "created_by":
+            User = get_user_model()
+            qs = User.objects.filter(userprofile__is_translator=True)
+
+            # Change sahifasida eski qiymat tarjimon bo'lmasa ham saqlab qolish uchun (ixtiyoriy, lekin foydali)
+            obj_id = getattr(getattr(request, "resolver_match", None), "kwargs", {}).get("object_id")
+            if obj_id:
+                try:
+                    obj = self.get_object(request, obj_id)
+                except Exception:
+                    obj = None
+                if obj and obj.created_by_id:
+                    qs = qs | User.objects.filter(pk=obj.created_by_id)
+
+            kwargs["queryset"] = qs.distinct().order_by("username")
+            # (ixtiyoriy) default label:
+            # kwargs["empty_label"] = "— Tarjimonni tanlang —"
+
+        # genres / tags uchun siz yozgan mantiqni saqlaymiz
+        if db_field.name in ["genres", "tags"]:
+            kwargs["queryset"] = db_field.related_model.objects.all()
+
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
 
     # --- Helpers ---
     def _is_translator(self, user) -> bool:
@@ -133,75 +211,46 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
                 obj.created_by = request.user
         super().save_model(request, obj, form, change)
 
+    
         
 @admin.register(Chapter)
 class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     list_display = (
-        "manga", "volume", "chapter_number", 'price_tanga', "page_count",  
-        "upload_pages_link",  # 📤 Tugma bob ro‘yxatida
+        "manga", "volume", "chapter_number", "price_tanga",
+        "page_count", "upload_pages_link",
     )
     search_fields = ("manga__title",)
     search_help_text = "Manga nomi bo‘yicha qidirish"
     list_per_page = 40
-    list_editable = ('volume', 'price_tanga')
+    list_editable = ("volume", "price_tanga")
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
+        qs = super().get_queryset(request).select_related("manga")
         if request.user.is_superuser:
             return qs
-        # Faqat o‘z manga muallifligi bo‘yicha boblar:
         return qs.filter(manga__created_by=request.user)
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        # Agar superuser bo‘lmasa thanks maydonini olib tashlaymiz
         if not request.user.is_superuser and "thanks" in form.base_fields:
             form.base_fields.pop("thanks")
         return form
 
     def get_list_filter(self, request):
-        if request.user.is_superuser:
-            return ("manga",)
-        return ()
+        return ("manga",) if request.user.is_superuser else ()
 
-    def get_changeform_initial_data(self, request):
-        initial = super().get_changeform_initial_data(request)
-        last_chapter = Chapter.objects.order_by('-id').first()
-        if last_chapter:
-            initial['manga'] = last_chapter.manga_id
-            initial['chapter_number'] = last_chapter.chapter_number + 1
-            initial['volume'] = last_chapter.volume
-        return initial
-
+    @admin.display(description="Sahifalar soni")
     def page_count(self, obj):
         return obj.pages.count()
-    page_count.short_description = "Sahifalar soni"
 
     def get_list_display(self, request):
-        """
-        Agar superuser bo'lsa, created_by va release_date ustunlarini
-        qo'shamiz; aks holda faqat bazaviy ustunlar.
-        """
-        base = [
-            "manga", "volume", "chapter_number", "price_tanga",
-            "page_count", "upload_pages_link"
-        ]
-        if request.user.is_superuser:
-            # 'published_date' — modelingizdagi chiqqan sana maydoni
-            return base + ["release_date"]
-        return base
+        base = ["manga", "volume", "chapter_number", "price_tanga", "page_count", "upload_pages_link"]
+        return base + ["release_date"] if request.user.is_superuser else base
 
     def get_exclude(self, request, obj=None):
-        """
-        Formda ham non-superuserlardan created_by va published_date
-        maydonlarini yashiramiz.
-        """
-        if not request.user.is_superuser:
-            return ["release_date"]
-        return []
+        return ["release_date"] if not request.user.is_superuser else []
 
     def has_change_permission(self, request, obj=None):
-        # superuser hamma narsaga ruxsat, boshqalar faqat o‘z boblariga
         if obj and not request.user.is_superuser and obj.manga.created_by != request.user:
             return False
         return super().has_change_permission(request, obj)
@@ -210,22 +259,19 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         if obj and not request.user.is_superuser and obj.manga.created_by != request.user:
             return False
         return super().has_delete_permission(request, obj)
-    
-    # Tugma ro‘yxatda
+
+    # ==== Bulk Upload tugmasi (changelist ichida) ====
     def upload_pages_link(self, obj):
-        url = reverse('admin:chapter_upload_pages', args=[obj.pk])
-        return format_html(
-            '<a class="button" href="{}">📤 Sahifalarni yuklash</a>', url
-        )
+        url = reverse("admin:chapter_upload_pages", args=[obj.pk])
+        return format_html('<a class="button" href="{}">📤 Sahifalarni yuklash</a>', url)
     upload_pages_link.short_description = "Bulk Upload"
 
-    # Tugma tahrirlash sahifasida (change_view)
-    def change_view(self, request, object_id, form_url='', extra_context=None):
+    # ==== Change view ichida ham ko‘rsatamiz ====
+    def change_view(self, request, object_id, form_url="", extra_context=None):
         if extra_context is None:
             extra_context = {}
-
-        upload_url = reverse('admin:chapter_upload_pages', args=[object_id])
-        extra_context['upload_pages_button'] = format_html(
+        upload_url = reverse("admin:chapter_upload_pages", args=[object_id])
+        extra_context["upload_pages_button"] = format_html(
             '''
             <div style="margin: 10px 0 20px 0;">
                 <a href="{}" class="button" style="
@@ -235,68 +281,125 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
                     border-radius: 5px;
                     text-decoration: none;
                     font-weight: bold;
-                ">
-                    📤 Sahifalarni yuklash
-                </a>
+                ">📤 Sahifalarni yuklash</a>
             </div>
             ''',
             upload_url
         )
         return super().change_view(request, object_id, form_url, extra_context=extra_context)
 
-    # URL qo‘shish
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('<int:chapter_id>/upload_pages/', self.admin_site.admin_view(self.upload_pages_view), name='chapter_upload_pages'),
-        ]
-        return custom_urls + urls
+    # ==== MANGA bo‘yicha keyingi default (volume, chapter_number) ====
+    def _compute_next_defaults(self, manga_id, request=None):
+        last = (
+            Chapter.objects
+                   .filter(manga_id=manga_id)
+                   .only("volume", "chapter_number")
+                   .order_by("-volume", "-chapter_number")
+                   .first()
+        )
+        if last:
+            return {"volume": last.volume, "chapter_number": last.chapter_number + 1}
+        return {"volume": 1, "chapter_number": 1}
 
-    # Yuklash view — filename'larni raqam bo‘yicha sort qiladi!
+    # ==== JSON endpoint: JS shu yerdan defaultlarni oladi ====
+    def next_defaults_view(self, request):
+        manga_id = request.GET.get("manga_id")
+        if not manga_id:
+            return JsonResponse({"error": "manga_id required"}, status=400)
+
+        if not request.user.is_superuser:
+            ok = Manga.objects.filter(id=manga_id, created_by=request.user).exists()
+            if not ok:
+                return HttpResponseForbidden("Not allowed")
+
+        data = self._compute_next_defaults(manga_id, request=request)
+        return JsonResponse(data, status=200)
+
+    # ==== 📌 KERAKLI: Bulk upload view (shu yo‘qligi xatolik bergan) ====
     def upload_pages_view(self, request, chapter_id):
-        chapter = Chapter.objects.filter(pk=chapter_id).first()
+        chapter = Chapter.objects.filter(pk=chapter_id).select_related("manga").first()
         if not chapter:
             messages.error(request, "Bunday bob topilmadi.")
-            return redirect('admin:manga_chapter_changelist')
+            return redirect("admin:manga_chapter_changelist")
 
-        if request.method == 'POST':
+        # Ruxsat: non-superuser faqat o‘z manga’lari sahifalarini yuklay oladi
+        if not request.user.is_superuser and chapter.manga.created_by != request.user:
+            messages.error(request, "Sizda bu bob uchun ruxsat yo‘q.")
+            return redirect("admin:manga_chapter_changelist")
+
+        if request.method == "POST":
             form = MultiPageUploadForm(request.POST, request.FILES)
             if form.is_valid():
                 def extract_number(filename):
-                    match = re.search(r'(\d+)', filename)
-                    return int(match.group(1)) if match else 0
+                    m = re.search(r"(\d+)", filename)
+                    return int(m.group(1)) if m else 0
 
-                files = sorted(
-                    request.FILES.getlist('images'),
-                    key=lambda f: extract_number(f.name)
-                )
-
-                existing_max = Page.objects.filter(chapter=chapter).aggregate(Max('page_number'))['page_number__max'] or 0
+                files = sorted(request.FILES.getlist("images"), key=lambda f: extract_number(f.name))
+                existing_max = Page.objects.filter(chapter=chapter).aggregate(Max("page_number"))["page_number__max"] or 0
 
                 new_pages = []
-                for index, f in enumerate(files):
+                for index, f in enumerate(files, start=1):
                     new_pages.append(Page(
                         chapter=chapter,
                         image=f,
-                        page_number=existing_max + index + 1
+                        page_number=existing_max + index
                     ))
 
                 Page.objects.bulk_create(new_pages)
                 messages.success(request, f"{len(files)} ta sahifa yuklandi!")
-                return redirect('admin:manga_chapter_changelist')
+                return redirect("admin:manga_chapter_change", object_id=chapter.id)
         else:
             form = MultiPageUploadForm()
 
-        return render(request, 'admin/bulk_upload.html', {
-            'form': form,
-            'chapter': chapter,
-        })
+        return render(request, "admin/bulk_upload.html", {"form": form, "chapter": chapter})
 
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "manga" and not request.user.is_superuser:
-            kwargs["queryset"] = Manga.objects.filter(created_by=request.user)
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    # ==== URL lar ====
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "next-defaults/",
+                self.admin_site.admin_view(self.next_defaults_view),
+                name="chapter_next_defaults",
+            ),
+            path(
+                "<int:chapter_id>/upload_pages/",
+                self.admin_site.admin_view(self.upload_pages_view),
+                name="chapter_upload_pages",
+            ),
+        ]
+        return custom + urls
 
+    # ==== Formga endpoint URL ni uzatish (template override o‘qiydi) ====
+    def render_change_form(self, request, context, add=False, change=False, form_url="", obj=None):
+        context = dict(context)
+        context["chapter_next_defaults_url"] = reverse("admin:chapter_next_defaults")
+        return super().render_change_form(request, context, add, change, form_url, obj)
+
+    # ==== ?manga=ID bilan kelsa — shu manga bo‘yicha defaultlarni berish ====
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        manga_id = request.GET.get("manga")
+        if manga_id:
+            if request.user.is_superuser or Manga.objects.filter(id=manga_id, created_by=request.user).exists():
+                nxt = self._compute_next_defaults(manga_id, request=request)
+                initial.update({"manga": manga_id, **nxt})
+                return initial
+
+        last = Chapter.objects.order_by("-id").first()
+        if last:
+            initial.setdefault("manga", last.manga_id)
+            initial.setdefault("chapter_number", last.chapter_number + 1)
+            initial.setdefault("volume", last.volume)
+        else:
+            initial.setdefault("volume", 1)
+            initial.setdefault("chapter_number", 1)
+        return initial
+
+    class Media:
+        js = ("admin/js/chapter_admin.js",)
+        
+        
 # ===== Page =====
 class IsWebPFilter(admin.SimpleListFilter):
     title = "WebP"
@@ -357,11 +460,6 @@ class PageAdmin(admin.ModelAdmin):
 
         return f"{size_bytes / (1024 * 1024):.2f} MB"
     
-    
-class MangaTelegramLinkInline(admin.TabularInline):
-    model = MangaTelegramLink
-    extra = 1   # yangi qo‘shish uchun bo‘sh qator
-    min_num = 0
 
 @admin.register(ChapterPurchase)
 class ChapterPurchaseAdmin(admin.ModelAdmin):
@@ -377,3 +475,19 @@ class ChapterPurchaseAdmin(admin.ModelAdmin):
     def price_tanga(self, obj):
         return obj.chapter.price_tanga
     price_tanga.short_description = "Tanga" 
+
+
+
+
+class PeriodFilter(admin.SimpleListFilter):
+    title = "Davr"
+    parameter_name = "period"
+    def lookups(self, request, model_admin):
+        return (
+            ("7d", "Oxirgi 7 kun"),
+            ("30d", "Oxirgi 30 kun"),
+            ("all", "Barchasi"),
+        )
+    def queryset(self, request, queryset):
+        # Annotatsiyani get_queryset’da qilamiz, shu yerda filtrlab yubormaymiz
+        return queryset
