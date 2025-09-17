@@ -7,7 +7,7 @@ from django.contrib.auth.forms import AuthenticationForm
 
 from manga.models import Chapter, ChapterPurchase, Manga, ReadingProgress
 
-from .forms import SignupForm
+from .forms import SignupForm, UsernameChangeForm
 from .models import PendingSignup, TranslatorFollower, TranslatorTeam, UserProfile, ReadingStatus
 
 User = get_user_model()
@@ -317,24 +317,22 @@ def follow_translator(request, username):
 @login_required
 def top_translators(request):
     translators = (
-        UserProfile.objects.filter(is_translator=True)
+        UserProfile.objects
+        .filter(is_translator=True, user__mangas_created__isnull=False)  # kamida 1 ta manga
         .annotate(
             manga_count=Count("user__mangas_created", distinct=True),
             follower_count=Count("followers", distinct=True),
-            likes_count=Count("user__mangas_created__chapters__thanks"),
+            likes_count=Count("user__mangas_created__chapters__thanks", distinct=True),
         )
+        .distinct()                                   # joinlardan dublikatlarni yo‘qotish
         .order_by("-likes_count", "-follower_count")
     )
 
-    for t in translators:
-        t.likes_count = t.likes_count
+    return render(request, "accounts/translators/top_translators.html", {
+        "translators": translators,
+    })
 
-    return render(
-        request,
-        "accounts/translators/top_translators.html",
-        {"translators": translators},
-    )
-
+@login_required
 def team_profile_view(request, slug):
     team = get_object_or_404(
         TranslatorTeam.objects.select_related().prefetch_related(
@@ -370,3 +368,12 @@ def team_profile_view(request, slug):
         "team_mangas": team_mangas,   # ⬅️ yuboramiz
     })    
     
+@login_required
+def username_change_view(request):
+    form = UsernameChangeForm(request.user, request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        old_username = request.user.username
+        form.save()
+        messages.success(request, f"Username '{old_username}' → '{request.user.username}' yangilandi.")
+        return redirect("accounts:my_profile")
+    return render(request, "accounts/username_change.html", {"form": form})
