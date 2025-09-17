@@ -5,9 +5,9 @@ from django.db.models import Max
 from django.shortcuts import render, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
-from .models import ChapterPurchase, MangaTelegramLink, Tag, Genre, Manga, Chapter, Page
+from .models import ChapterPurchase, MangaTelegramLink, MangaTitle, Tag, Genre, Manga, Chapter, Page
 from .forms import MultiPageUploadForm
-
+from django.contrib.auth import get_user_model
 
 # ===== Global Admin Settings =====
 admin.site.site_header = "MangaLab Admin"
@@ -66,6 +66,10 @@ class MangaTelegramLinkInline(admin.TabularInline):
     model = MangaTelegramLink
     extra = 1   # yangi qo‘shish uchun bo‘sh qator
     min_num = 0
+    
+class MangaTitleInline(admin.TabularInline):
+    model = MangaTitle
+    extra = 1
 
 # ===== Manga =====
 @admin.register(Manga)
@@ -77,7 +81,7 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
     search_help_text = "Manga nomi bo‘yicha qidirish"
     list_filter = ("status", "type")
     prepopulated_fields = {"slug": ("title",)}
-    inlines = [MangaTelegramLinkInline]
+    inlines = [MangaTelegramLinkInline, MangaTitleInline]
 
     # --- Helpers ---
     def _is_translator(self, user) -> bool:
@@ -118,7 +122,7 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
     # Changelistda boblar soni
     def chapter_count(self, obj):
         return obj.chapters.count()
-    chapter_count.short_description = "Chapters"
+    chapter_count.short_description = "Boblar"
 
     # created_by ni xavfsiz o‘rnatish:
     def save_model(self, request, obj, form, change):
@@ -132,6 +136,13 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
             if not obj.created_by_id:
                 obj.created_by = request.user
         super().save_model(request, obj, form, change)
+        
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "created_by":
+            UserModel = get_user_model()
+            kwargs["queryset"] = UserModel.objects.filter(userprofile__is_translator=True)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
 
         
 @admin.register(Chapter)
