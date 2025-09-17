@@ -1,53 +1,43 @@
-{% load static %}
+{# 1–2 ta rasmni oldindan preload (ixtiyoriy) #}
+{% for p in pages_payload|slice:":2" %}
+<link rel="preload" as="image" href="{{ p.url }}">
+{% endfor %}
+
+{# JSON xavfsiz joyda #}
+{{ pages_payload|json_script:"pages-data" }}
 
 <style>
-  .page-loader {
+  /* --- Loader/Spinner uslublari --- */
+  .page-container{
+    position: relative;
+    min-height: 240px; /* Rasm kelguncha bo'shliqqa "skelet" */
+  }
+  .page-loader{
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    min-height: 400px;
+    padding: 24px 0;
   }
-  .spinner {
+  .spinner{
     width: 48px;
     height: 48px;
-    border: 4px solid #a259ff;
+    border: 4px solid rgba(0,0,0,.2);
+    border-top-color: rgba(0,0,0,.6);
     border-radius: 50%;
-    animation: floaty 2s ease-in-out infinite, glow 2s ease-in-out infinite alternate;
-    box-shadow: 0 0 15px #a259ff, 0 0 30px #c084fc inset;
-    background: radial-gradient(circle at center, rgba(162,89,255,0.2), transparent 70%);
-    position: relative;
+    animation: spin .8s linear infinite;
   }
-
-  /* "Парение" вверх-вниз */
-  @keyframes floaty {
-    0% {
-      transform: translateY(0px) scale(1);
-    }
-    50% {
-      transform: translateY(-6px) scale(1.05);
-    }
-    100% {
-      transform: translateY(0px) scale(1);
+  @media (prefers-color-scheme: dark){
+    .spinner{
+      border-color: rgba(255,255,255,.25);
+      border-top-color: rgba(255,255,255,.85);
     }
   }
-
-  /* Светящееся дыхание */
-  @keyframes glow {
-    0% {
-      box-shadow: 0 0 12px #a259ff, 0 0 24px #a259ff inset;
-      opacity: 1;
-    }
-    100% {
-      box-shadow: 0 0 20px #e9d5ff, 0 0 36px #e9d5ff inset;
-      opacity: 0.85;
-    }
-  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
-<div id="chapter-pages" class="sm:container mx-auto px-0 sm:px-4"
-     data-pages='[{% for page in pages %}{"url": "{{ page.image.url|escapejs }}", "alt": "Sahifa {{ page.page_number }}"}{% if not forloop.last %},{% endif %}{% endfor %}]'>
-  {% for page in pages %}
+<div id="chapter-pages" class="sm:container mx-auto px-0 sm:px-4">
+  {% for _ in pages %}
     <div class="flex justify-center page-container" data-page-index="{{ forloop.counter0 }}">
       <div class="page-loader"><div class="spinner"></div></div>
     </div>
@@ -55,35 +45,123 @@
 </div>
 
 <script>
-  const container = document.getElementById('chapter-pages');
-  const pages = JSON.parse(container.getAttribute('data-pages'));
-  let current = 0;
+  // --- sozlamalar ---
+  const PREFETCH_AHEAD = 2;      // yuklangan sahifadan keyin qancha fon prefetch
+  const WARM_PREFETCH  = 3;      // sahifa ochilganda darhol fon’da boshlab yuboriladiganlar
+  const CONCURRENCY    = 4;      // bir vaqtning o‘zida yuklanadigan rasmlar
+  const ROOT_MARGIN    = '900px 0px'; // ko‘rinishga yaqinlashganda HIGH navbatga qo‘yish
 
-  function loadNextPage() {
-    if (current >= pages.length) return;
-    const pageDiv = container.querySelector(`.page-container[data-page-index="${current}"]`);
-    const loader = pageDiv.querySelector('.page-loader');
-    const img = document.createElement('img');
-    img.src = pages[current].url;
-    img.alt = pages[current].alt;
-    img.setAttribute('data-page-index', current);
-    img.loading = 'eager';
-    img.decoding = 'async';
-    img.className = 'w-full md:w-[400px] max-w-full h-auto transition-opacity duration-500 ease-in-out opacity-0';
-    img.onload = function() {
-      img.classList.add('opacity-100');
-      loader.replaceWith(img);
-      current++;
-      loadNextPage();
-    };
-    img.onerror = function() {
-      loader.innerHTML = '<span style="color:red">Yuklashda xatolik</span>';
-      current++;
-      loadNextPage();
-    };
+  const pages = JSON.parse(document.getElementById('pages-data').textContent);
+  const container = document.getElementById('chapter-pages');
+
+  // Navbatlar
+  const hiQ = [];               // yuqori prioritet
+  const lowQ = [];              // past prioritet (prefetch)
+  const queued   = new Set();   // navbatga qo‘yilgan indexlar
+  const inflight = new Set();   // hozir yuklanayotgan indexlar
+  const loaded   = new Set();   // yuklab bo‘lingan indexlar
+
+  function enqueue(i, high = true){
+    if (i < 0 || i >= pages.length) return;
+    if (loaded.has(i) || inflight.has(i) || queued.has(i)) return;
+    (high ? hiQ : lowQ).push(i);
+    queued.add(i);
+    pump();
   }
 
-  window.addEventListener('DOMContentLoaded', function() {
-    loadNextPage();
+  // high flag yo‘qolib ketmasligi uchun obyekt qaytaramiz
+  function dequeue(){
+    if (hiQ.length) return { i: hiQ.shift(), high: true };
+    if (lowQ.length) return { i: lowQ.shift(), high: false };
+    return null;
+  }
+
+  function pump(){
+    while (inflight.size < CONCURRENCY){
+      const item = dequeue();
+      if (!item) break;
+      startLoad(item.i, item.high);
+    }
+  }
+
+  function startLoad(i, high){
+    inflight.add(i);
+    const wrap = container.querySelector(`.page-container[data-page-index="${i}"]`);
+    if (!wrap){ inflight.delete(i); return; }
+
+    const loader = wrap.querySelector('.page-loader');
+
+    const img = document.createElement('img');
+    img.alt = pages[i].alt || `Page ${i+1}`;
+    img.decoding = 'async';
+    // 👇 lazy ishlatilmaydi — faqat JS boshqaradi
+    // img.loading = undefined;
+    img.fetchPriority = high ? 'high' : 'low';  // brauzerga aniq hint
+    img.referrerPolicy = 'no-referrer';
+    img.draggable = false;
+    img.className = 'w-full md:w-[400px] max-w-full h-auto transition-opacity duration-500 ease-in-out opacity-0 select-none';
+
+    img.onload = () => {
+      img.classList.add('opacity-100');
+      loader.replaceWith(img);                 // spinner o‘rniga rasm
+      inflight.delete(i);
+      loaded.add(i);
+      // Ketma-ket keyingilarni fon’da tayyorlab boramiz
+      for (let k = 1; k <= PREFETCH_AHEAD; k++) enqueue(i + k, /*high=*/false);
+      pump();
+    };
+
+    img.onerror = () => {
+      // Foydalanuvchiga ko‘rinadigan xabar va qayta urinib ko‘rish tugmasi
+      loader.innerHTML = '<button type="button" style="color:#b91c1c; text-decoration:underline">Yuklashda xatolik — qayta urinib ko‘rish</button>';
+      const btn = loader.querySelector('button');
+      if (btn){
+        btn.addEventListener('click', () => {
+          // xatodan keyin qayta urinish
+          queued.delete(i);
+          inflight.delete(i);
+          enqueue(i, /*high=*/true);
+        }, { once: true });
+      } else {
+        inflight.delete(i);
+      }
+      pump();
+    };
+
+    // Yuklashni shu yerda boshlaymiz
+    img.src = pages[i].url;
+  }
+
+  // Ko‘rinishga kirganda — birinchi bo‘lib HIGH navbatga
+  const io = ('IntersectionObserver' in window)
+    ? new IntersectionObserver((entries) => {
+        // ko‘rinishga eng yaqinini oldin qo‘yish
+        const h = (window.innerHeight || document.documentElement.clientHeight) / 2;
+        entries
+          .filter(e => e.isIntersecting)
+          .sort((a,b) => Math.abs(a.target.getBoundingClientRect().top - h)
+                       - Math.abs(b.target.getBoundingClientRect().top - h))
+          .forEach(e => {
+            const i = parseInt(e.target.getAttribute('data-page-index'), 10);
+            enqueue(i, /*high=*/true);
+            // shu sahifadan keyingi bittasini fon’da tayyorlab boramiz
+            enqueue(i + 1, /*high=*/false);
+          });
+      }, { root: null, rootMargin: ROOT_MARGIN, threshold: 0.01 })
+    : null;
+
+  // Barcha konteynerlarni kuzatamiz (fallback: IO bo‘lmasa ham ishlaydi)
+  const nodes = container.querySelectorAll('.page-container');
+  nodes.forEach(el => io ? io.observe(el) : enqueue(parseInt(el.getAttribute('data-page-index'), 10), true));
+
+  // Warm start: sahifa ochilishi bilan yuqori + fon navbatini ishga tushiramiz
+  window.addEventListener('DOMContentLoaded', () => {
+    enqueue(0, /*high=*/true);                      // birinchi elementni majburan
+    for (let j = 1; j <= WARM_PREFETCH; j++) enqueue(j, /*high=*/false);  // fon prefetch
+    pump();
   });
+
+  // anti-save mayda choralar
+  document.addEventListener('contextmenu', e => e.preventDefault(), {passive:false});
+  document.addEventListener('dragstart',  e => e.preventDefault(), {passive:false});
 </script>
