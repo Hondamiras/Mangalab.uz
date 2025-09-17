@@ -26,3 +26,32 @@ class SignupForm(UserCreationForm):
         if commit:
             user.save()
         return user
+    
+from django.contrib.auth import authenticate, get_user_model
+
+class UsernameChangeForm(forms.Form):
+    username = forms.CharField(max_length=150, label="Yangi username")
+    password = forms.CharField(widget=forms.PasswordInput, label="Joriy parol")
+
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+    def clean_username(self):
+        new = self.cleaned_data["username"].strip()
+        if User.objects.exclude(pk=self.user.pk).filter(username__iexact=new).exists():
+            raise forms.ValidationError("Bu username band.")
+        return new
+
+    def clean(self):
+        cleaned = super().clean()
+        pwd = cleaned.get("password")
+        if pwd and not authenticate(username=self.user.username, password=pwd):
+            # Agar email bilan login bo‘lsangiz, authenticate uchun USERNAME_FIELD mos bo‘lsin.
+            raise forms.ValidationError("Parol noto‘g‘ri.")
+        return cleaned
+
+    def save(self):
+        self.user.username = self.cleaned_data["username"]
+        self.user.save(update_fields=["username"])
+        return self.user
