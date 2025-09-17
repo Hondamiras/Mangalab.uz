@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'manga.apps.MangaConfig',  
 
     "widget_tweaks", 
+    "storages",
 ]
 
 ASGI_APPLICATION = "conf.asgi.application"
@@ -184,7 +185,7 @@ AWS_S3_FILE_OVERWRITE = False
 AWS_QUERYSTRING_AUTH = False
 
 # Dev (localhost)
-USE_X_ACCEL_REDIRECT = True         # prod’da True qilasiz
+USE_X_ACCEL_REDIRECT = False         # prod’da True qilasiz
 X_ACCEL_REDIRECT_PREFIX = "/_protected/"
 
 STATIC_URL = '/static/'
