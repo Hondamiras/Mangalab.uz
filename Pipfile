@@ -12,6 +12,8 @@ whitenoise = "*"
 dj-database-url = "*"
 python-decouple = "*"
 pdf2image = "*"
+unidecode = "*"
+django-widget-tweaks = "*"
 
 [dev-packages]
 
