@@ -116,7 +116,7 @@ class Manga(models.Model):
     )
     type = models.CharField(
         max_length=50,
-        choices=[("Manga", "Manga"), ("Manhwa", "Manhwa"), ("Manhua", "Manhua"), ("Komiks", "Komiks"), ("Novel", "Novel"), ("OEL-manga", "OEL-manga"), ("Rumanga", "Rumanga")],
+        choices=[("Manga", "Manga"), ("Manhwa", "Manhwa"), ("Manhua", "Manhua"), ("Komiks", "Komiks"), ("OEL-manga", "OEL-manga"), ("Rumanga", "Rumanga")],
         default="Manga",
     )
     age_rating = models.CharField(
@@ -290,9 +290,9 @@ class Page(models.Model):
     page_number = models.PositiveIntegerField(verbose_name="nechanchi sahifa?")
     image = models.ImageField(
         upload_to='chapters/pages/',
-        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'png', 'webp'])],
-        help_text="Rasmni JPEG/PNG/WebP formatida yuklang.",
-        verbose_name="Rasm (JPEG/PNG/WEBP formatida yuklang)"
+        validators=[FileExtensionValidator(allowed_extensions=['jpg', 'jpeg', 'webp'])],
+        help_text="Rasmni JPEG/WebP formatida yuklang.",
+        verbose_name="Rasm (JPEG/WEBP formatida yuklang)"
     )
 
     class Meta:
