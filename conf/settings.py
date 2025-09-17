@@ -47,7 +47,9 @@ INSTALLED_APPS = [
 
     # Custom Apps
     'accounts.apps.AccountsConfig',
-    'manga.apps.MangaConfig',      
+    'manga.apps.MangaConfig',  
+
+    "widget_tweaks", 
 ]
 
 ASGI_APPLICATION = "conf.asgi.application"
@@ -88,6 +90,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                "manga.context_processors.catalog_context",
+                "manga.context_processors.content_filter_context",
             ],
         },
     },
@@ -179,7 +183,9 @@ AWS_DEFAULT_ACL = "public-read"
 AWS_S3_FILE_OVERWRITE = False
 AWS_QUERYSTRING_AUTH = False
 
-
+# Dev (localhost)
+USE_X_ACCEL_REDIRECT = True         # prod’da True qilasiz
+X_ACCEL_REDIRECT_PREFIX = "/_protected/"
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
