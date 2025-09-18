@@ -377,3 +377,30 @@ def username_change_view(request):
         messages.success(request, f"Username '{old_username}' → '{request.user.username}' yangilandi.")
         return redirect("accounts:my_profile")
     return render(request, "accounts/username_change.html", {"form": form})
+
+
+@login_required
+def new_chapters_feed(request):
+    now = timezone.now()
+    items = (NewChapterNotification.objects
+             .filter(user=request.user, expires_at__gt=now)
+             .select_related("manga", "chapter")
+             .order_by("-created_at"))
+
+    return render(request, "accounts/notifications/new_chapters.html", {"items": items})
+
+from django.views.decorators.http import require_POST
+
+@login_required
+@require_POST
+def mark_notifications_seen(request):
+    NewChapterNotification.objects.filter(user=request.user, is_seen=False).update(is_seen=True)
+    return redirect(request.POST.get("next") or "accounts:new_chapters")
+
+@login_required
+@require_POST
+def clear_notifications(request):
+    # faqat ko‘rinayotganlarni (hali yaroqli) o‘chirib tashlash ixtiyoriy
+    now = timezone.now()
+    NewChapterNotification.objects.filter(user=request.user, expires_at__gt=now).delete()
+    return redirect(request.POST.get("next") or "accounts:new_chapters")
