@@ -5,7 +5,7 @@ from django.contrib.auth import login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
 
-from manga.models import Chapter, ChapterPurchase, Manga, ReadingProgress
+from manga.models import Chapter, ChapterPurchase, Manga, NewChapterNotification, ReadingProgress
 
 from .forms import SignupForm, UsernameChangeForm
 from .models import PendingSignup, TranslatorFollower, TranslatorTeam, UserProfile, ReadingStatus
@@ -390,7 +390,6 @@ def new_chapters_feed(request):
     return render(request, "accounts/notifications/new_chapters.html", {"items": items})
 
 from django.views.decorators.http import require_POST
-
 @login_required
 @require_POST
 def mark_notifications_seen(request):
