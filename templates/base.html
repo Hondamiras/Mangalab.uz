@@ -9,11 +9,14 @@
   <link rel="icon" href="{% static 'images/logo.png' %}">
   <title>{% block title %}MangaLab - Manga olamida sayohat qiling{% endblock %}</title>
   {% block head_extra %}{% endblock %}
-
+  {% load notify_tags %}
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/iconify-icon@1.0.8/dist/iconify-icon.min.js"></script>
 
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js" defer></script>
+  
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
   <style>[x-cloak]{display:none!important}</style>
 </head>
@@ -239,9 +242,15 @@
         <button type="button" @click="filterOpen=true" class="p-2.5 rounded-full hover:bg-white/10" title="Filtrlar" aria-haspopup="dialog" aria-controls="content-filter-modal">
           <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg>
         </button>
-        <a href="#" class="relative p-2.5 rounded-full hover:bg-white/10" title="Bildirishnomalar">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span class="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center h-4 min-w-[16px] px-1 rounded-full bg-purple-500 text-[10px] font-bold">1</span>
+        <a href="{% url 'accounts:new_chapters' %}" class="relative p-2.5 rounded-full hover:bg-white/10" title="Bildirishnomalar">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          {% has_new_chapters user as HAS_NEW %}
+          {% if HAS_NEW %}
+            <span class="absolute -top-0.5 -right-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-purple-500 ring-2 ring-[#111c28]"></span>
+          {% endif %}
         </a>
       </div>
 
@@ -270,9 +279,15 @@
         <a href="{% url 'manga:browse' %}" class="p-2 rounded hover:bg-white/10" aria-label="Qidiruv">
           <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </a>
-        <a href="#" class="relative p-2 rounded hover:bg-white/10" aria-label="Bildirishnomalar">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          <span class="absolute top-1 right-1 h-2 w-2 rounded-full bg-purple-500"></span>
+        <a href="{% url 'accounts:new_chapters' %}" class="relative p-2 rounded hover:bg-white/10" aria-label="Bildirishnomalar">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          {% has_new_chapters user as HAS_NEW_M %}
+          {% if HAS_NEW_M %}
+            <span class="absolute top-1 right-1 h-2 w-2 rounded-full bg-purple-500 ring-2 ring-[#111c28]"></span>
+          {% endif %}
         </a>
         <button type="button" @click="showProfileSheet=true" class="p-2 rounded hover:bg-white/10" aria-label="Profil">
           {% if user.is_authenticated and user.avatar_url %}
