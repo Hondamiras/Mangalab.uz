@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -357,3 +357,36 @@ class ReadingProgress(models.Model):
         ch_num = self.last_read_chapter.chapter_number if self.last_read_chapter else "—"
         return f"{self.user.username} — {self.manga.title} (ch.{ch_num}, p.{self.last_read_page})"
 
+NOTIFY_STATUSES = ("reading", "planned", "favorite",)  # qaysi statuslar uchun xabar beramiz
+
+class NewChapterNotification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chapter_notifications")
+    manga = models.ForeignKey("Manga", on_delete=models.CASCADE, related_name="+")
+    chapter = models.ForeignKey("Chapter", on_delete=models.CASCADE, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    is_seen = models.BooleanField(default=False)  # foydalanuvchi ochganda belgilash mumkin
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "chapter"], name="uniq_user_chapter_notification"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "is_seen", "expires_at"]),
+        ]
+        verbose_name = "Yangi bob bildirishnomasi"
+        verbose_name_plural = "Yangi bob bildirishnomalari"
+
+    @classmethod
+    def create_for_many(cls, users, manga, chapter, ttl_hours=24):
+        now = timezone.now()
+        exp = now + timedelta(hours=ttl_hours)
+        objs = []
+        for u in users:
+            objs.append(cls(user=u, manga=manga, chapter=chapter, expires_at=exp))
+        # bulk_create + ignore_conflicts => dublikat bo‘lsa tashlab ketadi
+        cls.objects.bulk_create(objs, ignore_conflicts=True)
+
+    @classmethod
+    def purge_expired(cls):
+        cls.objects.filter(expires_at__lte=timezone.now()).delete()
