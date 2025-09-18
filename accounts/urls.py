@@ -49,6 +49,10 @@ urlpatterns = [
       ),
       name="password_reset_complete"
     ),
+    
+    path("notifications/new-chapters/", views.new_chapters_feed, name="new_chapters"),
+    path("notifications/mark-seen/", views.mark_notifications_seen, name="mark_notifications_seen"),
+    path("notifications/clear/", views.clear_notifications, name="clear_notifications"),
 
     path("profile/<str:username>/translator/", views.translator_profile_view, name="translator_profile"),
     path("profile/<str:username>/follow/", views.follow_translator, name="follow_translator"),
