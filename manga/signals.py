@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.core.cache import cache
 
 from accounts.models import ReadingStatus, UserProfile
-from manga.models import Chapter, ChapterPurchase, Genre, Manga, MangaTelegramLink, ReadingProgress, Tag
+from manga.models import NOTIFY_STATUSES, Chapter, ChapterPurchase, Genre, Manga, MangaTelegramLink, NewChapterNotification, ReadingProgress, Tag
 
 @receiver([post_save, post_delete], sender=Manga)
 @receiver([post_save, post_delete], sender=Genre)
@@ -79,3 +79,30 @@ def clear_purchase_cache(sender, instance, **kwargs):
 @receiver([post_save, post_delete], sender=ReadingProgress)
 def clear_reading_progress_cache(sender, instance, **kwargs):
     cache.delete(f'user_read_{instance.user.pk}_{instance.manga.slug}')
+    
+    
+@receiver(post_save, sender=Chapter)
+def notify_on_new_chapter(sender, instance: Chapter, created, **kwargs):
+    if not created:
+        return  # faqat yangi yaratilganda
+    manga = instance.manga
+
+    # Shu taytlni statusga qo‘shgan foydalanuvchilarni topamiz
+    qs = (ReadingStatus.objects
+          .filter(manga=manga, status__in=NOTIFY_STATUSES)
+          .select_related("user_profile__user"))
+
+    # Muallif o‘ziga bildirishnoma olmasin (xohlasangiz olib tashlang)
+    author_id = getattr(manga.created_by, "id", None)
+
+    users = []
+    for rs in qs:
+        u = getattr(rs.user_profile, "user", None)
+        if not u:
+            continue
+        if author_id and u.id == author_id:
+            continue
+        users.append(u)
+
+    if users:
+        NewChapterNotification.create_for_many(users, manga, instance, ttl_hours=24)
