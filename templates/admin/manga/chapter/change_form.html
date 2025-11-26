@@ -1,6 +1,15 @@
 {% extends "admin/change_form.html" %}
 
+{% block extrahead %}
+  {{ block.super }}
+  {% if chapter_next_defaults_url %}
+    <script>
+      window.__CHAPTER_NEXT_DEFAULTS_URL = "{{ chapter_next_defaults_url|escapejs }}";
+    </script>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
-  {{ upload_pages_button|safe }}
+  {{ upload_pages_button|default:''|safe }}
   {{ block.super }}
 {% endblock %}
