@@ -9,23 +9,24 @@
   <link rel="icon" href="{% static 'images/logo.png' %}">
   <title>{% block title %}MangaLab - Manga olamida sayohat qiling{% endblock %}</title>
   {% block head_extra %}{% endblock %}
-  {% load notify_tags %}
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/iconify-icon@1.0.8/dist/iconify-icon.min.js"></script>
-
-
   <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js" defer></script>
-  
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
   <style>[x-cloak]{display:none!important}</style>
 </head>
 <style>
   [x-cloak]{display:none!important}
-  /* GLOBAL 75% — barcha gadjetlarda */
-  html { font-size: 75%; }
-</style>
 
+  /* Global: 75% (mobil va planshet) */
+  html { font-size: 75%; }
+
+  /* Desktop (>= 768px): 100% */
+  @media (min-width: 768px) {
+    html { font-size: 80%; }
+  }
+</style>
 
 <body
   class="bg-[#0f1923] text-slate-100 min-h-screen flex flex-col"
@@ -35,7 +36,6 @@
     showLogout:false,
     openScope:false,
     showProfileSheet:false,
-    filterOpen:false,           // 👈 qo‘shildi
 
     // accordion holati (desktop dropdown)
     openPanel:null,
@@ -51,20 +51,12 @@
   }"
   @keydown.escape="
     openMenu=false; openDrawer=false; showLogout=false;
-    openScope=false; showProfileSheet=false; filterOpen=false"   
+    openScope=false; showProfileSheet=false"
 >
 
   <!-- ===== HEADER ===== -->
   <header class="sticky top-0 z-40 border-b border-white/10 bg-[#111c28]/95 backdrop-blur">
     <div class="mx-auto px-3 sm:px-6 lg:px-16 h-14 md:h-20 flex items-center gap-3 w-full">
-
-      <!-- MOBILE burger -->
-      <button type="button" @click="openDrawer=true"
-              class="md:hidden p-2 rounded hover:bg-white/10" aria-label="Menyu">
-        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
 
       <!-- Logo -->
       <a href="{% url 'manga:discover' %}" class="flex items-center shrink-0">
@@ -76,8 +68,27 @@
         </div>
       </a>
 
+      <!-- DESKTOP search (eng oxiri, o‘ng chetda) -->
+      <form method="get" action="{% url 'manga:browse' %}"
+            class="hidden md:flex items-stretch h-12 ml-auto"
+            role="search" aria-label="Sayt bo'ylab qidiruv">
+        <input type="hidden" name="scope" :value="scopeValue">
+        <div class="relative flex w-[260px] lg:w-[340px] rounded-lg overflow-visible ring-1 ring-white/10 bg-[#202e44]">
+          <input name="search" autocomplete="off" placeholder="Qidiruv..."
+                class="flex-1 h-12 bg-transparent text-slate-100 placeholder:text-slate-400 pl-3 pr-10 outline-none" />
+          <button type="submit"
+                  class="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded hover:bg-white/10"
+                  aria-label="Qidiruv">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
+        </div>
+      </form>
+
       <!-- DESKTOP menu (dropdown + accordion ichida ochiladi) -->
       <div class="relative hidden md:block">
+
         <button type="button"
           @click="openMenu = !openMenu"
           class="inline-flex items-center gap-2 h-20 px-3 rounded-md hover:text-purple-400 transition"
@@ -85,12 +96,11 @@
           <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
-          <span class="font-semibold">Menu</span>
         </button>
 
         <div x-cloak x-show="openMenu" x-transition.origin.top.left
              @click.outside="openMenu=false"
-             class="absolute mt-2 w-[380px] rounded-xl border border-white/10 bg-[#182434] shadow-2xl p-2">
+             class="absolute mt-1 w-[200px] rounded-xl border border-white/10 bg-[#182434] shadow-2xl p-2">
           <!-- nav list + accordion -->
           <nav class="text-slate-200 divide-y divide-white/5">
 
@@ -127,7 +137,7 @@
                   {% endif %}
 
                 <!-- faqat Katalog ochilganda ko‘rinadigan tugma -->
-                <a href="{% url 'manga:random_manga' %}" class="inline-flex items-center gap-2 px-3 h-9 mt-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">
+                <a href="{% url 'manga:random_manga' %}" class="inline-flex items-center gap-2 px-3 h-9 mt-2 rounded-lg bg-purple-600 hover:bg-purple-500">
                   <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/>
                   </svg>
@@ -161,28 +171,11 @@
 
             <!-- Qolgan bo‘limlar (oddiy linklar) -->
             <div class="py-1">
-              <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
-                <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 8 3.05"/><path d="M12 7v5l4 2"/>
-                </svg>
-                <span class="flex-1">Yangilanishlar</span>
-              <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
-                <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h10"/>
-                </svg>
-                <span class="flex-1">Yangiliklar</span>
-              </a>
               <a href="{% url 'accounts:top_translators' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
                 <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21 12 17.77 5.82 21 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                 </svg>
                 <span class="flex-1">Tarjimonlar</span>
-              </a>
-              <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
-                <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10 2l2 2l-8 8l-2-2zM14 6l2 2l-8 8l-2-2zM18 10l2 2l-8 8l-2-2z"/>
-                </svg>
-                <span class="flex-1">Kolleksiyalar</span>
               </a>
               <a href="{% url 'manga:genre_index' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
                 <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -202,55 +195,10 @@
         </div>
       </div>
 
-      <!-- DESKTOP search (scope) -->
-      <form method="get" action="{% url 'manga:browse' %}" class="hidden md:flex items-stretch flex-1 h-12" role="search" aria-label="Sayt bo'ylab qidiruv">
-        <input type="hidden" name="scope" :value="scopeValue">
-        <div class="relative flex w-full rounded-lg overflow-visible ring-1 ring-white/10 bg-[#202e44]">
-          <div class="relative" @click.outside="openScope=false">
-            <button type="button"
-              @click="openScope=!openScope"
-              class="h-12 px-3 flex items-center gap-2  border-r border-white/10"
-              aria-haspopup="listbox" :aria-expanded="openScope" aria-controls="scope-menu">
-              <span class="font-semibold" x-text="scopeLabel"></span>
-              <svg class="w-4 h-4 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <div x-cloak x-show="openScope" x-transition.origin.top.left id="scope-menu"
-                 class="absolute left-0 z-30 mt-1 w-52 rounded-lg border border-white/10 bg-[#182434] shadow-xl p-1">
-              <button type="button" @click="setScope('titles','Taytllar')"       class="w-full text-left px-3 py-2 rounded-md hover:bg-white/5">Taytllar</button>
-              <button type="button" @click="setScope('translators','Tarjimonlar')" class="w-full text-left px-3 py-2 rounded-md hover:bg-white/5">Tarjimonlar</button>
-              <button type="button" @click="setScope('authors','Avtorlar')"       class="w-full text-left px-3 py-2 rounded-md hover:bg-white/5">Avtorlar</button>
-              <button type="button" @click="setScope('publishers','Nashriyotlar')" class="w-full text-left px-3 py-2 rounded-md hover:bg-white/5">Nashriyotlar</button>
-              <button type="button" @click="setScope('collections','Kolleksiyalar')" class="w-full text-left px-3 py-2 rounded-md hover:bg-white/5">Kolleksiyalar</button>
-              <button type="button" @click="setScope('users','Foydalanuvchilar')" class="w-full text-left px-3 py-2 rounded-md hover:bg-white/5">Foydalanuvchilar</button>
-            </div>
-          </div>
-
-          <input name="search" autocomplete="off" placeholder="Qidiruv..."
-            class="flex-1 h-12 bg-transparent text-slate-100 placeholder:text-slate-400 pl-3 pr-10 outline-none" />
-          <button type="submit" class="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded hover:bg-white/10" aria-label="Qidiruv">
-            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </button>
-        </div>
-      </form>
-
       <!-- DESKTOP icons -->
       <div class="hidden md:flex items-center gap-3">
         <a href="{% url 'manga:history' %}" class="p-2.5 rounded-full hover:bg-white/10" title="Tarix">
           <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 8 3.05"/><path d="M12 7v5l4 2"/></svg>
-        </a>
-        <!-- ❗ Filtr tugmasi: modalni ochadi -->
-        <button type="button" @click="filterOpen=true" class="p-2.5 rounded-full hover:bg-white/10" title="Filtrlar" aria-haspopup="dialog" aria-controls="content-filter-modal">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg>
-        </button>
-        <a href="{% url 'accounts:new_chapters' %}" class="relative p-2.5 rounded-full hover:bg-white/10" title="Bildirishnomalar">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          {% has_new_chapters user as HAS_NEW %}
-          {% if HAS_NEW %}
-            <span class="absolute -top-0.5 -right-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-purple-500 ring-2 ring-[#111c28]"></span>
-          {% endif %}
         </a>
       </div>
 
@@ -260,7 +208,7 @@
       <!-- DESKTOP profil -->
       <div class="hidden md:flex items-center gap-3">
         {% if user.is_authenticated %}
-          <a href="{% url 'accounts:my_profile' %}" class="p-2.5 rounded-full hover:bg-white/10" title="Профиль" aria-label="Профиль">
+          <a href="{% url 'accounts:my_profile' %}" class="p-2.5 rounded-full hover:bg-white/10" title="Profil" aria-label="Profil">
             {% if user.avatar_url %}
               <img src="{{ user.avatar_url }}" alt="avatar" class="w-9 h-9 rounded-full">
             {% else %}
@@ -269,26 +217,40 @@
           </a>
           <button type="button" @click="showLogout=true" class="text-slate-100/90 hover:text-white font-medium">Chiqish</button>
         {% else %}
-          <a href="{% url 'accounts:login' %}" class="font-semibold hover:text-white">Kirish</a>
+          <a href="{% url 'accounts:login' %}" class="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10 font-semibold">Kirish</a>
           <a href="{% url 'accounts:signup' %}" class="px-4 py-2 rounded-lg border border-white/20 hover:bg-white/10 font-semibold">Ro'yxatdan o'tish</a>
         {% endif %}
       </div>
 
       <!-- MOBILE: o‘ngdagi ikonlar -->
       <div class="md:hidden flex items-center gap-1.5 ml-auto">
-        <a href="{% url 'manga:browse' %}" class="p-2 rounded hover:bg-white/10" aria-label="Qidiruv">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        </a>
-        <a href="{% url 'accounts:new_chapters' %}" class="relative p-2 rounded hover:bg-white/10" aria-label="Bildirishnomalar">
+
+        <!-- MOBILE search (inputli) -->
+        <form method="get" action="{% url 'manga:browse' %}"
+              class="md:hidden flex items-stretch flex-1 h-10 ml-2" role="search"
+              aria-label="Sayt bo'ylab qidiruv (mobil)">
+          <input type="hidden" name="scope" :value="scopeValue">
+          <div class="relative flex w-full rounded-lg overflow-visible ring-1 ring-white/10 bg-[#202e44]">
+            <input name="search" autocomplete="off" placeholder="Qidiruv..."
+                  class="flex-1 h-10 bg-transparent text-slate-100 placeholder:text-slate-400 pl-3 pr-9 outline-none" />
+            <button type="submit"
+                    class="absolute right-1 top-1/2 -translate-y-1/2 p-2 rounded hover:bg-white/10"
+                    aria-label="Qidiruv">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+          </div>
+        </form>
+
+        <!-- MOBILE burger -->
+        <button type="button" @click="openDrawer=true"
+                class="md:hidden p-2 rounded hover:bg-white/10" aria-label="Menyu">
           <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
-          {% has_new_chapters user as HAS_NEW_M %}
-          {% if HAS_NEW_M %}
-            <span class="absolute top-1 right-1 h-2 w-2 rounded-full bg-purple-500 ring-2 ring-[#111c28]"></span>
-          {% endif %}
-        </a>
+        </button>
+
         <button type="button" @click="showProfileSheet=true" class="p-2 rounded hover:bg-white/10" aria-label="Profil">
           {% if user.is_authenticated and user.avatar_url %}
             <img src="{{ user.avatar_url }}" class="w-6 h-6 rounded-full" alt="avatar">
@@ -373,29 +335,11 @@
 
       <!-- Qolgan bo‘limlar -->
       <div class="py-1">
-        <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
-          <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 8 3.05"/><path d="M12 7v5l4 2"/>
-          </svg>
-          <span class="flex-1">Yangilanishlar</span>
-        </a>
-        <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
-          <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h10M7 16h10"/>
-          </svg>
-          <span class="flex-1">Yangiliklar</span>
-        </a>
         <a href="{% url 'accounts:top_translators' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
           <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21 12 17.77 5.82 21 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
           </svg>
           <span class="flex-1">Tarjimonlar</span>
-        </a>
-        <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
-          <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10 2l2 2l-8 8l-2-2zM14 6l2 2l-8 8l-2-2zM18 10l2 2l-8 8l-2-2z"/>
-          </svg>
-          <span class="flex-1">Kolleksiyalar</span>
         </a>
         <a href="{% url 'manga:genre_index' %}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/5">
           <svg class="w-6 h-6 opacity-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -416,11 +360,7 @@
       <div class="p-4">
         <div class="text-sm text-slate-300 mb-2">Biz bilan bo‘ling</div>
         <div class="flex items-center gap-2">
-          <a class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20" href="#" aria-label="VK"><iconify-icon icon="simple-icons:vk" width="18" height="18"></iconify-icon></a>
           <a class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20" href="https://t.me/mangalabuz" aria-label="Telegram" target="_blank" rel="noopener"><iconify-icon icon="mdi:telegram" width="18" height="18"></iconify-icon></a>
-          <a class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20" href="#" aria-label="Facebook"><iconify-icon icon="simple-icons:facebook" width="18" height="18"></iconify-icon></a>
-          <a class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20" href="#" aria-label="X"><iconify-icon icon="simple-icons:x" width="18" height="18"></iconify-icon></a>
-          <a class="inline-flex items-center justify-center w-9 h-9 rounded-md bg-white/10 hover:bg-white/20" href="https://www.tiktok.com/@mangalabuz" aria-label="TikTok" target="_blank" rel="noopener"><iconify-icon icon="simple-icons:tiktok" width="18" height="18"></iconify-icon></a>
         </div>
       </div>
     </nav>
@@ -462,17 +402,10 @@
             <a href="{% url 'accounts:my_profile' %}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="8" r="4"/></svg> Profilim
             </a>
-            <!-- Profil sheetdan ham modalni ochamiz -->
-            <button type="button" @click="showProfileSheet=false; filterOpen=true" class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg> Kontent filtri
-            </button>
             <a href="{% url 'manga:history' %}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 8 3.05"/><path d="M12 7v5l4 2"/></svg> Ko'rish tarixi
             </a>
-            <button type="button" class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.5 21a8.38 8.38 0 0 0 8.5-8.5a8.5 8.5 0 1 0-17 0a3 3 0 0 0 3 3h1a2 2 0 0 1 2 2v1a3 3 0 0 0 2.5 2.5z"/></svg> Mavzu sozlamalari
-            </button>
-            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
+            <a href="" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 9h.01"/><path d="M15 15a3 3 0 0 0-6 0"/><path d="M12 12v.01"/></svg> Yordam
             </a>
           </nav>
@@ -487,16 +420,10 @@
             <a href="#" class="px-3 py-2 rounded-md bg-white/10 hover:bg-white/15 font-semibold">Ro'yxatdan o'tish</a>
           </div>
           <nav class="text-slate-200">
-            <button type="button" @click="showProfileSheet=false; filterOpen=true" class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="21" y1="4" x2="14" y2="4"/><line x1="10" y1="4" x2="3" y2="4"/><line x1="21" y1="12" x2="12" y2="12"/><line x1="8" y1="12" x2="3" y2="12"/><line x1="21" y1="20" x2="16" y2="20"/><line x1="12" y1="20" x2="3" y2="20"/><circle cx="12" cy="4" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="20" r="2"/></svg> Kontent filtri
-            </button>
             <a href="{% url 'manga:history' %}" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 8 3.05"/><path d="M12 7v5l4 2"/></svg> Ko'rish tarixi
             </a>
-            <button type="button" class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13.5 21a8.38 8.38 0 0 0 8.5-8.5a8.5 8.5 0 1 0-17 0a3 3 0 0 0 3 3h1a2 2 0 0 1 2 2v1a3 3 0 0 0 2.5 2.5z"/></svg> Mavzu sozlamalari
-            </button>
-            <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
+            <a href="mailto:yordam@mangalab.uz" class="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5">
               <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 9h.01"/><path d="M15 15a3 3 0 0 0-6 0"/><path d="M12 12v.01"/></svg> Yordam
             </a>
           </nav>
@@ -520,331 +447,34 @@
     </div>
   </div>
 
-  <!-- ===== CONTENT FILTER MODAL — Pro (chips + search + kbd) ===== -->
-  <div x-cloak x-show="filterOpen" class="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="cf-title">
-    <!-- overlay -->
-    <div class="absolute inset-0 bg-black/60" @click="filterOpen=false"></div>
-
-    <!-- panel -->
-    <div
-      class="relative mx-auto my-6 w-[min(960px,calc(100%-1rem))] rounded-2xl bg-[#0f1b2d] border border-white/10 shadow-2xl"
-      x-data="cfModal()"
-      @keydown.escape.window="filterOpen=false"
-    >
-      <!-- header -->
-      <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
-        <h3 id="cf-title" class="text-xl font-semibold">Kontent filtri</h3>
-        <button class="p-2 rounded-lg hover:bg-white/10" @click="filterOpen=false" aria-label="Yopish">
-          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
-
-      <!-- FORM: header / body (scroll) / footer -->
-      <form method="post" action="{% url 'manga:content_filter_save' %}" class="grid grid-rows-[auto,1fr,auto] max-h-[90vh]">
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}">
-
-        <!-- info -->
-        <div class="px-6 pt-4">
-          <div class="mb-4 rounded-xl border border-yellow-500/40 bg-yellow-500/10 text-yellow-200 px-4 py-3 flex flex-col gap-2">
-            <p>Sozlamalar katalog, yangilanishlar, qidiruv va mos bo‘limlarda tanlangan kontentni <b>yashiradi</b>.</p>
-            <div class="text-sm text-yellow-100/90 leading-6">
-              <div class="font-semibold mb-1">⏱ Kesh tufayli natijalar biroz kechikishi mumkin:</div>
-              <ul class="list-disc pl-5 space-y-0.5">
-                <li>Katalog (mehmonlar): taxminan ~{{ CF_TTLS.browse_anon_min|default:"15" }} daqiqa</li>
-                <li>O'qilmoqda → “oxirgilari”: ~{{ CF_TTLS.reading_latest_min|default:"10" }} daqiqa</li>
-                <li>O'qilmoqda → “Trenddagi”: ~{{ CF_TTLS.reading_trending_min|default:"15" }} daqiqa</li>
-                <li>Barcha taytlar → yangiliklar lentasi: ~{{ CF_TTLS.discover_recent_min|default:"30" }} daqiqa</li>
-                <li>Janr/Teg/“Tanlanganlar” ro'yxatlari: ~{{ CF_TTLS.choices_hours|default:"24" }} soat</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-
-        <!-- BODY (scrolls) -->
-        <div class="px-6 pb-4 overflow-y-auto space-y-7">
-
-          <!-- ===== TYPES ===== -->
-          <section>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-sm font-medium">Turi</label>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="text-slate-400" x-text="`${state.types.selected.length} ta tanlandi`" aria-live="polite"></span>
-              </div>
-            </div>
-
-            <div class="relative" x-data="multiSelectPro(state.types)">
-              <!-- control (chips) — kattaroq -->
-              <div class="min-h-[56px] w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 flex flex-wrap gap-1.5 items-center cursor-text"
-                  @click="openList()" :aria-expanded="open" aria-haspopup="listbox">
-                <template x-for="val in selected" :key="val">
-                  <span class="inline-flex items-center gap-1.5 rounded-md px-2.5 h-9 bg-white/10">
-                    <span class="truncate" x-text="val"></span>
-                    <button type="button" class="hover:text-red-300" @click.stop="remove(val)" aria-label="O‘chirish">×</button>
-                  </span>
-                </template>
-                <input x-ref="input" x-model="search" @keydown.stop="onKey($event)"
-                      class="flex-1 bg-transparent outline-none placeholder:text-slate-400 px-1.5 h-9"
-                      :placeholder="selected.length ? '' : placeholder">
-              </div>
-
-              <!-- hidden inputs -->
-              <div x-ref="hidden"></div>
-
-              <!-- dropdown -->
-              <div x-cloak x-show="open" x-transition
-                  class="absolute left-0 right-0 z-40 mt-1 rounded-lg border border-white/10 bg-[#0f1b2d] shadow-xl">
-                <div class="sticky top-0 p-2 border-b border-white/10 bg-[#0f1b2d]">
-                  <div class="flex gap-2">
-                    <input x-model="search" class="w-full h-10 rounded bg-white/5 px-3 outline-none" placeholder="Qidiruv...">
-                    <button type="button" class="px-2 rounded bg-white/5 hover:bg-white/10" @click="selectVisible()">Hammasi</button>
-                    <button type="button" class="px-2 rounded bg-white/5 hover:bg-white/10" @click="invertVisible()">Teskari</button>
-                  </div>
-                </div>
-
-                <ul class="max-h-64 overflow-y-auto py-1 grid grid-cols-1 sm:grid-cols-2" role="listbox" :aria-activedescendant="activeId()">
-                  <template x-for="(opt,idx) in filtered()" :key="opt">
-                    <li :id="idFor(idx)" @click="toggle(opt)" @mousemove="active=idx"
-                        class="px-3 py-2 cursor-pointer hover:bg-white/10 flex items-center justify-between"
-                        :class="{'bg-white/10': idx===active}">
-                      <span x-text="opt"></span>
-                      <input type="checkbox" :checked="isSelected(opt)" @click.stop="toggle(opt)">
-                    </li>
-                  </template>
-                  <template x-if="filtered().length===0">
-                    <li class="px-3 py-2 text-slate-400">Hech narsa topilmadi</li>
-                  </template>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          <!-- ===== GENRES ===== -->
-          <section>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-sm font-medium">Janrlar</label>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="text-slate-400" x-text="`${state.genres.selected.length} ta tanlandi`" aria-live="polite"></span>
-              </div>
-            </div>
-
-            <div class="relative" x-data="multiSelectPro(state.genres)">
-              <div class="min-h-[56px] w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 flex flex-wrap gap-1.5 items-center cursor-text"
-                  @click="openList()">
-                <template x-for="val in selected" :key="val">
-                  <span class="inline-flex items-center gap-1.5 rounded-md px-2.5 h-9 bg-white/10">
-                    <span class="truncate" x-text="val"></span>
-                    <button type="button" class="hover:text-red-300" @click.stop="remove(val)" aria-label="O‘chirish">×</button>
-                  </span>
-                </template>
-                <input x-ref="input" x-model="search" @keydown.stop="onKey($event)"
-                      class="flex-1 bg-transparent outline-none placeholder:text-slate-400 px-1.5 h-9"
-                      :placeholder="selected.length ? '' : placeholder">
-              </div>
-              <div x-ref="hidden"></div>
-
-              <div x-cloak x-show="open" x-transition class="absolute left-0 right-0 z-40 mt-1 rounded-lg border border-white/10 bg-[#0f1b2d] shadow-xl">
-                <div class="sticky top-0 p-2 border-b border-white/10 bg-[#0f1b2d]">
-                  <div class="flex gap-2">
-                    <input x-model="search" class="w-full h-10 rounded bg-white/5 px-3 outline-none" placeholder="Qidiruv...">
-                    <button type="button" class="px-2 rounded bg-white/5 hover:bg-white/10" @click="selectVisible()">Hammasi</button>
-                    <button type="button" class="px-2 rounded bg-white/5 hover:bg-white/10" @click="invertVisible()">Teskari</button>
-                  </div>
-                </div>
-                <ul class="max-h-64 overflow-y-auto py-1 grid grid-cols-1 sm:grid-cols-2" role="listbox" :aria-activedescendant="activeId()">
-                  <template x-for="(opt,idx) in filtered()" :key="opt">
-                    <li :id="idFor(idx)" @click="toggle(opt)" @mousemove="active=idx"
-                        class="px-3 py-2 cursor-pointer hover:bg-white/10 flex items-center justify-between"
-                        :class="{'bg-white/10': idx===active}">
-                      <span x-text="opt"></span>
-                      <input type="checkbox" :checked="isSelected(opt)" @click.stop="toggle(opt)">
-                    </li>
-                  </template>
-                  <template x-if="filtered().length===0">
-                    <li class="px-3 py-2 text-slate-400">Hech narsa topilmadi</li>
-                  </template>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          <!-- ===== TAGS ===== -->
-          <section>
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="text-sm font-medium">Teglar</label>
-              <div class="flex items-center gap-2 text-xs">
-                <span class="text-slate-400" x-text="`${state.tags.selected.length} ta tanlandi`" aria-live="polite"></span>
-              </div>
-            </div>
-
-            <div class="relative" x-data="multiSelectPro(state.tags)">
-              <div class="min-h-[56px] w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 flex flex-wrap gap-1.5 items-center cursor-text"
-                  @click="openList()">
-                <template x-for="val in selected" :key="val">
-                  <span class="inline-flex items-center gap-1.5 rounded-md px-2.5 h-9 bg-white/10">
-                    <span class="truncate" x-text="val"></span>
-                    <button type="button" class="hover:text-red-300" @click.stop="remove(val)" aria-label="O‘chirish">×</button>
-                  </span>
-                </template>
-                <input x-ref="input" x-model="search" @keydown.stop="onKey($event)"
-                      class="flex-1 bg-transparent outline-none placeholder:text-slate-400 px-1.5 h-9"
-                      :placeholder="selected.length ? '' : placeholder">
-              </div>
-              <div x-ref="hidden"></div>
-
-              <div x-cloak x-show="open" x-transition class="absolute left-0 right-0 z-40 mt-1 rounded-lg border border-white/10 bg-[#0f1b2d] shadow-xl">
-                <div class="sticky top-0 p-2 border-b border-white/10 bg-[#0f1b2d]">
-                  <div class="flex gap-2">
-                    <input x-model="search" class="w-full h-10 rounded bg-white/5 px-3 outline-none" placeholder="Qidiruv...">
-                    <button type="button" class="px-2 rounded bg-white/5 hover:bg-white/10" @click="selectVisible()">Hammasi</button>
-                    <button type="button" class="px-2 rounded bg-white/5 hover:bg-white/10" @click="invertVisible()">Teskari</button>
-                  </div>
-                </div>
-                <ul class="max-h-64 overflow-y-auto py-1 grid grid-cols-1 sm:grid-cols-2" role="listbox" :aria-activedescendant="activeId()">
-                  <template x-for="(opt,idx) in filtered()" :key="opt">
-                    <li :id="idFor(idx)" @click="toggle(opt)" @mousemove="active=idx"
-                        class="px-3 py-2 cursor-pointer hover:bg-white/10 flex items-center justify-between"
-                        :class="{'bg-white/10': idx===active}">
-                      <span x-text="opt"></span>
-                      <input type="checkbox" :checked="isSelected(opt)" @click.stop="toggle(opt)">
-                    </li>
-                  </template>
-                  <template x-if="filtered().length===0">
-                    <li class="px-3 py-2 text-slate-400">Hech narsa topilmadi</li>
-                  </template>
-                </ul>
-              </div>
-            </div>
-          </section>
-
-        </div>
-
-        <!-- FOOTER (sticky) -->
-        <div class="px-6 py-4 border-t border-white/10 flex items-center justify-between gap-3">
-          <button
-            type="submit"
-            class="h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10"
-            formaction="{% url 'manga:content_filter_clear' %}"
-            formmethod="post"
-          >Tozalash</button>
-
-          <div class="flex items-center gap-3">
-            <button type="button" @click="filterOpen=false" class="h-10 px-4 rounded-lg bg-white/10 hover:bg-white/15">Bekor qilish</button>
-            <button type="submit" class="h-10 px-5 rounded-lg bg-green-600 hover:bg-green-500">Saqlash</button>
-          </div>
-        </div>
-      </form>
-    </div>
-
-    <script>
-      /* Django'dan keladigan ro‘yxatlar */
-      const CF_CHOICES = {
-        types : [{% for v in TYPE_CHOICES %}"{{ v|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}],
-        genres: [{% for v in ALL_GENRES %}"{{ v|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}],
-        tags  : [{% for v in ALL_TAGS %}"{{ v|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}],
-        selected: {
-          types : [{% if content_filter.types %}{% for v in content_filter.types %}"{{ v|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}],
-          genres: [{% if content_filter.genres %}{% for v in content_filter.genres %}"{{ v|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}],
-          tags  : [{% if content_filter.tags %}{% for v in content_filter.tags %}"{{ v|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}{% endif %}]
-        }
-      };
-
-      /* Modal state */
-      function cfModal(){
-        return {
-          state: {
-            types : { name:'types',  placeholder:'Turlar...',  options:CF_CHOICES.types,  selected:[...CF_CHOICES.selected.types]  },
-            genres: { name:'genres', placeholder:'Janrlar...', options:CF_CHOICES.genres, selected:[...CF_CHOICES.selected.genres]},
-            tags  : { name:'tags',   placeholder:'Teglar...',  options:CF_CHOICES.tags,   selected:[...CF_CHOICES.selected.tags]  },
-          },
-          selectAll(group){ this.state[group].selected = [...this.state[group].options] },
-          clearAll(group){ this.state[group].selected = [] },
-        }
-      }
-
-      /* Chiplari bor, qidiruvli va klaviatura bilan boshqariladigan multiselect */
-      function multiSelectPro(cfg){
-        return {
-          name: cfg.name,
-          placeholder: cfg.placeholder,
-          all: cfg.options,
-          selected: cfg.selected,
-          open:false, search:'', active:0,
-
-          // helpers
-          filtered(){ const q=this.search.toLowerCase(); return q ? this.all.filter(o=>o.toLowerCase().includes(q)) : this.all },
-          isSelected(v){ return this.selected.includes(v) },
-          toggle(v){ this.isSelected(v) ? this.remove(v) : this.selected.push(v); this.renderHidden() },
-          remove(v){ this.selected = this.selected.filter(x=>x!==v); this.renderHidden() },
-
-          // batch actions
-          selectVisible(){ this.filtered().forEach(o=>{ if(!this.isSelected(o)) this.selected.push(o) }); this.renderHidden() },
-          invertVisible(){ this.filtered().forEach(o=>{ this.isSelected(o) ? this.remove(o) : this.selected.push(o) }); this.renderHidden() },
-
-          // dropdown / keyboard
-          openList(){ this.open=true; this.$nextTick(()=>this.$refs.input?.focus()) },
-          close(){ this.open=false; this.search=''; this.active=0 },
-          idFor(i){ return `${this.name}-opt-${i}` },
-          activeId(){ return this.idFor(this.active) },
-          onKey(e){
-            if(e.key==='ArrowDown'){ e.preventDefault(); this.active=Math.min(this.active+1, Math.max(this.filtered().length-1,0)); }
-            else if(e.key==='ArrowUp'){ e.preventDefault(); this.active=Math.max(this.active-1,0); }
-            else if(e.key==='Home'){ this.active=0 }
-            else if(e.key==='End'){ this.active=Math.max(this.filtered().length-1,0) }
-            else if(e.key==='Enter' || e.key===' '){ e.preventDefault(); const item=this.filtered()[this.active]; if(item) this.toggle(item); }
-            else if(e.key==='Escape'){ this.close() }
-          },
-
-          // hidden inputs -> Django multiple submit
-          renderHidden(){
-            const host=this.$refs.hidden; host.innerHTML='';
-            this.selected.forEach(v=>{
-              const i=document.createElement('input');
-              i.type='hidden'; i.name=this.name; i.value=v; host.appendChild(i);
-            });
-          },
-
-          init(){
-            this.renderHidden();
-            // close when click outside
-            document.addEventListener('click',(ev)=>{ if(this.open && !this.$el.contains(ev.target)) this.close() });
-            // keep cfg.selected in sync with parent state
-            this.$watch('selected', ()=>this.renderHidden());
-          }
-        }
-      }
-    </script>
-  </div>
-
-
-
-
   <!-- ===== MAIN ===== -->
   <main class="flex-1">
     {% block content %}{% endblock %}
   </main>
 
   <!-- ===== FOOTER ===== -->
-  <footer class="mt-10 border-t border-white/10 bg-[#111c28] sm:px-6 lg:px-16">
-    <div class="mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-2">
+  <footer class="border-t border-white/10 bg-[#111c28] sm:px-16 lg:px-16">
+    <div class="px-4 sm:px-0 pt-12 pb-2">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
         <div>
           <h4 class="text-white font-extrabold tracking-wide mb-4">KATALOG</h4>
           <ul class="space-y-3 text-slate-300">
             <li><a class="hover:text-purple-400" href="{% url 'manga:browse' %}">Taytllar</a></li>
             <li><a class="hover:text-purple-400" href="{% url 'accounts:top_translators' %}">Tarjimonlar</a></li>
-            <li><a class="hover:text-purple-400" href="#">Avtorlar</a></li>
-            <li><a class="hover:text-purple-400" href="#">Nashriyotlar</a></li>
-            <li><a class="hover:text-purple-400" href="#">Kolleksiyalar</a></li>
           </ul>
         </div>
         <div>
           <h4 class="text-white font-extrabold tracking-wide mb-4">INFORMASIYA</h4>
           <ul class="space-y-3 text-slate-300">
-            <li><a class="hover:text-purple-400" href="#">Shaxsiy ma'lumotlarni qayta ishlash</a></li>
-            <li><a class="hover:text-purple-400" href="#">Foydalanuvchi shartnomasi</a></li>
-            <li><a class="hover:text-purple-400" href="#">Mualliflar uchun</a></li>
+            <li>
+              <a href="#"
+                class="hover:text-purple-400 js-open-coins"
+                role="button"
+                aria-controls="coinsModal">
+                Tanga sotib olish
+              </a>
+            </li>
+            <li><a class="hover:text-purple-400" href="#">Tarjimonlar uchun</a></li>
             <li><a class="hover:text-purple-400" href="#">Yordam</a></li>
           </ul>
         </div>
@@ -858,27 +488,11 @@
           </ul>
         </div>
         <div>
-          <h4 class="text-white font-extrabold tracking-wide mb-4">Biz ijtimoiy tarmoqlardamiz</h4>
+          <h4 class="text-white font-extrabold tracking-wide mb-4">Bizning ijtimoiy tarmoq</h4>
           <div class="flex items-center gap-3 text-white">
-            <a class="inline-flex items-center justify-center w-10 h-10 rounded-md bg-white/10 hover:bg-white/20"
-              href="#" target="_blank" rel="noopener" aria-label="VK">
-              <iconify-icon icon="simple-icons:vk" width="22" height="22"></iconify-icon>
-            </a>
             <a class="inline-flex items-center justify-center w-10 h-10 rounded-md bg-white/10 hover:bg-white/20"
               href="https://t.me/mangalabuz" target="_blank" rel="noopener" aria-label="Telegram">
               <iconify-icon icon="mdi:telegram" width="22" height="22"></iconify-icon>
-            </a>
-            <a class="inline-flex items-center justify-center w-10 h-10 rounded-md bg-white/10 hover:bg-white/20"
-              href="#" target="_blank" rel="noopener" aria-label="Facebook">
-              <iconify-icon icon="simple-icons:facebook" width="22" height="22"></iconify-icon>
-            </a>
-            <a class="inline-flex items-center justify-center w-10 h-10 rounded-md bg-white/10 hover:bg-white/20"
-              href="#" target="_blank" rel="noopener" aria-label="X (Twitter)">
-              <iconify-icon icon="simple-icons:x" width="22" height="22"></iconify-icon>
-            </a>
-            <a class="inline-flex items-center justify-center w-10 h-10 rounded-md bg-white/10 hover:bg-white/20"
-              href="https://www.tiktok.com/@mangalabuz" target="_blank" rel="noopener" aria-label="TikTok">
-              <iconify-icon icon="simple-icons:tiktok" width="22" height="22"></iconify-icon>
             </a>
           </div>
         </div>
@@ -915,5 +529,6 @@
     });
   </script>
   {% endif %}
+  {% include "manga/includes/premium_modal.html" %}
 </body>
 </html>
