@@ -48,16 +48,6 @@
         <span>Avtorlar</span>
         <span class="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-white/10 text-xs font-bold">{{ counts.authors|default:0 }}</span>
       </a>
-      <a href="{% url 'manga:history' %}?tab=publishers&order={{ order }}&q={{ q|urlencode }}"
-         class="flex items-center gap-1.5 px-3 py-2 rounded-lg {% if tab == 'publishers' %}bg-white/10{% else %}bg-white/5{% endif %} text-sm shrink-0">
-        <span>Nashriyotlar</span>
-        <span class="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-white/10 text-xs font-bold">{{ counts.publishers|default:0 }}</span>
-      </a>
-      <a href="{% url 'manga:history' %}?tab=collections&order={{ order }}&q={{ q|urlencode }}"
-         class="flex items-center gap-1.5 px-3 py-2 rounded-lg {% if tab == 'collections' %}bg-white/10{% else %}bg-white/5{% endif %} text-sm shrink-0">
-        <span>Kolleksiyalar</span>
-        <span class="inline-flex items-center justify-center min-w-[22px] h-5 px-1 rounded bg-white/10 text-xs font-bold">{{ counts.collections|default:0 }}</span>
-      </a>
     </div>
   </div>
 
@@ -82,16 +72,6 @@
              class="flex items-center justify-between px-3 py-2 rounded-lg {% if tab == 'authors' %}bg-white/10{% else %}bg-white/5{% endif %}">
             <span>Avtorlar</span>
             <span class="inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-md bg-white/10 text-sm font-bold">{{ counts.authors|default:0 }}</span>
-          </a>
-          <a href="{% url 'manga:history' %}?tab=publishers&order={{ order }}&q={{ q|urlencode }}"
-             class="flex items-center justify-between px-3 py-2 rounded-lg {% if tab == 'publishers' %}bg-white/10{% else %}bg-white/5{% endif %}">
-            <span>Nashriyotlar</span>
-            <span class="inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-md bg-white/10 text-sm font-bold">{{ counts.publishers|default:0 }}</span>
-          </a>
-          <a href="{% url 'manga:history' %}?tab=collections&order={{ order }}&q={{ q|urlencode }}"
-             class="flex items-center justify-between px-3 py-2 rounded-lg {% if tab == 'collections' %}bg-white/10{% else %}bg-white/5{% endif %}">
-            <span>Kolleksiyalar</span>
-            <span class="inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-md bg-white/10 text-sm font-bold">{{ counts.collections|default:0 }}</span>
           </a>
         </div>
 
