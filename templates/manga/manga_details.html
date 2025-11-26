@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% load static %}
+
 {% block title %}{{ manga.title }}{% endblock %}
+
 {% block head_extra %}
   {% with desc=manga.description|striptags|truncatechars:160 %}
     <meta name="description" content="{{ desc }}">
-    <!-- Telegram / OG -->
     <meta property="og:title" content="{{ manga.title }}">
     <meta property="og:description" content="{{ desc }}">
   {% endwith %}
@@ -16,75 +17,133 @@
   {# ---------- HERO SECTION ---------- #}
   {% include "manga/includes/_hero.html" %}
 
+  {# ---------- RECOMMENDATIONS ---------- #}
+  {% include "manga/includes/_recomendation.html" %}
 
-  {# ---------- Description SECTION ---------- #}
-  <div class="glass-container mb-12 mt-12">
-    <div class="flex items-center mb-2 gap-4">
-      {% comment %} <div class="p-3 bg-purple-500/20 rounded-xl border border-purple-500/30">
-        <i class="fa-solid fa-scroll text-2xl text-purple-400"></i>
-      </div> {% endcomment %}
-      <h2 class="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        Hikoya sharhi
-      </h2>
-    </div>
+  {# ---------- TABS: DESCRIPTION / CHAPTERS / COMMENTS ---------- #}
+  <section
+    x-data="{
+      tab: (new URLSearchParams(location.search)).get('tab') || 'description',
+      setTab(t){
+        this.tab = t;
+        const u = new URL(location);
+        u.searchParams.set('tab', t);
+        history.replaceState({}, '', u);
+      }
+    }"
+  >
+    <!-- Segmented control -->
+    <div class="w-full sm:w-auto mt-8">
+      <div class="relative grid grid-cols-3 p-1 rounded-xl bg-gray-800/60 border border-gray-700/60 backdrop-blur-sm">
 
-    <div 
-      x-data="{ expanded: false, showButton: false }" 
-      x-init="$nextTick(() => {
-        const el = $refs.desc;
-        showButton = el.scrollHeight > el.clientHeight;
-      })"
-      class="mb-6"
-    >
-      <p
-        x-ref="desc"
-        :class="expanded ? '' : 'line-clamp-4'"
-        class="text-gray-300 leading-relaxed text-base sm:text-lg font-light transition-all duration-300"
-      >
-        {{ manga.description|linebreaksbr }}
-      </p>
+        <!-- sliding highlight -->
+        <span
+          class="pointer-events-none absolute inset-y-1 left-1 w-1/3 rounded-lg
+                 bg-gradient-to-r from-indigo-500/30 to-purple-500/30
+                 shadow-inner transition-transform duration-300 ease-out"
+          :style="{
+            transform: tab === 'description'
+              ? 'translateX(0%)'
+              : (tab === 'chapters'
+                  ? 'translateX(100%)'
+                  : 'translateX(200%)')
+          }"
+        ></span>
 
-      <template x-if="showButton">
+        <!-- DESCRIPTION TAB BUTTON -->
         <button
-          @click="expanded = !expanded"
-          :aria-expanded="expanded"
-          class="mt-2 text-purple-400 hover:text-purple-300 text-sm font-medium transition ease-in-out duration-200"
+          type="button"
+          role="tab"
+          :aria-selected="(tab === 'description').toString()"
+          @click="setTab('description')"
+          class="relative z-10 py-2 px-4 rounded-lg font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
+                 text-xs sm:text-sm md:text-base"
+          :class="tab === 'description' ? 'text-white' : 'text-gray-300 hover:text-gray-100'"
         >
-          <span x-text="expanded ? 'Yopish' : 'Ochish'"></span>
+          <i class="fa-solid fa-book-open mr-2 opacity-80"></i> Hikoya sharhi
         </button>
-      </template>
+
+        <!-- CHAPTERS TAB BUTTON -->
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="(tab === 'chapters').toString()"
+          @click="setTab('chapters')"
+          class="relative z-10 py-2 px-4 rounded-lg font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
+                 text-xs sm:text-sm md:text-base"
+          :class="tab === 'chapters' ? 'text-white' : 'text-gray-300 hover:text-gray-100'"
+        >
+          <i class="fa-solid fa-list-ul mr-2 opacity-80"></i> Boblar
+        </button>
+
+        <!-- COMMENTS TAB BUTTON -->
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="(tab === 'comments').toString()"
+          @click="setTab('comments')"
+          class="relative z-10 py-2 px-4 rounded-lg font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400
+                 text-xs sm:text-sm md:text-base"
+          :class="tab === 'comments' ? 'text-white' : 'text-gray-300 hover:text-gray-100'"
+        >
+          <i class="fa-solid fa-comments mr-2 opacity-80"></i> Izohlar
+        </button>
+      </div>
     </div>
-  </div>
 
-  {# ---------- Похожее ================================================= #}
-  {% include 'manga/includes/_recomendation.html' %}
+    <!-- DESCRIPTION TAB CONTENT -->
+    <div x-show="tab === 'description'" x-cloak class="mt-6">
+      <div class="glass-container">
 
-  {# ---------- CHAPTERS SECTION ---------- #}
-  {% include 'manga/includes/_chapter_section.html' %}
+        <div
+          x-data="{ expanded:false, showButton:false }"
+          x-init="$nextTick(() => { const el = $refs.desc; showButton = el.scrollHeight > el.clientHeight; })"
+          class="mb-4"
+        >
+          <p
+            x-ref="desc"
+            :class="expanded ? '' : 'line-clamp-4'"
+            class="text-gray-300 leading-relaxed text-base sm:text-lg font-light transition-all duration-300"
+          >
+            {{ manga.description|linebreaksbr }}
+          </p>
+
+          <template x-if="showButton">
+            <button
+              @click="expanded = !expanded"
+              :aria-expanded="expanded"
+              class="mt-2 text-purple-400 hover:text-purple-300 text-sm font-medium transition ease-in-out duration-200"
+            >
+              <span x-text="expanded ? 'Yopish' : 'Ochish'"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAPTERS TAB CONTENT -->
+    <div x-show="tab === 'chapters'" x-cloak class="mt-6">
+      {% include "manga/includes/_chapter_section.html" %}
+    </div>
+
+    <!-- COMMENTS TAB CONTENT -->
+    <div x-show="tab === 'comments'" x-cloak class="mt-6">
+      {# Izohlar partial: kerakli faylni shu yerga include qilasan #}
+      {# {% include "manga/includes/_comments.html" %} #}
+    </div>
+  </section>
+
 </div>
 
 <style>
-  .glass-container {
-    @apply bg-gray-900/30 backdrop-blur-sm rounded-2xl p-8 mb-8 border border-gray-800 shadow-2xl;
+  .glass-container { @apply bg-gray-900/30 backdrop-blur-sm rounded-2xl p-8 mb-8 border border-gray-800 shadow-2xl; }
+  .tab { @apply py-2 text-sm sm:text-base text-gray-400 hover:text-gray-200 transition relative; }
+  .tab-active { @apply py-2 text-sm sm:text-base font-semibold text-white relative; }
+  .tab-active::after {
+    content:""; position:absolute; left:0; bottom:-1px; height:3px; width:100%;
+    background:#5457ff; border-radius:2px;
   }
-
-  .chapter-card {
-    @apply bg-gray-800/40 rounded-xl border border-gray-700 hover:border-purple-500/30 hover:shadow-purple-500/10;
-  }
-
-  .chapter-number {
-    @apply w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 
-           text-white font-bold text-lg shadow-lg shadow-purple-500/20;
-  }
-
-  .animate-pulse {
-    animation: pulse 6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
+  [x-cloak]{ display:none !important; }
 </style>
 
 <script src="{% static 'js/manga_details.js' %}"></script>
