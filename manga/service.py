@@ -1,5 +1,4 @@
 # views/purchases.py (yoki tegishli faylingiz)
-
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
@@ -15,7 +14,6 @@ def _is_translator(user) -> bool:
         return getattr(user.userprofile, "is_translator", False)
     except UserProfile.DoesNotExist:
         return False
-
 
 @login_required
 def purchase_chapter(request, manga_slug, volume, chapter_number):
