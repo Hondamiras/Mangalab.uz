@@ -92,7 +92,6 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 "manga.context_processors.catalog_context",
-                "manga.context_processors.content_filter_context",
             ],
         },
     },
