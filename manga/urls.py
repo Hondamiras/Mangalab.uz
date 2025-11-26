@@ -1,12 +1,13 @@
 # apps/manga/urls.py
 from django.urls import path
+
 from . import views
 from manga.service import purchase_chapter
 
+
 app_name = "manga"
 
-urlpatterns = [
-    # path("", views.manga_list, name="manga_list"),
+urlpatterns = [        
     path("", views.manga_discover, name="discover"),
     path("browse/", views.manga_browse, name="browse"), # Barcha taytlar (filtr + paginate)
     path("random/", views.random_manga, name="random_manga"),
@@ -14,9 +15,6 @@ urlpatterns = [
     path("history/", views.reading_history, name="history"),
     path("history/remove/<int:manga_id>/", views.history_remove, name="history_remove"),
     path("history/clear/", views.history_clear, name="history_clear"),
-    
-    path("content-filter/save/", views.content_filter_save, name="content_filter_save"),
-    path("content-filter/clear/", views.content_filter_clear, name="content_filter_clear"),
     
     path("page/<int:page_id>/<str:token>/", views.page_image, name="page_image"),
 
@@ -33,7 +31,8 @@ urlpatterns = [
     path('<slug:manga_slug>/add/', views.add_to_reading_list, name='add_to_reading_list'),
     path('<slug:manga_slug>/volume/<int:volume>/chapter/<int:chapter_number>/purchase/', purchase_chapter, name="purchase_chapter"),
 
-    path('<slug:manga_slug>/volume/<int:volume>/chapter/<int:chapter_number>/', views.chapter_read, name='chapter_read'),
+    path('<slug:manga_slug>/jild/<int:volume>/bob/<int:chapter_number>/', views.chapter_read, name='chapter_read'),
     path("manga/<slug:slug>/like/", views.toggle_manga_like, name="manga_like_toggle"),
     
+
 ]
