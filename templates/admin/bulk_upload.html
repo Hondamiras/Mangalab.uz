@@ -1,3 +1,4 @@
+{# templates/admin/bulk_upload.html #}
 {% extends "admin/base_site.html" %}
 {% load static %}
 
@@ -10,9 +11,20 @@
 
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
+
+    {# umumiy form xatolari #}
+    {{ form.non_field_errors }}
+
     <div>
-      <label for="id_images"><strong>Rasmlar tanlang:</strong></label><br>
+      {# aynan images field xatolari #}
+      {{ form.images.errors }}
+
+      <label for="{{ form.images.id_for_label }}"><strong>Rasmlar tanlang:</strong></label><br>
       {{ form.images }}
+
+      {% if form.images.help_text %}
+        <p class="help">{{ form.images.help_text }}</p>
+      {% endif %}
     </div>
 
     <br>
