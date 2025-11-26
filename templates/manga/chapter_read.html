@@ -5,15 +5,43 @@
   <meta charset="UTF-8" />
   <link rel="icon" href="{% static 'images/logo.png' %}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>{{ chapter.manga.title }} — Bob {{ chapter.chapter_number }}</title>
+  <title>{{ chapter.manga.title }} - Bob {{ chapter.chapter_number }}</title>
+
+  <!-- Prefetch next chapter (agar bo'lsa) -->
+  {% if next_chapter %}
+    <link rel="prefetch" href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}">
+  {% else %}{% endif %}
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Alpine.js (dropdown uchun) -->
-  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <style>[x-cloak]{display:none!important}</style>
   <!-- Font Awesome -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+
+  <!-- Stil -->
+  <style>
+    :root { --page-w: 900px; } /* default eni */
+    /* Reader konteyneri */
+    .chapter-pages {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem; /* 16px */
+      content-visibility: auto;
+      contain-intrinsic-size: 0 2000px;
+    }
+    .chapter-pages img {
+      width: var(--page-w);
+      height: auto;
+      display: block;
+    }
+    /* Panel blur */
+    .reader-controls { backdrop-filter: blur(6px); }
+    /* Animatsiyani kamaytirish */
+    @media (prefers-reduced-motion: reduce) {
+      #navbar { transition: none !important; }
+      .slide-panel { transition: none !important; }
+    }
+  </style>
 </head>
 
 <body class="bg-[#0F0F1E] text-gray-100">
@@ -25,81 +53,121 @@
 
         <!-- Back -->
         <a href="{% url 'manga:manga_details' chapter.manga.slug %}"
-           class="group inline-flex items-center gap-2 text-purple-300 hover:text-purple-200">
+           class="group inline-flex items-center gap-2 text-purple-300 hover:text-purple-200"
+           aria-label="Manga sahifasiga qaytish">
           <i class="fas fa-arrow-left"></i>
         </a>
 
-        <!-- Chapter selector -->
-        <div x-data="{open:false}" class="relative">
-          <button @click="open=!open"
-                  class="flex items-center gap-3 px-4 py-2 bg-purple-900 rounded-lg hover:bg-purple-800">
-            <span class="font-semibold">Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}</span>
-            <i class="fas fa-chevron-down text-purple-300 transition-transform"
-               :class="{'rotate-180':open}"></i>
-          </button>
-
-          <!-- Dropdown list -->
-          <div x-show="open" x-cloak @click.away="open=false"
-               class="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-y-auto
-                      bg-[#1A1A2E] rounded-xl shadow-2xl
-                      scrollbar-thin scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
-            <ul class="divide-y divide-purple-800/50">
-              {% for ch in all_chapters %}
-                {% comment %}
-                  LOCK holati: pullik + O‘QIB BO‘LMAYDIGAN bob (readable_chapter_ids ichida yo‘q)
-                {% endcomment %}
-                {% if ch.price_tanga > 0 and request.user.is_authenticated and ch.id not in readable_chapter_ids %}
-                  <li>
-                    <button type="button"
-                            class="js-open-purchase group flex items-center w-full text-left px-5 py-3.5 hover:bg-purple-900/20 transition"
-                            data-vol="{{ ch.volume }}"
-                            data-ch="{{ ch.chapter_number }}"
-                            data-price="{{ ch.price_tanga }}">
-                      <div class="flex items-center gap-3 min-w-0 flex-1">
-                        <i class="fas fa-lock text-yellow-400 w-5 text-center"></i>
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-baseline justify-between gap-2">
-                            <p class="text-sm truncate text-purple-200">Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}</p>
-                            <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                {% else %}
-                  <li>
-                    <a href="{% url 'manga:chapter_read' manga.slug ch.volume ch.chapter_number %}"
-                       class="group flex items-center px-5 py-3.5 hover:bg-purple-900/20 transition">
-                      <div class="flex items-center gap-3 min-w-0 flex-1">
-                        <span class="w-5 text-center">
-                          {% if reading_progress and reading_progress.last_read_chapter %}
-                            {% if ch.id == reading_progress.last_read_chapter.id %}
-                              <i class="fas fa-bookmark text-amber-400 rotate-12"></i>
-                            {% elif ch.id in user_read_chapters %}
-                              <i class="fas fa-check-circle text-emerald-400"></i>
-                            {% endif %}
-                          {% endif %}
-                        </span>
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-baseline justify-between gap-2">
-                            <p class="text-sm truncate text-purple-200">Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}</p>
-                            <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </a>
-                  </li>
-                {% endif %}
-              {% endfor %}
-            </ul>
-          </div>
+        <!-- Current chapter label -->
+        <div class="flex items-center gap-3 text-purple-300">
+          <span class="font-semibold">Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}</span>
         </div>
+
+        <!-- Sidebar toggle (Boblar) -->
+        <button id="openChaps"
+                class="flex items-center gap-2 px-4 py-2 bg-purple-900 rounded-lg hover:bg-purple-800"
+                aria-controls="chapSidebar" aria-expanded="false">
+          <i class="fas fa-list"></i>
+          <span>Boblar</span>
+        </button>
       </div>
     </div>
   </div>
 
+  <!-- ======== Chapters Sidebar (Slide-over) ======== -->
+  <div id="chapSidebar" class="fixed inset-0 z-50 hidden" aria-hidden="true">
+    {# Overlay ko‘rinmas – faqat click uchun transparent #}
+    <div class="absolute inset-0 bg-transparent" id="chapMask"></div>
+
+    <aside id="chapPanel"
+           class="slide-panel absolute left-0 top-0 h-full w-[86%] sm:w-[420px]
+                  bg-[#0F0F1E] border-r border-purple-500/30 shadow-2xl
+                  translate-x-[-100%] transition-transform duration-300 will-change-transform"
+           role="dialog" aria-labelledby="chapTitle">
+      <div class="p-4 border-b border-purple-900/40 flex items-center justify-between gap-3">
+        <h2 id="chapTitle" class="text-lg font-semibold text-purple-200">Boblar ro‘yxati</h2>
+
+        <div class="flex items-center gap-2">
+          <!-- 10 → 1 / 1 → 10 tartib filtri -->
+          <div class="inline-flex rounded-lg bg-[#151526] border border-purple-500/40 text-xs overflow-hidden">
+            <button id="chapSortDesc" type="button"
+                    class="px-2.5 py-1 text-purple-300 hover:bg-purple-800 hover:text-white">
+              10 → 1
+            </button>
+            <button id="chapSortAsc" type="button"
+                    class="px-2.5 py-1 text-purple-300 hover:bg-purple-800 hover:text-white">
+              1 → 10
+            </button>
+          </div>
+
+          <button id="closeChaps" class="px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Eslatma: Qidiruv olib tashlandi -->
+      <div id="chapScroll"
+          class="h-[calc(100%-72px)] overflow-y-auto scrollbar-thin
+                  scrollbar-thumb-purple-900/50 scrollbar-track-[#0F0F1E]">
+        <ul id="chapList" class="divide-y divide-purple-800/40">
+          {% for ch in all_chapters %}
+            <li class="group" {% if ch.id == chapter.id %}data-current="1"{% endif %}>
+              {% if ch.price_tanga > 0 and ch.id not in readable_chapter_ids %}
+                {# --- PREMIUM (LOCKED) --- #}
+                <button type="button"
+                        class="block w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-purple-900/20
+                              border-l-2 {% if ch.id == chapter.id %}bg-purple-900/40 border-purple-400 ring-1 ring-purple-400/10{% else %}border-transparent{% endif %}
+                              js-open-purchase"
+                        data-vol="{{ ch.volume }}"
+                        data-ch="{{ ch.chapter_number }}"
+                        data-price="{{ ch.price_tanga }}"
+                        aria-label="Premium bob {{ ch.chapter_number }} sotib olish"
+                        aria-current="{% if ch.id == chapter.id %}page{% else %}false{% endif %}">
+                  <i class="fas fa-lock text-yellow-400 w-5 text-center" aria-hidden="true"></i>
+                  <span class="flex-1 truncate">
+                    Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}
+                    {% if ch.id == chapter.id %}<span class="sr-only">(Hozirgi bob)</span>{% endif %}
+                  </span>
+                  <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
+                </button>
+              {% else %}
+                {# --- OCHIQ (FREE/READABLE) --- #}
+                <a href="{% url 'manga:chapter_read' manga.slug ch.volume ch.chapter_number %}"
+                  class="block w-full px-4 py-3 flex items-center gap-3 hover:bg-purple-900/20
+                          border-l-2 {% if ch.id == chapter.id %}bg-purple-900/40 border-purple-400 ring-1 ring-purple-400/10{% else %}border-transparent{% endif %}"
+                  aria-current="{% if ch.id == chapter.id %}page{% else %}false{% endif %}">
+                  <span class="w-5 text-center">
+                    {% if reading_progress and reading_progress.last_read_chapter %}
+                      {% if ch.id == reading_progress.last_read_chapter.id %}
+                        <i class="fas fa-bookmark text-amber-400 rotate-12" aria-hidden="true"></i>
+                      {% else %}
+                        {% if ch.id in user_read_chapters %}
+                          <i class="fas fa-check-circle text-emerald-400" aria-hidden="true"></i>
+                        {% else %}{% endif %}
+                      {% endif %}
+                    {% else %}{% endif %}
+                  </span>
+                  <span class="flex-1 truncate">
+                    Jild {{ ch.volume }} • Bob {{ ch.chapter_number }}
+                    {% if ch.id == chapter.id %}<span class="sr-only">(Hozirgi bob)</span>{% endif %}
+                  </span>
+                  <span class="text-xs text-purple-500">{{ ch.release_date|date:"d.m.Y" }}</span>
+                </a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </aside>
+  </div>
+
   <!-- ======== Pages (images) ======== -->
-  {% include "manga/includes/_chapter_pages.html" %}
+  <div id="reader" class="max-w-6xl mx-auto">
+    <div class="chapter-pages" id="pageCol">
+      {% include "manga/includes/_chapter_pages.html" %}
+    </div>
+  </div>
 
   <!-- ======== Thank button ======== -->
   <div class="mt-4 text-center">
@@ -123,9 +191,8 @@
 
   <!-- ======== Bottom navigation (prev/next) ======== -->
   <div class="max-w-6xl mx-auto px-4 py-6 flex justify-center items-center gap-4">
-
     {% if previous_chapter %}
-      <a href="{% url 'manga:chapter_read' manga.slug previous_chapter.volume previous_chapter.chapter_number %}"
+      <a data-prev-chap href="{% url 'manga:chapter_read' manga.slug previous_chapter.volume previous_chapter.chapter_number %}"
          class="flex items-center gap-3 px-5 py-3 bg-purple-600 rounded-xl border border-purple-900 hover:bg-purple-900 transition">
         <i class="fas fa-arrow-left text-indigo-200"></i>
         <span class="text-indigo-100 font-medium">Bob {{ previous_chapter.chapter_number }}</span>
@@ -149,7 +216,7 @@
           <i class="fas fa-lock text-yellow-400"></i>
         </button>
       {% else %}
-        <a href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
+        <a data-next-chap href="{% url 'manga:chapter_read' manga.slug next_chapter.volume next_chapter.chapter_number %}"
            class="flex items-center gap-3 px-5 py-3 bg-purple-600 rounded-xl border border-purple-900 hover:bg-purple-900 transition">
           <span class="text-indigo-100 font-medium">Bob {{ next_chapter.chapter_number }}</span>
           <i class="fas fa-arrow-right text-indigo-200"></i>
@@ -169,18 +236,18 @@
         <p class="text-purple-300">Bu manga uchun oxirgi bob!</p>
       </div>
     </div>
-  {% endif %}
+  {% else %}{% endif %}
 
-  <!-- ======== Universal Purchase Modal (JS orqali to‘ldiriladi) ======== -->
-  <div id="buyModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+  <!-- ======== Universal Purchase Modal ======== -->
+  <div id="buyModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-labelledby="buyModalTitle">
     <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 text-center max-w-md w-full 
                 border border-purple-500/30 shadow-2xl shadow-purple-500/10">
       <div class="mb-6 flex justify-center">
         <div class="bg-yellow-500/20 p-4 rounded-full border border-yellow-500/40">
-          <i class="fas fa-crown text-3xl text-yellow-400"></i>
+          <i class="fas fa-crown text-3xl text-yellow-400" aria-hidden="true"></i>
         </div>
       </div>
-      <h2 class="text-2xl font-bold text-yellow-400 mb-3">Premium Bob</h2>
+      <h2 id="buyModalTitle" class="text-2xl font-bold text-yellow-400 mb-3">Premium Bob</h2>
       <p class="text-gray-300 mb-6 leading-relaxed">
         "<span id="modalTitle" class="text-white font-medium"></span>" mangasining
         <span id="modalChapter" class="text-yellow-300"></span>-bobi pullik kontent hisoblanadi.
@@ -203,30 +270,114 @@
     </div>
   </div>
 
+  <!-- Toggle: telefonlarda ko‘rinmasin -->
+  <button id="rcToggleBtn"
+          class="hidden sm:flex fixed right-4 bottom-4 z-50 items-center gap-2 px-3 py-2
+                rounded-xl bg-purple-900 hover:bg-purple-800 border border-purple-500/30 text-sm"
+          aria-controls="rcPanel" aria-expanded="false">
+    <i class="fas fa-sliders"></i>
+    <span>O'qish moslamasi</span>
+  </button>
+
+  <!-- Panel (telefon: w-full; desktop: 280px) -->
+  <div id="rcPanel"
+      class="hidden fixed left-2 right-2 bottom-20 z-50 reader-controls
+              bg-[#1A1A2E]/90 border border-purple-500/30 rounded-2xl p-3
+              shadow-2xl shadow-purple-500/10 w-full md:w-[300px] md:left-auto md:right-4 select-none"
+      role="dialog" aria-modal="true" aria-labelledby="rcTitle"
+      data-rc-target="#pageCol">
+    <div class="mb-2 flex items-center justify-between">
+      <h3 id="rcTitle" class="text-sm font-semibold text-purple-200">O‘qish moslamasi</h3>
+      <button id="rcClose" class="px-2 py-1 rounded-lg text-purple-300 hover:bg-purple-900" aria-label="Yopish">✕</button>
+    </div>
+
+    <!-- − / metr / ＋ / Reset -->
+    <div class="flex items-center gap-3">
+      <button id="rcMinus"
+              class="px-3 py-2 rounded-lg bg-purple-900 hover:bg-purple-800 active:scale-95 transition"
+              aria-label="Eni kamaytirish">−</button>
+
+      <div class="flex-1">
+        <div id="rcMeter"
+            class="rc-meter h-8 flex items-end gap-1 px-1 rounded-lg bg-purple-950/60 border border-purple-500/20 overflow-hidden"
+            role="slider" aria-label="Kenglik" aria-valuemin="480" aria-valuemax="1080" aria-valuenow="900"
+            title="Bosib sudrang yoki g‘ildirakni aylantiring">
+          <!-- JS 12 ta bar yaratadi -->
+        </div>
+        <div id="rcWidthOut" class="mt-1 text-center text-[11px] text-purple-300"></div>
+      </div>
+
+      <button id="rcPlus"
+              class="px-3 py-2 rounded-lg bg-purple-900 hover:bg-purple-800 active:scale-95 transition"
+              aria-label="Eni oshirish">+</button>
+
+      <!-- RESET -->
+      <button id="rcReset"
+              class="px-3 py-2 rounded-lg bg-purple-900 hover:bg-purple-800 active:scale-95 transition"
+              title="Reset (900 px)" aria-label="Reset">↺</button>
+    </div>
+
+    <p class="mt-2 text-[11px] leading-snug text-purple-300/80">
+      Qisqa tugmalar: <kbd>+</kbd>/<kbd>-</kbd>, <kbd>0</kbd> (oldingi holiga qaytish), <kbd>P</kbd> (panel), <kbd>Esc</kbd> (yopish).
+    </p>
+  </div>
+
   <!-- ======== Scripts ======== -->
   <script>
-    // Navbar autohide (desktop)
-    (function(){
-      const nav = document.getElementById('navbar');
-      const navH = nav.offsetHeight;
-      let last = window.pageYOffset || document.documentElement.scrollTop;
-      let ticking = false;
+    // CSRF (cookie'dan)
+    function getCookie(name){
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return null;
+    }
+    const CSRF = getCookie('csrftoken') || '{{ csrf_token }}';
+  </script>
 
-      window.addEventListener('scroll', () => {
-        if (window.innerWidth < 768) return;
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-          const cur = window.pageYOffset || document.documentElement.scrollTop;
-          const d = cur - last;
-          if (Math.abs(d) > 5) {
-            if (d > 0 && cur > navH) nav.classList.add('-translate-y-full');
-            else if (d < 0) nav.classList.remove('-translate-y-full');
-            last = cur;
+  <script>
+    // -------- Reader width controls (persist) + IMG perf tweaks --------
+    (function(){
+      const KEY = 'reader.pageWidth';
+      const MIN = 480, MAX = 1400, STEP = 20;
+
+      function apply(px){
+        var v = parseInt(px, 10);
+        if (isNaN(v)) { v = 900; }
+        if (v < MIN) { v = MIN; }
+        if (v > MAX) { v = MAX; }
+        document.documentElement.style.setProperty('--page-w', v + 'px');
+        try { localStorage.setItem(KEY, v); } catch(e){}
+        var out = document.getElementById('rcWidthOut'); if(out) out.textContent = v + 'px';
+        var rng = document.getElementById('rcWidth');   if(rng) rng.value = v;
+      }
+
+      var saved = 900;
+      try {
+        var s = localStorage.getItem(KEY);
+        if (s) { saved = parseInt(s, 10); }
+      } catch(e){}
+      apply(saved);
+
+      window.__rcWMinus = function(){ apply((parseInt(localStorage.getItem(KEY)||'900',10)) - STEP); };
+      window.__rcWPlus  = function(){ apply((parseInt(localStorage.getItem(KEY)||'900',10)) + STEP); };
+      window.__rcWSet   = function(v){ apply(v); };
+
+      // IMG attributes (lazy, async, first=high)
+      var cont = document.getElementById('pageCol');
+      if (cont){
+        var imgs = cont.getElementsByTagName('img');
+        if (imgs.length > 0){
+          for (var i=0;i<imgs.length;i++){
+            var im = imgs[i];
+            if (!im.hasAttribute('loading')) im.setAttribute('loading','lazy');
+            if (!im.hasAttribute('decoding')) im.setAttribute('decoding','async');
+            if (!im.referrerPolicy) im.referrerPolicy = 'no-referrer';
+            if (i === 0) {
+              try { im.fetchPriority = 'high'; } catch(e){}
+            }
           }
-          ticking = false;
-        });
-      }, {passive:true});
+        }
+      }
     })();
   </script>
 
@@ -257,17 +408,18 @@
       targetBuyUrl  = buildUrl(BUY_URL_TPL,  vol, ch);
       targetReadUrl = buildUrl(READ_URL_TPL, vol, ch);
       buyModal.classList.remove('hidden');
+      setTimeout(function(){ try{ buyBtn.focus(); }catch(e){} }, 90);
     }
 
     // Delegation: har qanday .js-open-purchase tugmasi
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.js-open-purchase');
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest('.js-open-purchase');
       if (!btn) return;
       openPurchase(btn.dataset.vol, btn.dataset.ch, btn.dataset.price);
     });
 
-    closeModal.addEventListener('click', () => buyModal.classList.add('hidden'));
-    buyModal.addEventListener('click', (e) => { if (e.target === buyModal) buyModal.classList.add('hidden'); });
+    closeModal.addEventListener('click', function(){ buyModal.classList.add('hidden'); });
+    buyModal.addEventListener('click', function(e){ if (e.target === buyModal) buyModal.classList.add('hidden'); });
 
     buyBtn.addEventListener('click', async function(){
       const self = this;
@@ -277,12 +429,12 @@
       try{
         const res  = await fetch(targetBuyUrl, {
           method: 'POST',
-          headers: {'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'XMLHttpRequest'}
+          headers: {'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest'}
         });
         const data = await res.json();
         if (data.success) {
           self.innerHTML = '<i class="fas fa-check"></i> <span>Muvaffaqiyatli!</span>';
-          setTimeout(()=>{ window.location.href = targetReadUrl; }, 700);
+          setTimeout(function(){ window.location.href = targetReadUrl; }, 700);
         } else {
           self.innerHTML = oldHTML;
           alert(data.message || 'Xatolik yuz berdi, qayta urinib ko‘ring.');
@@ -299,105 +451,390 @@
 
   <script>
     // -------- Thank toggle --------
-    document.getElementById('thankBtn')?.addEventListener('click', async function(){
-      const btn = this;
-      const id  = btn.dataset.chapterId;
-      const url = `{% url 'manga:thank_chapter' 0 %}`.replace('/0/', `/${id}/`);
+    (function(){
+      var th = document.getElementById('thankBtn');
+      if (!th) return;
+      th.addEventListener('click', async function(){
+        var btn = this;
+        var id  = btn.dataset.chapterId;
+        var url = "{% url 'manga:thank_chapter' 0 %}".replace('/0/', '/' + id + '/');
 
-      try{
-        const res = await fetch(url, {
-          method:'POST',
-          headers:{'X-CSRFToken':'{{ csrf_token }}','X-Requested-With':'XMLHttpRequest'}
-        });
-        const {thanked, count} = await res.json();
-        const icon   = btn.querySelector('.fa-heart');
-        const textEl = btn.querySelector('#thankText');
-        const cntEl  = btn.querySelector('#thankCount');
+        try{
+          const res = await fetch(url, {
+            method:'POST',
+            headers:{'X-CSRFToken': CSRF,'X-Requested-With':'XMLHttpRequest'}
+          });
+          const data = await res.json();
+          var thanked = data.thanked;
+          var count   = data.count;
+          var icon   = btn.querySelector('.fa-heart');
+          var textEl = btn.querySelector('#thankText');
+          var cntEl  = btn.querySelector('#thankCount');
 
-        icon.classList.toggle('text-red-400', thanked);
-        textEl.textContent = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
-        cntEl.textContent  = `(${count})`;
-      }catch(err){
-        console.error('Thank error:', err);
-      }
-    });
+          if (thanked) { icon.classList.add('text-red-400'); }
+          else { icon.classList.remove('text-red-400'); }
+          if (textEl) textEl.textContent = thanked ? 'Rahmat aytildi' : 'Rahmat aytish';
+          if (cntEl)  cntEl.textContent  = '(' + count + ')';
+        }catch(err){
+          console.error('Thank error:', err);
+        }
+      });
+    })();
   </script>
 
-<script>
-  (function () {
-    const nav = document.getElementById('navbar');
-    const HIDE = '-translate-y-full';
-    const isMobile = () =>
-      window.matchMedia('(max-width: 767px)').matches || navigator.maxTouchPoints > 0;
+  <!-- Chapter sidebar -->
+  <script>
+    // -------- Chapters Sidebar open/close + sort + auto-scroll to current --------
+    (function () {
+      var root  = document.getElementById('chapSidebar');
+      var panel = document.getElementById('chapPanel');
+      var mask  = document.getElementById('chapMask');
+      var btnO  = document.getElementById('openChaps');
+      var btnC  = document.getElementById('closeChaps');
+      var chapList = document.getElementById('chapList');
+      var btnSortAsc  = document.getElementById('chapSortAsc');
+      var btnSortDesc = document.getElementById('chapSortDesc');
 
-    // mobilga kirganda — yashirin; desktopga o‘tganda — ko‘rinadigan holatni saqlaymiz
-    function syncState() {
-      if (isMobile()) nav.classList.add(HIDE);
-      else nav.classList.remove(HIDE);
-    }
-    syncState();
-    window.addEventListener('resize', syncState);
+      if (!root || !panel) return;
 
-    // ⛔ Hech qanday scroll listener yo‘q mobil uchun (faqat tap ishlaydi)
+      var previouslyFocused = null;
 
-    // Tap aniqlash (kaltagina bosish)
-    let sx = 0, sy = 0, st = 0;
-    document.addEventListener('touchstart', (e) => {
-      if (!isMobile()) return;
-      const t = e.changedTouches[0];
-      sx = t.clientX; sy = t.clientY; st = Date.now();
-    }, { passive: true });
+      /* ======== 1–10 / 10–1 tartiblash ======== */
+      var SORT_KEY = 'manga:chapSortOrder';
+      var items = chapList ? Array.from(chapList.children) : [];
+      var ascItems = items.slice().reverse();
+      var sortOrder = 'desc'; // default: 10 → 1 (yangi boblar tepada)
 
-    document.addEventListener('touchend', (e) => {
-      if (!isMobile()) return;
-
-      const t = e.changedTouches[0];
-      const dx = Math.abs(t.clientX - sx);
-      const dy = Math.abs(t.clientY - sy);
-      const dt = Date.now() - st;
-      const isTap = dx < 6 && dy < 6 && dt < 300;
-
-      if (!isTap) return;
-
-      // modal ochiq bo‘lsa (sotib olish), navni o‘zgartirmaymiz
-      const modal = document.getElementById('buyModal');
-      if (modal && !modal.classList.contains('hidden')) return;
-
-      const insideNav = e.target.closest('#navbar');
-
-      // Tashqariga bosilsa: nav ko‘rinmasa — ko‘rsatamiz; ko‘rinib turgan bo‘lsa — yopamiz
-      if (!insideNav) {
-        nav.classList.toggle(HIDE);
-        return;
+      function loadSort(){
+        try{
+          var s = localStorage.getItem(SORT_KEY);
+          if (s === 'asc' || s === 'desc') sortOrder = s;
+        }catch(e){}
+      }
+      function saveSort(){
+        try{ localStorage.setItem(SORT_KEY, sortOrder); }catch(e){}
       }
 
-      // Nav ichida bosilsa: eventlar ishlasin, keyin ozgina kechikib yopamiz (qulaylik uchun)
-      if (e.target.closest('a,button,select')) {
-        setTimeout(() => nav.classList.add(HIDE), 250);
+      function updateSortButtons(){
+        if (!btnSortAsc || !btnSortDesc) return;
+        if (sortOrder === 'asc'){
+          btnSortAsc.classList.add('bg-purple-800','text-white');
+          btnSortAsc.classList.remove('bg-transparent','text-purple-300');
+          btnSortDesc.classList.remove('bg-purple-800','text-white');
+          btnSortDesc.classList.add('bg-transparent','text-purple-300');
+        } else {
+          btnSortDesc.classList.add('bg-purple-800','text-white');
+          btnSortDesc.classList.remove('bg-transparent','text-purple-300');
+          btnSortAsc.classList.remove('bg-purple-800','text-white');
+          btnSortAsc.classList.add('bg-transparent','text-purple-300');
+        }
       }
-    }, { passive: true });
 
-    // Desktop xulqi (xohlasangiz qoldiring yoki olib tashlang)
-    if (!isMobile()) {
-      let last = window.pageYOffset || document.documentElement.scrollTop;
-      let ticking = false;
-      window.addEventListener('scroll', () => {
-        if (isMobile()) return; // desktop-gina
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-          const cur = window.pageYOffset || document.documentElement.scrollTop;
-          const delta = cur - last;
-          if (Math.abs(delta) > 5) {
-            if (delta > 0 && cur > nav.offsetHeight) nav.classList.add(HIDE);
-            else if (delta < 0) nav.classList.remove(HIDE);
-            last = cur;
-          }
-          ticking = false;
+      function applySort(order){
+        if (!chapList || !items.length) return;
+        sortOrder = (order === 'asc') ? 'asc' : 'desc';
+        saveSort();
+        chapList.innerHTML = '';
+        var arr = (sortOrder === 'asc') ? ascItems : items;
+        arr.forEach(function(li){ chapList.appendChild(li); });
+        updateSortButtons();
+      }
+
+      loadSort();
+      applySort(sortOrder);
+
+      if (btnSortAsc){
+        btnSortAsc.addEventListener('click', function(){
+          applySort('asc');
         });
-      }, { passive: true });
+      }
+      if (btnSortDesc){
+        btnSortDesc.addEventListener('click', function(){
+          applySort('desc');
+        });
+      }
+
+      /* ======== Sidebar open/close ======== */
+      function scrollToCurrent() {
+        try {
+          // data-current="1" bo'lmasa ham ishlashi uchun fallback:
+          var cur = panel.querySelector('[data-current="1"], a[aria-current="page"], button[aria-current="page"]');
+          if (cur && cur.scrollIntoView) {
+            cur.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+          }
+        } catch (e) {}
+      }
+
+      function open() {
+        previouslyFocused = document.activeElement || null;
+        root.classList.remove('hidden');
+        root.removeAttribute('aria-hidden');
+
+        // slide-in
+        requestAnimationFrame(function () {
+          panel.style.transform = 'translateX(0)';
+        });
+
+        if (btnO) btnO.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+
+        // Layout joyiga tushgach – current itemga scroll + fokus close tugmaga
+        setTimeout(function () {
+          scrollToCurrent();
+          if (btnC && typeof btnC.focus === 'function') btnC.focus();
+          window.dispatchEvent(new CustomEvent('manga:chapPanelOpened'));
+        }, 120);
+      }
+
+      function close() {
+        panel.style.transform = 'translateX(-100%)';
+        if (btnO) btnO.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+        root.setAttribute('aria-hidden', 'true');
+
+        // CSS transition (~300ms) tugagach to'liq yashiramiz
+        setTimeout(function () {
+          root.classList.add('hidden');
+          if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+            previouslyFocused.focus();
+          }
+          window.dispatchEvent(new CustomEvent('manga:chapPanelClosed'));
+        }, 280);
+      }
+
+      // Triggers
+      if (btnO) btnO.addEventListener('click', open);
+      if (btnC) btnC.addEventListener('click', close);
+      if (mask) mask.addEventListener('click', close);
+
+      // Esc bilan yopish
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !root.classList.contains('hidden')) close();
+      });
+
+      // Ochiq holatda rezayz bo'lsa – current itemni qayta markazga keltiramiz
+      window.addEventListener('resize', function () {
+        if (!root.classList.contains('hidden')) setTimeout(scrollToCurrent, 60);
+      });
+    })();
+  </script>
+
+  <!-- Panel -->
+  <script>
+  (function () {
+    var rcBtn   = document.getElementById('rcToggleBtn');
+    var rcPanel = document.getElementById('rcPanel');
+    var rcClose = document.getElementById('rcClose');
+    var elMinus = document.getElementById('rcMinus');
+    var elPlus  = document.getElementById('rcPlus');
+    var elReset = document.getElementById('rcReset');
+    var elOut   = document.getElementById('rcWidthOut');
+    var elMeter = document.getElementById('rcMeter');
+
+    var STEP = 20;
+    var MIN_W = 480, MAX_W = 1080;
+    var DEFAULT_W = 900;
+    var BARS = 12, bars = [];
+    var scrubbing = false;
+
+    function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
+    function roundStep(n){ return Math.round(n/STEP)*STEP; }
+    function key(){ return 'reader:'+ location.pathname; }
+    function getTargetEl(){
+      var sel = rcPanel ? rcPanel.getAttribute('data-rc-target') : null;
+      return (sel && document.querySelector(sel)) || document.getElementById('pageCol') || document.documentElement;
     }
+
+    var state = { widthPx: DEFAULT_W };
+
+    function load(){
+      try{ var raw = localStorage.getItem(key());
+        if(!raw) return; var s = JSON.parse(raw);
+        if(s && typeof s==='object' && s.widthPx) state.widthPx = s.widthPx;
+      }catch(e){}
+    }
+    function persist(){ try{ localStorage.setItem(key(), JSON.stringify(state)); }catch(e){} }
+
+    function buildMeter(){
+      if(!elMeter) return; elMeter.innerHTML=''; bars=[];
+      for(var i=0;i<BARS;i++){
+        var bar=document.createElement('span'); bar.className='rc-bar';
+        bar.style.height = (20 + (i/(BARS-1))*70) + '%'; // 20%→90%
+        elMeter.appendChild(bar); bars.push(bar);
+      }
+    }
+
+    function updateMeter(){
+      if(!bars.length) return;
+      var p = (state.widthPx - MIN_W) / (MAX_W - MIN_W);
+      p = clamp(p,0,1);
+      var active = Math.round(p * BARS);
+      bars.forEach(function(bar, idx){
+        var on = idx < active;
+        bar.classList.toggle('on', on);
+        if(on){ bar.classList.add('bump'); setTimeout(function(){ bar.classList.remove('bump'); }, 250); }
+      });
+      elMeter.setAttribute('aria-valuenow', String(state.widthPx));
+    }
+
+    function applyWidth(px){
+      var t = getTargetEl();
+      t.style.setProperty('--page-w', px + 'px');
+      t.style.setProperty('--page-gap','0px'); // doim 0
+    }
+
+    function updateUI(){
+      state.widthPx = clamp(roundStep(state.widthPx), MIN_W, MAX_W);
+      elOut.textContent = state.widthPx + ' px';
+      applyWidth(state.widthPx); persist(); updateMeter();
+    }
+
+    function initFromComputed(){
+      var t = getTargetEl();
+      var cur = getComputedStyle(t).getPropertyValue('--page-w');
+      var w = parseInt(cur,10);
+      if(!Number.isNaN(w)) state.widthPx = clamp(w, MIN_W, MAX_W);
+      t.style.setProperty('--page-gap','0px');
+    }
+
+    // Panel open/close (telefonda ham ishlaydi)
+    function openPanel(){ rcPanel.classList.remove('hidden'); rcBtn && rcBtn.setAttribute('aria-expanded','true'); }
+    function closePanel(){ rcPanel.classList.add('hidden'); rcBtn && rcBtn.setAttribute('aria-expanded','false'); }
+    function togglePanel(){ rcPanel.classList.contains('hidden') ? openPanel() : closePanel(); }
+
+    // Tashqi funksiya
+    window.__rcWPlus  = function(){ state.widthPx = clamp(state.widthPx + STEP, MIN_W, MAX_W); updateUI(); };
+    window.__rcWMinus = function(){ state.widthPx = clamp(state.widthPx - STEP, MIN_W, MAX_W); updateUI(); };
+
+    // Meter: click/drag/wheel
+    function setFromMeterClientX(clientX){
+      var rect = elMeter.getBoundingClientRect();
+      var r = (clientX - rect.left) / rect.width; r = clamp(r,0,1);
+      state.widthPx = roundStep(MIN_W + r * (MAX_W - MIN_W));
+      updateUI();
+    }
+    elMeter.addEventListener('pointerdown', function(e){
+      scrubbing = true; elMeter.setPointerCapture(e.pointerId); setFromMeterClientX(e.clientX);
+    });
+    elMeter.addEventListener('pointermove', function(e){ if(scrubbing) setFromMeterClientX(e.clientX); });
+    elMeter.addEventListener('pointerup',   function(e){ scrubbing=false; try{ elMeter.releasePointerCapture(e.pointerId); }catch(_){}} );
+    elMeter.addEventListener('wheel', function(e){
+      e.preventDefault(); (e.deltaY < 0) ? window.__rcWPlus() : window.__rcWMinus();
+    }, {passive:false});
+
+    // Buttons
+    elMinus && elMinus.addEventListener('click', function(){ __rcWMinus(); });
+    elPlus  && elPlus.addEventListener('click',  function(){ __rcWPlus();  });
+    elReset && elReset.addEventListener('click', function(){ state.widthPx = DEFAULT_W; updateUI(); });
+
+    // Panel toggling & close
+    rcBtn  && rcBtn.addEventListener('click', function(e){ e.stopPropagation(); togglePanel(); });
+    rcClose&& rcClose.addEventListener('click', function(){ closePanel(); });
+    document.addEventListener('click', function(e){
+      if(!rcPanel) return;
+      var inside = e.target.closest('#rcPanel') || e.target.closest('#rcToggleBtn');
+      if(!inside) closePanel();
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', function(e){
+      var tag=(e.target&&e.target.tagName||'').toLowerCase();
+      if(['input','textarea','select'].includes(tag)) return;
+      if(e.key==='+'||e.key==='='){ e.preventDefault(); __rcWPlus(); }
+      if(e.key==='-'||e.key==='_'){ e.preventDefault(); __rcWMinus(); }
+      if(e.key==='0'){ e.preventDefault(); state.widthPx = DEFAULT_W; updateUI(); }
+      if(e.key.toLowerCase()==='p'){ e.preventDefault(); togglePanel(); }
+      if(e.key==='Escape'){ closePanel(); }
+    });
+
+    // Init
+    load(); initFromComputed(); buildMeter(); updateUI(); closePanel();
   })();
-</script>
+  </script>
+
+  <!-- ======== Sticky Navbar click-toggling ======== -->
+  <script>
+  /* Navbar: faqat bosishda toggle; scrollga javob bermaydi */
+  (function(){
+  var nav    = document.getElementById('navbar');
+  var reader = document.getElementById('reader') || document.body;
+  if (!nav) return;
+
+  var HIDDEN = false;
+
+  function showNav(){
+    nav.style.transform = 'translateY(0)';
+    nav.setAttribute('aria-hidden','false');
+    HIDDEN = false;
+  }
+  function hideNav(){
+    nav.style.transform = 'translateY(-100%)';
+    nav.setAttribute('aria-hidden','true');
+    HIDDEN = true;
+  }
+  function toggleNav(){
+    (HIDDEN ? showNav() : hideNav());
+  }
+
+  // Default: ochiq
+  showNav();
+
+  // Faqat ekranga (reader) bosilganda toggle
+  reader.addEventListener('click', function(e){
+    // Interaktiv elementlarga bosilganda togglemaymiz
+    var tag = (e.target.tagName || '').toLowerCase();
+    if (['a','button','input','select','textarea','label','summary','video'].includes(tag)) return;
+
+    // Modal/Sidebar/panel ichida bosilsa togglemaymiz
+    if (e.target.closest('#chapSidebar') || e.target.closest('#rcPanel') || e.target.closest('#buyModal')) return;
+
+    // Matn tanlanayotgan bo'lsa togglemaymiz
+    if (window.getSelection && String(window.getSelection())) return;
+
+    toggleNav();
+  });
+
+  // Navbar ichida bosilganda toggle bo‘lmasin
+  nav.addEventListener('click', function(e){ e.stopPropagation(); });
+
+  // Eslatma: scroll event umuman yo‘q — faqat click bilan ishlaydi
+  })();
+  </script>
+
+<style>
+  .rc-meter{ cursor: ew-resize; user-select:none; }
+  .rc-bar{
+    width: 6px;
+    background: linear-gradient(180deg,#c4b5fd 0%, #a78bfa 40%, #7c3aed 100%);
+    opacity: .35;
+    border-radius: 9999px;
+    transition: height .18s ease, opacity .18s ease, filter .18s ease, transform .18s ease;
+    transform: translateZ(0);
+  }
+  .rc-bar.on{ opacity:1; filter: drop-shadow(0 0 4px rgba(167,139,250,.45)); }
+  .rc-bar.bump{ animation: rc-bump .22s ease; }
+  @keyframes rc-bump{ 0%{transform:translateY(0)} 40%{transform:translateY(-3px)} 100%{transform:translateY(0)} }
+
+  /* ==== Boblar scrollbari – ingichka va kam ko‘rinadigan ==== */
+  #chapScroll{
+    scrollbar-width: thin;                          /* Firefox */
+    scrollbar-color: rgba(167,139,250,.7) transparent;
+  }
+
+  /* Chrome / Edge / Safari */
+  #chapScroll::-webkit-scrollbar{
+    width: 7px;
+  }
+  #chapScroll::-webkit-scrollbar-track{
+    background: transparent;                        /* oq/qora ustun yo‘qoladi */
+  }
+  #chapScroll::-webkit-scrollbar-thumb{
+    background: rgba(167,139,250,.7);               /* mayin purple */
+    border-radius: 9999px;
+  }
+</style>
+
+
+
 </body>
 </html>
