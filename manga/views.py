@@ -1,28 +1,32 @@
-# apps/manga/views.py
-import io
 import random
-from django.shortcuts import render, get_object_or_404, redirect
-from django.core.paginator import Paginator
-from django.db.models import Q, Count, F
-from django.contrib.auth.decorators import login_required
-from django.urls import reverse
-from django.views.decorators.http import require_POST
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
-from django.db.models import Prefetch
-import os
-from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+from collections import defaultdict
+from datetime import datetime, date, time, timedelta
+
 from django.conf import settings
-from django.http import FileResponse, HttpResponseForbidden
-from django.views.decorators.http import require_GET
-from PIL import Image, ImageDraw, ImageFont
-from manga.utils import cf_should_hide_manga, cf_filter_list
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
+from django.core.paginator import Paginator
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
+from django.db.models import Q, Count, F, Max, Subquery, OuterRef, Prefetch
+from django.http import HttpResponse, JsonResponse, FileResponse, HttpResponseForbidden
+from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.http import urlencode
+from django.views.decorators.http import require_POST, require_GET
+
 from manga.service import _is_translator, can_read
-from .models import ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, Page, ReadingProgress, Tag, make_search_key
+from .models import (
+    ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, Page, ReadingProgress, Tag,
+    make_search_key
+)
 from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
-from django.db.models import Count, Sum
-from django.utils.timezone import now, timedelta
 
 signer = TimestampSigner(salt="page-image-v2")
+
+
+# =========================== Helpers ===========================
 
 def _subject_for(request) -> str:
     if request.user.is_authenticated:
@@ -31,19 +35,20 @@ def _subject_for(request) -> str:
         request.session.save()
     return str(request.session.session_key)
 
+
 def make_page_token(request, page_id: int) -> str:
     return signer.sign(f"{_subject_for(request)}:{page_id}")
 
-def can_read_chapter(user, manga, ch) -> bool:
-    if ch.price_tanga == 0:
-        return True
-    if not getattr(user, "is_authenticated", False):
-        return False
-    prof = getattr(user, "userprofile", None)
-    is_translator = bool(prof and getattr(prof, "is_translator", False))
-    if user.is_superuser or user.is_staff or manga.created_by_id == getattr(user, "id", None) or is_translator:
-        return True
-    return ChapterPurchase.objects.filter(user=user, chapter=ch).exists()
+
+def get_cached_or_query(cache_key, queryset_func, timeout):
+    data = cache.get(cache_key)
+    if data is None:
+        data = queryset_func()
+        cache.set(cache_key, data, timeout)
+    return data
+
+
+# =========================== Protected page image ===========================
 
 @require_GET
 def page_image(request, page_id: int, token: str):
@@ -56,19 +61,18 @@ def page_image(request, page_id: int, token: str):
     except (SignatureExpired, BadSignature):
         return HttpResponseForbidden("Invalid or expired")
 
-    # 2) Token egasi
+    # 2) Token owner
     if subject != _subject_for(request):
         return HttpResponseForbidden("Forbidden")
 
-    # 3) Ruxsat
+    # 3) Permission
     page = get_object_or_404(Page, id=page_id)
     ch = page.chapter
-    if not can_read_chapter(request.user, ch.manga, ch):
+    if not can_read(request.user, ch.manga, ch):
         return HttpResponseForbidden("No access")
 
-    # 4) Dev/Prod bo‘yicha berish
+    # 4) Dev/Prod delivery
     if getattr(settings, "USE_X_ACCEL_REDIRECT", False):
-        # PROD: Nginx orqali
         prefix = getattr(settings, "X_ACCEL_REDIRECT_PREFIX", "/_protected/").rstrip("/")
         internal_path = f"{prefix}/{page.image.name}"
         resp = HttpResponse()
@@ -81,7 +85,6 @@ def page_image(request, page_id: int, token: str):
         resp["Cross-Origin-Resource-Policy"] = "same-origin"
         return resp
     else:
-        # DEV/LOCALHOST: to‘g‘ridan-to‘g‘ri oqim
         f = page.image.open("rb")
         resp = FileResponse(f, content_type="image/webp")
         resp["Cache-Control"] = "no-store"
@@ -91,7 +94,65 @@ def page_image(request, page_id: int, token: str):
         resp["Cross-Origin-Resource-Policy"] = "same-origin"
         return resp
 
-# ====== Discover sahifasi uchun yordamchi funksiya ===========================
+
+# =========================== Discover feed utils ===========================
+
+def _chapter_last_dt(ch):
+    dt = getattr(ch, "published_at", None)
+    if dt:
+        return timezone.localtime(dt) if timezone.is_aware(dt) else timezone.make_aware(dt)
+
+    rel = getattr(ch, "release_date", None)
+    if rel:
+        return timezone.make_aware(datetime.combine(rel, time(0, 0)))
+
+    return timezone.now()
+
+
+def _ago_uz(dt):
+    if not dt:
+        return ""
+
+    now_local = timezone.localtime(timezone.now())
+
+    if isinstance(dt, date) and not isinstance(dt, datetime):
+        d = (now_local.date() - dt).days
+        if d <= 0:
+            return "bugun"
+        if d == 1:
+            return "kecha"
+        if d < 30:
+            return f"{d} kun oldin"
+        mo = d // 30
+        if mo < 12:
+            return f"{mo} oy oldin"
+        return f"{mo // 12} yil oldin"
+
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    dt = timezone.localtime(dt)
+
+    s = int((now_local - dt).total_seconds())
+    if s <= 0:
+        return "hozir"
+    if s < 60:
+        return f"{s} soniya oldin"
+    m = s // 60
+    if m < 60:
+        return f"{m} daqiqa oldin"
+    h = m // 60
+    if h < 24:
+        return f"{h} soat oldin"
+    d = h // 24
+    if d < 30:
+        return f"{d} kun oldin"
+    mo = d // 30
+    if mo < 12:
+        return f"{mo} oy oldin"
+    y = mo // 12
+    return f"{y} yil oldin"
+
+
 def _build_recent_feed(limit_titles=10, per_title=3, window_hours=72):
     since = timezone.now() - timedelta(hours=window_hours)
     qs = (
@@ -113,38 +174,30 @@ def _build_recent_feed(limit_titles=10, per_title=3, window_hours=72):
             box["last"] = ch_dt
 
         if len(box["chapters"]) < per_title:
+            translators = []
             try:
                 translators = list(ch.translators.all()[:3])
             except Exception:
-                translators = []
+                pass
             box["chapters"].append({"obj": ch, "translators": translators})
 
     items = list(feed_map.values())
     for it in items:
         it["shown"] = len(it["chapters"])
-        it["more"]  = max(0, it["total"] - it["shown"])
-        it["ago"]   = _ago_uz(it["last"])
+        it["more"] = max(0, it["total"] - it["shown"])
+        it["ago"] = _ago_uz(it["last"])
 
     items.sort(key=lambda x: x["last"], reverse=True)
     return items[:limit_titles]
 
 
-# ====== списки ==============================================================
-
-from django.core.cache import cache
-from django.utils.http import urlencode
-from django.db.models import Q, Count, Sum, Prefetch
-from django.shortcuts import render
-from django.utils.timezone import now, timedelta
-from django.contrib.auth.decorators import login_required
-from django.views.decorators.cache import cache_page
+# =========================== Likes ===========================
 
 @login_required
 @require_POST
 def toggle_manga_like(request, slug):
     manga = get_object_or_404(Manga, slug=slug)
 
-    # 1) Agar Manga.likes (M2M -> User) mavjud bo'lsa:
     if hasattr(manga, "likes"):
         if manga.likes.filter(pk=request.user.pk).exists():
             manga.likes.remove(request.user)
@@ -155,28 +208,20 @@ def toggle_manga_like(request, slug):
         likes_count = manga.likes.count()
         return JsonResponse({"success": True, "liked": liked, "likes_count": likes_count})
 
-    # 2) Fallback: alohida MangaLike modeli bo'lsa
     try:
-        from .models import MangaLike  # agar mavjud bo'lmasa ImportError bo'ladi
+        from .models import MangaLike
     except Exception:
         return JsonResponse({"success": False, "error": "Like modeli topilmadi"}, status=400)
 
     obj, created = MangaLike.objects.get_or_create(manga=manga, user=request.user)
-    if created:
-        liked = True
-    else:
+    liked = bool(created)
+    if not created:
         obj.delete()
-        liked = False
     likes_count = MangaLike.objects.filter(manga=manga).count()
     return JsonResponse({"success": True, "liked": liked, "likes_count": likes_count})
 
-def get_cached_or_query(cache_key, queryset_func, timeout):
-    data = cache.get(cache_key)
-    if data is None:                     # <<— shuni ishlat
-        data = queryset_func()
-        cache.set(cache_key, data, timeout)
-    return data
 
+# =========================== Random manga ===========================
 
 def random_manga(request):
     """Tasodifiy mangaga redirect qiladi."""
@@ -184,116 +229,52 @@ def random_manga(request):
     if count == 0:
         return redirect("manga:discover")
 
-    # Tez va barqaror usul: ofset bilan olish
     idx = random.randint(0, count - 1)
     random_manga_obj = Manga.objects.order_by('id')[idx]
     return redirect("manga:manga_details", manga_slug=random_manga_obj.slug)
 
-# ====== Umumiy yordamchi funksiyalar (Discover + Browse uchun qayta ishlatiladi) ======
 
-def _get_top_translators():
-    return (
-        UserProfile.objects
-        .filter(is_translator=True)
-        .annotate(
-            manga_count    = Count("user__mangas_created", distinct=True),
-            follower_count = Count("followers", distinct=True),
-            likes_count    = Count("user__mangas_created__chapters__thanks", distinct=True),
-        )
-        .order_by("-likes_count", "-follower_count")[:4]
-    )
-
-def _get_trending_mangas():
-    trending = (
-        ReadingProgress.objects
-        .values("manga")
-        .annotate(readers=Count("user"))
-        .order_by("-readers")[:25]
-    )
-    return list(Manga.objects.filter(id__in=[x["manga"] for x in trending]))
-
-def _get_latest_mangas():
-    return list(
-        Manga.objects
-        .annotate(chap_count=Count("chapters"))
-        .filter(chap_count__gte=10)
-        .order_by("-id")[:25]
-    )
-
-from django.db.models import Count, Max
-from django.db import connection
-from collections import defaultdict
-# from datetime import timedelta
-from django.utils import timezone
-from datetime import datetime, date, time
+# =========================== Discover ===========================
 
 TOP_TRANSLATORS_KEY = "discover_top_translators_v1"
 RECENT_FEED_KEY     = "discover_recent_feed_v1"
-
 TOP_TRANSLATORS_TTL = 60 * 60 * 12   # 12 soat
 RECENT_FEED_TTL     = 60 * 30        # 30 daqiqa
 
-def _chapter_last_dt(ch):
-    dt = getattr(ch, "published_at", None)
-    if dt:
-        return timezone.localtime(dt) if timezone.is_aware(dt) else timezone.make_aware(dt)
+# ---- HERO: random N (>= min_chapters) + genres/tags prefetche bilan ----
+def _hero_random_posters(request, limit=10, min_chapters=3):
+    # 1) Mos IDlar
+    ids = list(
+        Manga.objects
+        .annotate(chap_count=Count("chapters"))           # distinct shart emas
+        .filter(chap_count__gte=min_chapters)             # >=
+        .values_list("id", flat=True)
+    )
 
-    rel = getattr(ch, "release_date", None)
-    if rel:
-        # fallback: kun boshi (yoki xohlasangiz time(12,0))
-        return timezone.make_aware(datetime.combine(rel, time(0, 0)))
+    # 2) Mos topilmasa: fallback (eng ko‘p bobli)
+    if not ids:
+        return list(
+            Manga.objects
+            .annotate(chap_count=Count("chapters"))
+            .order_by("-chap_count", "-id")[:limit]
+            .prefetch_related("genres", "tags")
+        )
 
-    return timezone.now()
+    # 3) Foydalanuvchi + bugungi kun bo‘yicha seed (kuniga bir xil)
+    seed = f"{_subject_for(request)}:{timezone.now().date().isoformat()}"
+    rnd = random.Random(seed)
+    rnd.shuffle(ids)
+    chosen = ids[:limit]
 
-def _ago_uz(dt):
-    """
-    'N daqiqa/soat/kun oldin' — date ham, datetime ham qabul qiladi.
-    Chapter-logikani BU yerga kiritmang.
-    """
-    if not dt:
-        return ""
-
-    now_local = timezone.localtime(timezone.now())
-
-    # Agar faqat sana bo'lsa — kunlar bo'yicha hisoblaymiz
-    if isinstance(dt, date) and not isinstance(dt, datetime):
-        d = (now_local.date() - dt).days
-        if d <= 0:
-            return "bugun"
-        if d == 1:
-            return "kecha"
-        if d < 30:
-            return f"{d} kun oldin"
-        mo = d // 30
-        if mo < 12:
-            return f"{mo} oy oldin"
-        return f"{mo // 12} yil oldin"
-
-    # Datetime bo'lsa — aware/localtime ga o'tkazamiz
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt)
-    dt = timezone.localtime(dt)
-
-    s = int((now_local - dt).total_seconds())
-    if s <= 0:
-        return "hozir"
-
-    if s < 60:
-        return f"{s} soniya oldin"
-    m = s // 60
-    if m < 60:
-        return f"{m} daqiqa oldin"
-    h = m // 60
-    if h < 24:
-        return f"{h} soat oldin"
-    d = h // 24
-    if d < 30:
-        return f"{d} kun oldin"
-    mo = d // 30
-    if mo < 12:
-        return f"{mo} oy oldin"
-    y = mo // 12
-    return f"{y} yil oldin"
+    # 4) Tanlanganlarni tartibni saqlagan holda qaytarish
+    posters_qs = (
+        Manga.objects
+        .filter(id__in=chosen)
+        .annotate(chap_count=Count("chapters"))
+        .prefetch_related("genres", "tags")
+    )
+    m_map = {m.id: m for m in posters_qs}
+    return [m_map[i] for i in chosen if i in m_map]
 
 def manga_discover(request):
     if request.user.is_authenticated:
@@ -316,20 +297,14 @@ def manga_discover(request):
     )
 
     def _get_trending_mangas():
-        trending = (
-            ReadingProgress.objects
-            .values("manga")
-            .annotate(readers=Count("user", distinct=True))
-            .order_by("-readers")[:25]
+        return list(
+            Manga.objects
+            .annotate(readers=Count("readingprogress__user", distinct=True))
+            .order_by("-readers", "-id")[:25]
         )
-        ids = [row["manga"] for row in trending]
-        order = {mid: i for i, mid in enumerate(ids)}
-        items = list(Manga.objects.filter(id__in=ids))
-        items.sort(key=lambda m: order.get(m.id, 10**9))
-        return items
 
     trending_mangas = get_cached_or_query(
-        "discover_trending_mangas_v1", _get_trending_mangas, 60 * 60
+        "discover_trending_mangas_v2", _get_trending_mangas, 60 * 60
     )
 
     def _get_latest_mangas():
@@ -386,18 +361,12 @@ def manga_discover(request):
         "discover_latest_updates_unique_v1", _get_latest_updates_unique, 60 * 30
     )
 
-    # ⚠️ Mana bu qismi funksiya tashqarisida bo‘lishi kerak
     recent_feed = cache.get(RECENT_FEED_KEY)
     if recent_feed is None:
         recent_feed = _build_recent_feed(limit_titles=10, per_title=3, window_hours=72)
         cache.set(RECENT_FEED_KEY, recent_feed, RECENT_FEED_TTL)
         
-    # Sessiyadagi kontent filtrini keshdan kelgan ro‘yxatlarga ham qo‘llaymiz
-    trending_mangas = cf_filter_list(trending_mangas, request)
-    latest_mangas   = cf_filter_list(latest_mangas, request)
-    active_progress = cf_filter_list(active_progress, request, key="manga")
-    latest_updates  = cf_filter_list(latest_updates,  request, key="manga")
-    recent_feed     = cf_filter_list(recent_feed,     request, key="manga")
+    hero_posters = _hero_random_posters(request, limit=5, min_chapters=3)
 
     context = {
         "top_translators": top_translators,
@@ -406,52 +375,37 @@ def manga_discover(request):
         "active_progress": active_progress,
         "latest_updates":  latest_updates,
         "recent_feed":     recent_feed,
+        "hero_posters":    hero_posters,
     }
     return render(request, "manga/discover.html", context)
 
+
+# =========================== Browse (grid + filters) ===========================
 
 def manga_browse(request):
     """
     Barcha taytlar (grid) + qidiruv, filtrlar, sort va paginate.
     """
-
-    # --- 0) Sessiondagi global kontent filtri (EXCLUDE) ---------------------
-    cf = request.session.get("content_filter") or {}
-    hide_types  = cf.get("types")  or []
-    hide_genres = cf.get("genres") or []
-    hide_tags   = cf.get("tags")   or []
-
-    # --- 1) Response-cache (faqat anonim, GET+CF kalitda) -------------------
-    cf_qs = urlencode(
-        [("t",  v) for v in hide_types]  +
-        [("g",  v) for v in hide_genres] +
-        [("tg", v) for v in hide_tags],
-        doseq=True
-    )
+    # 1) Full response cache (anon)
     cache_key = (
         "manga_browse:"
-        f"{request.user.is_authenticated}:"
-        f"{urlencode(request.GET, doseq=True)}:"
-        f"cf:{cf_qs}"
+        f"{bool(request.user.is_authenticated)}:"
+        f"{urlencode(request.GET, doseq=True)}"
     )
     if not request.user.is_authenticated:
         cached = cache.get(cache_key)
         if cached:
             return cached
 
-    # --- 2) UserProfile (foydalanuvchi statuslari uchun) --------------------
+    # 2) UserProfile (reading status uchun)
     user_profile = None
     if request.user.is_authenticated:
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    # --- 3) Bazaviy queryset -------------------------------------------------
-    qs = (
-        Manga.objects
-        .all()
-        .prefetch_related("genres", "tags")
-    )
+    # 3) Base queryset
+    qs = Manga.objects.all().prefetch_related("genres", "tags")
 
-    # --- 4) Qidiruv ----------------------------------------------------------
+    # 4) Search
     search_query = (request.GET.get("search") or "").strip()
     if search_query:
         norm = make_search_key(search_query)
@@ -462,7 +416,7 @@ def manga_browse(request):
             Q(titles__search_key__contains=norm)
         ).distinct()
 
-    # --- 5) Checkbox filtrlar (INCLUDE) -------------------------------------
+    # 5) Checkbox filters
     filter_mappings = {
         "genre":               ("genres__name",         True),
         "age_rating":          ("age_rating",           False),
@@ -472,24 +426,13 @@ def manga_browse(request):
         "translation_status":  ("translation_status",   False),
     }
     for param, (field, need_distinct) in filter_mappings.items():
-        vals = request.GET.getlist(param)
+        vals = [v for v in request.GET.getlist(param) if v]
         if vals:
             qs = qs.filter(**{f"{field}__in": vals})
             if need_distinct:
                 qs = qs.distinct()
 
-    # --- 5.1) GLOBAL CONTENT FILTER (EXCLUDE) --------------------------------
-    #     Modalda saqlangan yashirish ro‘yxatlari DB darajasida qo‘llanadi
-    if hide_types:
-        qs = qs.exclude(type__in=hide_types)
-    if hide_genres:
-        qs = qs.exclude(genres__name__in=hide_genres)
-    if hide_tags:
-        qs = qs.exclude(tags__name__in=hide_tags)
-    if hide_genres or hide_tags:
-        qs = qs.distinct()
-
-    # --- 6) Boblar soni oralig‘i --------------------------------------------
+    # 6) Chapter count range
     min_chap = request.GET.get("min_chapters")
     max_chap = request.GET.get("max_chapters")
     if min_chap or max_chap:
@@ -499,17 +442,17 @@ def manga_browse(request):
                 v = int(min_chap)
                 if v > 0:
                     qs = qs.filter(chap_count__gte=v)
-            except ValueError:
+            except (TypeError, ValueError):
                 pass
         if max_chap:
             try:
                 v = int(max_chap)
                 if v > 0:
                     qs = qs.filter(chap_count__lte=v)
-            except ValueError:
+            except (TypeError, ValueError):
                 pass
 
-    # --- 7) Noshirlik yili oralig‘i -----------------------------------------
+    # 7) Publication year range
     min_year = request.GET.get("min_year")
     max_year = request.GET.get("max_year")
     if min_year:
@@ -517,17 +460,17 @@ def manga_browse(request):
             iy = int(min_year)
             if iy >= 1:
                 qs = qs.filter(publication_date__year__gte=iy)
-        except ValueError:
+        except (TypeError, ValueError):
             pass
     if max_year:
         try:
             iy = int(max_year)
             if iy >= 1:
                 qs = qs.filter(publication_date__year__lte=iy)
-        except ValueError:
+        except (TypeError, ValueError):
             pass
 
-    # --- 8) Sortlash ---------------------------------------------------------
+    # 8) Sorting
     sort = request.GET.get("sort", "chapters")
     if sort == "chapters":
         qs = qs.annotate(chap_count=Count("chapters", distinct=True)).order_by("-chap_count", "title")
@@ -538,7 +481,7 @@ def manga_browse(request):
     else:
         qs = qs.order_by("title")
 
-    # --- 9) Prefetch: foydalanuvchi o‘qish statusi ---------------------------
+    # 9) Prefetch reading status for current user
     if user_profile:
         qs = qs.prefetch_related(
             Prefetch(
@@ -548,26 +491,25 @@ def manga_browse(request):
             )
         )
 
-    # --- 10) Paginatsiya -----------------------------------------------------
+    # 10) Pagination
     paginator = Paginator(qs, 16)
     page_obj = paginator.get_page(request.GET.get("page"))
-
     elided_page_range = list(
         paginator.get_elided_page_range(number=page_obj.number, on_each_side=1, on_ends=1)
     )
 
-    # --- 11) Choices (24 soat cache) ----------------------------------------
+    # 11) Choices (24h cache)
     def _choices(field): return Manga._meta.get_field(field).choices
     status_choices      = get_cached_or_query("choices_status",      lambda: _choices("status"),              60*60*24)
     age_rating_choices  = get_cached_or_query("choices_age_rating",  lambda: _choices("age_rating"),          60*60*24)
     type_choices        = get_cached_or_query("choices_type",        lambda: _choices("type"),                60*60*24)
     translation_choices = get_cached_or_query("choices_translation", lambda: _choices("translation_status"),  60*60*24)
 
-    # --- 12) Janr va teglar (24 soat cache) ---------------------------------
+    # 12) Genres & Tags (24h cache)
     genres = get_cached_or_query("all_genres", lambda: list(Genre.objects.all()), 60*60*24)
     tags   = get_cached_or_query("all_tags",   lambda: list(Tag.objects.all()),   60*60*24)
 
-    # --- 13) Paginatsiya linklarida GET’larni saqlash -----------------------
+    # 13) Preserve GET in pagination links
     qs_preserve = request.GET.copy()
     qs_preserve.pop("page", None)
     preserve_qs = qs_preserve.urlencode()
@@ -581,7 +523,6 @@ def manga_browse(request):
         "search": search_query,
         "sort": sort,
 
-        # Tanlangan filtrlar (checkboxlar uchun)
         "genre_filter_list": request.GET.getlist("genre"),
         "tag_filter_list": request.GET.getlist("tag"),
         "age_rating_filter_list": request.GET.getlist("age_rating"),
@@ -589,13 +530,11 @@ def manga_browse(request):
         "status_filter_list": request.GET.getlist("status"),
         "translation_filter_list": request.GET.getlist("translation_status"),
 
-        # Oraliqlar
         "min_chapters": request.GET.get("min_chapters", ""),
         "max_chapters": request.GET.get("max_chapters", ""),
         "min_year":     request.GET.get("min_year", ""),
         "max_year":     request.GET.get("max_year", ""),
 
-        # Choices
         "status_choices": status_choices,
         "age_rating_choices": age_rating_choices,
         "type_choices": type_choices,
@@ -604,30 +543,30 @@ def manga_browse(request):
 
     response = render(request, "manga/browse.html", context)
 
-    # --- 14) To‘liq response-cache (anonim) — 15 daqiqa ----------------------
+    # 14) Cache anon response (15 min)
     if not request.user.is_authenticated:
         cache.set(cache_key, response, 60 * 15)
 
     return response
 
 
-# ====== детали манги ========================================================
+# =========================== Details ===========================
+
 def manga_details(request, manga_slug):
-    """
-    Detail view (cache-siz asosiy qism).
-    - Like holati/soni (Manga.likes M2M orqali)
-    - Foydalanuvchining oxirgi ochgan joyi (faqat bitta 'current' bob)
-    - 'O‘qilgan' belgisi faqat ChapterVisit bor bo‘lsa
-    - Ko‘rinadigan ruxsat: can_read() orqali (free / muallif / xarid qilingan)
-    """
-    # --- Base ---------------------------------------------------------------
-    order = request.GET.get("order", "desc").lower()
+    order = (request.GET.get("order") or "desc").lower()
+
     manga = get_object_or_404(
-        Manga.objects.select_related("created_by").prefetch_related("genres", "tags", "telegram_links"),
-        slug=manga_slug
+        Manga.objects
+        .select_related("created_by")
+        .prefetch_related(
+            "genres",
+            "tags",
+            "telegram_links",
+            "translators__user",   # Tarjimonlar + ularning user'i
+        ),
+        slug=manga_slug,
     )
 
-    # --- User-specific ------------------------------------------------------
     reading_status = None
     is_liked = False
     likes_count = manga.likes.count()
@@ -638,11 +577,10 @@ def manga_details(request, manga_slug):
     progress_current_page = None
     visited_chapter_ids = []
 
+    # --------- Auth bo'lsa: reading status, like, progress, visited chapters ---------
     if request.user.is_authenticated:
-        # Profile (statuslar uchun)
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-        # Reading status (planned/reading/completed/favorite)
         reading_status = (
             ReadingStatus.objects
             .filter(user_profile=user_profile, manga=manga)
@@ -650,15 +588,12 @@ def manga_details(request, manga_slug):
             .first()
         )
 
-        # Likes (foydalanuvchi like bosganmi)
         is_liked = manga.likes.filter(pk=request.user.pk).exists()
-        # Toggle URL bo'lmasa sahifa yiqilmasin:
         try:
             like_toggle_url = reverse("manga:manga_like_toggle", kwargs={"slug": manga.slug})
         except Exception:
             like_toggle_url = None
 
-        # Progress (resume tugmasi uchun)
         reading_progress = (
             ReadingProgress.objects
             .filter(user=request.user, manga=manga)
@@ -669,14 +604,13 @@ def manga_details(request, manga_slug):
             progress_current_chapter_id = reading_progress.last_read_chapter_id
             progress_current_page = reading_progress.last_read_page
 
-        # Visited chapters (o‘qilganlar)
         visited_chapter_ids = list(
             ChapterVisit.objects
             .filter(user=request.user, chapter__manga=manga)
             .values_list("chapter_id", flat=True)
         )
 
-    # --- Chapters (ordering) ------------------------------------------------
+    # --------- Boblar tartibi ---------
     if order == "asc":
         chapters_qs = manga.chapters.order_by("volume", "chapter_number")
     else:
@@ -684,72 +618,93 @@ def manga_details(request, manga_slug):
 
     chapters = []
     for ch in chapters_qs:
-        # Markaziy ruxsat siyosati
         ch.can_read = can_read(request.user, manga, ch)
-
-        # Faqat bitta bobni current (resume)
         ch.is_current = (progress_current_chapter_id == ch.id)
         ch.current_page = progress_current_page if ch.is_current else None
-
-        # O‘qilgan belgisi (Visit mavjud bo'lsa)
         ch.is_visited = (ch.id in visited_chapter_ids)
-
         chapters.append(ch)
 
-    # Eng birinchi bob (boshlash uchun)
     first_chapter = manga.chapters.order_by("volume", "chapter_number").first()
 
-    # Start/Continue tugma maqsadi va label’i (templatega tayyor)
+    # --------- Start / davom ettirish tugmasi ---------
     start_button_url = None
     start_button_label = "O'qishni boshlash"
+
     if progress_current_chapter_id:
-        # resume bobini topamiz (chapters ichidan)
         resume = next((c for c in chapters if c.id == progress_current_chapter_id), None)
         if resume:
             start_button_url = reverse(
                 "manga:chapter_read",
-                kwargs={"manga_slug": manga.slug, "volume": resume.volume, "chapter_number": resume.chapter_number}
+                kwargs={
+                    "manga_slug": manga.slug,
+                    "volume": resume.volume,
+                    "chapter_number": resume.chapter_number,
+                },
             )
             start_button_label = f"Davom ettirish (Bob {resume.chapter_number})"
     elif first_chapter:
         start_button_url = reverse(
             "manga:chapter_read",
-            kwargs={"manga_slug": manga.slug, "volume": first_chapter.volume, "chapter_number": first_chapter.chapter_number}
+            kwargs={
+                "manga_slug": manga.slug,
+                "volume": first_chapter.volume,
+                "chapter_number": first_chapter.chapter_number,
+            },
         )
-        start_button_label = "O'qishni boshlash"
 
-    # --- Similar mangas (janr bo‘yicha) ------------------------------------
+    # --------- O‘xshash mangalar (janr bo‘yicha) ---------
     user_genres = manga.genres.all()
     similar_mangas = (
         Manga.objects.exclude(pk=manga.pk)
-        .annotate(shared_genres=Count("genres", filter=Q(genres__in=user_genres), distinct=True))
+        .annotate(
+            shared_genres=Count(
+                "genres",
+                filter=Q(genres__in=user_genres),
+                distinct=True,
+            )
+        )
         .filter(shared_genres__gt=0)
         .order_by("-shared_genres", "title")[:10]
     )
 
-    # --- Telegram & translator ---------------------------------------------
     telegram_links = list(manga.telegram_links.all())
-    translator_profile = getattr(manga.created_by, "userprofile", None) if manga.created_by else None
 
-    # --- Analytics (KESHLANGAN) --------------------------------------------
-    # TTL ni settings’dan sozlash mumkin: MANGA_STATS_TTL (sekundlarda). Default: 10 daqiqa.
+    # --------- Tarjimonlar (M2M + fallback) ---------
+    translator_profiles = list(
+        manga.translators
+        .filter(is_translator=True)
+        .select_related("user")
+        .order_by("user__username")
+    )
+
+    # Agar M2M bo'sh bo'lsa, yaratuvchini tarjimon sifatida fallback qilish
+    if not translator_profiles and manga.created_by:
+        fallback_profile = getattr(manga.created_by, "userprofile", None)
+        if fallback_profile and fallback_profile.is_translator:
+            translator_profiles = [fallback_profile]
+
+    # --------- Statistikalar (cache bilan) ---------
     ttl = getattr(settings, "MANGA_STATS_TTL", 60 * 10)
-    cache_key = f"manga:{manga.id}:stats:v1"  # versiya suffix — strukturani o‘zgartirsangiz yangilang
+    cache_key = f"manga:{manga.id}:stats:v1"
 
     stats = cache.get(cache_key)
     if stats is None:
-        # jami
         agg_all = manga.chapters.aggregate(
             readers_all=Count("visits__user", distinct=True),
             reads_all=Count("visits"),
         )
-        # Oxirgi 30 kun
-        since_30 = now() - timedelta(days=30)
+        since_30 = timezone.now() - timedelta(days=30)
         agg_30d = manga.chapters.aggregate(
-            readers_30d=Count("visits__user", filter=Q(visits__visited_at__gte=since_30), distinct=True),
-            reads_30d=Count("visits", filter=Q(visits__visited_at__gte=since_30)),
+            readers_30d=Count(
+                "visits__user",
+                filter=Q(visits__visited_at__gte=since_30),
+                distinct=True,
+            ),
+            reads_30d=Count(
+                "visits",
+                filter=Q(visits__visited_at__gte=since_30),
+            ),
         )
-
         stats = {
             "readers_all": agg_all["readers_all"] or 0,
             "reads_all":   agg_all["reads_all"] or 0,
@@ -758,39 +713,32 @@ def manga_details(request, manga_slug):
         }
         cache.set(cache_key, stats, ttl)
 
-    # --- Context ------------------------------------------------------------
     context = {
         "manga": manga,
-
-        # reading list/status
         "reading_status": reading_status,
         "READING_STATUSES": READING_STATUSES,
 
-        # chapters / order
         "chapters": chapters,
         "first_chapter": first_chapter,
         "current_order": order,
 
-        # visited + progress (template “O‘qilgan/Kelgan” belgisi uchun)
         "visited_chapter_ids": visited_chapter_ids,
         "progress_current_chapter_id": progress_current_chapter_id,
         "progress_current_page": progress_current_page,
 
-        # Start/Continue action
         "start_button_url": start_button_url,
         "start_button_label": start_button_label,
 
-        # likes
         "is_liked": is_liked,
         "likes_count": likes_count,
         "like_toggle_url": like_toggle_url,
 
-        # extra blocks
         "similar_mangas": similar_mangas,
         "telegram_links": telegram_links,
-        "translator_profile": translator_profile,
 
-        # analytics (keshlangan)
+        # Faqat shu bitta context: ko‘p/bitta tarjimon baribir shu ro‘yxatda
+        "translator_profiles": translator_profiles,
+
         "readers_all": stats["readers_all"],
         "reads_all":   stats["reads_all"],
         "readers_30d": stats["readers_30d"],
@@ -798,27 +746,18 @@ def manga_details(request, manga_slug):
     }
     return render(request, "manga/manga_details.html", context)
 
+# =========================== Reading list/status ===========================
 
-# ====== добавление в список чтения ==========================================
 @login_required
 def add_to_reading_list(request, manga_slug):
-    """
-    Добавляет или обновляет статус чтения манги для текущего пользователя.
-    """
     manga = get_object_or_404(Manga, slug=manga_slug)
     user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
-    # Берём статус из формы (по умолчанию 'planned')
     status = request.POST.get('status', 'planned')
 
     if status == 'remove':
-        # удаляем, если есть
-        ReadingStatus.objects.filter(
-            user_profile=user_profile,
-            manga=manga
-        ).delete()
+        ReadingStatus.objects.filter(user_profile=user_profile, manga=manga).delete()
     else:
-        # создаём или обновляем
         ReadingStatus.objects.update_or_create(
             user_profile=user_profile,
             manga=manga,
@@ -827,16 +766,14 @@ def add_to_reading_list(request, manga_slug):
 
     return redirect('manga:manga_details', manga_slug=manga.slug)
 
-# ====== чтение главы ========================================================
-from django.contrib import messages
 
-# ====== спасибо главе ========================================================
+# =========================== Thanks to chapter ===========================
+
 @login_required
 def thank_chapter(request, chapter_id):
     chapter = get_object_or_404(Chapter, id=chapter_id)
     user = request.user
 
-    # Toggle
     if user in chapter.thanks.all():
         chapter.thanks.remove(user)
         thanked = False
@@ -844,54 +781,25 @@ def thank_chapter(request, chapter_id):
         chapter.thanks.add(user)
         thanked = True
 
-    # Новый счётчик
     count = chapter.thanks.count()
 
-    # Если AJAX, вернём JSON
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        return JsonResponse({
-            'thanked': thanked,
-            'count': count,
-        })
+        return JsonResponse({'thanked': thanked, 'count': count})
 
-    # Иначе — редирект как раньше
     return redirect('manga:chapter_read', chapter_id=chapter.id)
 
 
-def chapter_read(request, manga_slug, volume, chapter_number):
-    # 1) Manga va Chapter
-    manga = get_object_or_404(Manga, slug=manga_slug)
-    chapter = get_object_or_404(
-        Chapter, manga=manga, volume=volume, chapter_number=chapter_number
-    )
+# =========================== Read chapter ===========================
 
-    # 2) Ruxsat: markaziy siyosat
-    #    - Free (price_tanga == 0) — ruxsat
-    #    - Muallif / superuser / staff / tarjimon — ruxsat
-    #    - Xarid qilingan bo‘lsa — ruxsat
-    #    - Aks holda: guest -> login, auth -> purchase
-    def can_read(user, manga, ch) -> bool:
-        if ch.price_tanga == 0:
-            return True
-        if not user.is_authenticated:
-            return False
-        if (
-            user.is_superuser
-            or user.is_staff
-            or manga.created_by_id == getattr(user, "id", None)
-            or _is_translator(user)
-        ):
-            return True
-        return ChapterPurchase.objects.filter(user=user, chapter=ch).exists()
+def chapter_read(request, manga_slug, volume, chapter_number):
+    manga = get_object_or_404(Manga, slug=manga_slug)
+    chapter = get_object_or_404(Chapter, manga=manga, volume=volume, chapter_number=chapter_number)
 
     if not can_read(request.user, manga, chapter):
         if not request.user.is_authenticated:
             messages.warning(request, "Bobni o‘qish uchun tizimga kiring!")
-            return redirect("login")
-        messages.warning(
-            request,
-            f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling."
-        )
+            return redirect("accounts:login")
+        messages.warning(request, f"Ushbu bob {chapter.price_tanga} tanga turadi. Avval sotib oling.")
         return redirect(
             "manga:purchase_chapter",
             manga_slug=manga.slug,
@@ -899,12 +807,13 @@ def chapter_read(request, manga_slug, volume, chapter_number):
             chapter_number=chapter.chapter_number,
         )
 
-    # 3) Navigatsiya uchun barcha boblar (dropdown)
     all_chapters = list(
-        Chapter.objects.filter(manga=manga).order_by('-volume', '-chapter_number')
+        Chapter.objects
+               .filter(manga=manga)
+               .only("id", "volume", "chapter_number", "price_tanga")
+               .order_by("-volume", "-chapter_number")
     )
 
-    # 4) Oldingi / Keyingi boblar
     previous_chapter = (
         Chapter.objects
                .filter(manga=manga)
@@ -912,156 +821,124 @@ def chapter_read(request, manga_slug, volume, chapter_number):
                    Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
                    Q(volume__lt=chapter.volume)
                )
-               .order_by('-volume', '-chapter_number')
+               .order_by("-volume", "-chapter_number")
                .first()
     )
 
     next_chapter = (
         Chapter.objects
-               .filter(manga=manga, volume=chapter.volume, chapter_number__gt=chapter.chapter_number)
-               .order_by('chapter_number')
-               .first()
-        or
-        Chapter.objects
-               .filter(manga=manga, volume__gt=chapter.volume)
-               .order_by('volume', 'chapter_number')
+               .filter(manga=manga)
+               .filter(
+                   Q(volume=chapter.volume, chapter_number__gt=chapter.chapter_number) |
+                   Q(volume__gt=chapter.volume)
+               )
+               .order_by("volume", "chapter_number")
                .first()
     )
 
-    # 5) Keyingi bob pullik bo‘lsa — modalda ko‘rsatish uchun narx (faqat auth)
     next_chapter_price = None
     if request.user.is_authenticated and next_chapter:
         if next_chapter.price_tanga > 0 and not can_read(request.user, manga, next_chapter):
             next_chapter_price = next_chapter.price_tanga
 
-    # 6) Visit + Progress (faqat oldinga)
+    progress = None
     if request.user.is_authenticated:
         ChapterVisit.objects.get_or_create(user=request.user, chapter=chapter)
 
         progress, created = ReadingProgress.objects.get_or_create(
             user=request.user, manga=manga,
-            defaults={'last_read_chapter': chapter, 'last_read_page': 1}
+            defaults={"last_read_chapter": chapter, "last_read_page": 1}
         )
         if not created:
             prev = progress.last_read_chapter
             if prev is None or (chapter.volume, chapter.chapter_number) > (prev.volume, prev.chapter_number):
                 progress.last_read_chapter = chapter
                 progress.last_read_page = 1
-            progress.save(update_fields=['last_read_chapter', 'last_read_page'])
-    else:
-        progress = None
+                progress.save(update_fields=["last_read_chapter", "last_read_page"])
 
-    # 7) Foydalanuvchi ochgan (visited) boblar ID’lari
     user_read_chapters = []
     if request.user.is_authenticated:
         user_read_chapters = list(
             ChapterVisit.objects
                         .filter(user=request.user, chapter__manga=manga)
-                        .values_list('chapter_id', flat=True)
+                        .values_list("chapter_id", flat=True)
         )
 
-    # 8) Sahifalar (Page -> tokenlangan URL’lar)
-    pages = list(chapter.pages.all().order_by('page_number'))
-
-    # --- YANGI: tokenlangan, qisqa muddatli URL’lar ---
-    # make_page_token(request, page_id) va page_image endpoint avvaldan mavjud bo‘lishi shart.
+    pages = list(chapter.pages.all().order_by("page_number"))
     pages_payload = []
     for p in pages:
-        tok = make_page_token(request, p.id)  # helper
-        secure_url = request.build_absolute_uri(
-            reverse("manga:page_image", args=[p.id, tok])  # yopiq endpoint
-        )
+        tok = make_page_token(request, p.id)
+        secure_url = request.build_absolute_uri(reverse("manga:page_image", args=[p.id, tok]))
         pages_payload.append({"url": secure_url, "alt": f"Sahifa {p.page_number}"})
-    # --- /YANGI ---
 
-    # 9) Sotib olingan boblar (faqat auth)
     purchased_chapters = []
     if request.user.is_authenticated:
         purchased_chapters = list(
             ChapterPurchase.objects
                            .filter(user=request.user, chapter__manga=manga)
-                           .values_list('chapter_id', flat=True)
+                           .values_list("chapter_id", flat=True)
         )
 
-    # 9.1) O‘qiy oladigan boblar (LOCK chiqmasligi kerak bo‘lganlar)
-    if request.user.is_authenticated:
-        is_privileged = (
+    is_privileged = (
+        request.user.is_authenticated and (
             request.user.is_superuser
             or request.user.is_staff
             or manga.created_by_id == request.user.id
             or _is_translator(request.user)
         )
-    else:
-        is_privileged = False
-
+    )
     if is_privileged:
         readable_chapter_ids = [c.id for c in all_chapters]
     else:
         free_ids = [c.id for c in all_chapters if c.price_tanga == 0]
-        # auth bo‘lsa purchased_chapters bilan birga, guest bo‘lsa faqat free
-        readable_chapter_ids = list(set(free_ids) | set(purchased_chapters))
+        readable_chapter_ids = sorted(set(free_ids) | set(purchased_chapters))
 
-    # 10) Oxirgi bobmi?
     is_last_chapter = (next_chapter is None)
 
-    # 11) Render
     context = {
-        'manga': manga,
-        'chapter': chapter,
-        'all_chapters': all_chapters,
-        'previous_chapter': previous_chapter,
-        'next_chapter': next_chapter,
-        'next_chapter_price': next_chapter_price,
-        'reading_progress': progress,
-        'user_read_chapters': user_read_chapters,   # visited IDs
-        'pages': pages,                              # konteynerlar soni uchun
-        'pages_payload': pages_payload,              # 👈 front-end JSON uchun (img src manzillari)
-        'purchased_chapters': purchased_chapters,
-        'readable_chapter_ids': readable_chapter_ids,  # 👈 LOCK tekshiruvi uchun
-        'is_last_chapter': is_last_chapter,
+        "manga": manga,
+        "chapter": chapter,
+        "all_chapters": all_chapters,
+        "previous_chapter": previous_chapter,
+        "next_chapter": next_chapter,
+        "next_chapter_price": next_chapter_price,
+        "reading_progress": progress,
+        "user_read_chapters": user_read_chapters,
+        "pages": pages,
+        "pages_payload": pages_payload,
+        "purchased_chapters": purchased_chapters,
+        "readable_chapter_ids": readable_chapter_ids,
+        "is_last_chapter": is_last_chapter,
     }
-    return render(request, 'manga/chapter_read.html', context)
+    return render(request, "manga/chapter_read.html", context)
 
 
+# =========================== Taxonomy pages ===========================
 
 def _make_alpha_groups(qs, name_field="name"):
-    """
-    Alfavit bo‘yicha guruhlash (A, B, ... #).
-    qs ichida .name va .num (manga soni) bo‘lishi kerak.
-    """
     groups = defaultdict(list)
     for obj in qs:
         name = getattr(obj, name_field) or ""
         first = name.strip()[:1].upper() if name else "#"
-        # agar harf/raqam bo‘lmasa -> '#'
         if not first or not first.isalnum():
             first = "#"
         groups[first].append(obj)
 
-    # Har bir guruhni nom bo‘yicha sortlab chiqamiz
     letters = sorted(groups.keys(), key=lambda x: x)
     out = [{"letter": L, "items": sorted(groups[L], key=lambda o: getattr(o, name_field).lower())}
            for L in letters]
     return out
 
+
 def _taxonomy_context(model_cls, title, qparam, request):
-    """
-    model_cls: Genre yoki Tag
-    title: sahifa sarlavhasi
-    qparam: 'genre' yoki 'tag' (browse uchun GET nomi)
-    """
-    sort = request.GET.get("sort", "alpha")  # 'alpha' | 'popular'
-
-    # annotatsiya: shu janr/tegga bog‘langan taytlar soni
+    sort = request.GET.get("sort", "alpha")
     qs = model_cls.objects.annotate(num=Count("mangas", distinct=True))
-
     total_count = qs.count()
 
     if sort == "popular":
         items = list(qs.order_by("-num", "name"))
         groups = None
     else:
-        # default: alpha
         items = list(qs.order_by("name"))
         groups = _make_alpha_groups(items)
 
@@ -1070,28 +947,29 @@ def _taxonomy_context(model_cls, title, qparam, request):
         "qparam": qparam,
         "active_tab": sort,
         "total_count": total_count,
-        "groups": groups,       # alpha bo‘lsa to‘ladi
-        "items": items,         # popular bo‘lsa ishlatiladi
+        "groups": groups,
+        "items": items,
     }
+
 
 def genre_index(request):
     ctx = _taxonomy_context(Genre, "Janrlar", "genre", request)
     return render(request, "manga/taxonomy_list.html", ctx)
+
 
 def tag_index(request):
     ctx = _taxonomy_context(Tag, "Teglar", "tag", request)
     return render(request, "manga/taxonomy_list.html", ctx)
 
 
+# =========================== Reading now ===========================
+
 def reading_now(request):
     """
     /manga/reading/?tab=latest|trending|popular
-    - latest: so‘nggi yangilangan (oxirgi 7 kun ichida), har title'dan bir nechta bob
-    - trending: oxirgi 7 kunda eng ko‘p davom ettirilgan (ReadingProgress) taytlar
-    - popular: oxirgi 30 kunda eng ko‘p o‘qilgan (ChapterVisit) taytlar
     """
     tab = (request.GET.get("tab") or "latest").lower()
-    limit = 30  # sahifada nechta title ko‘rsatamiz
+    limit = 30
 
     ctx = {"active_tab": tab, "items": [], "feed": []}
 
@@ -1099,7 +977,7 @@ def reading_now(request):
         cache_key = f"reading_trending_{limit}_v1"
         data = cache.get(cache_key)
         if data is None:
-            since = now() - timedelta(days=7)
+            since = timezone.now() - timedelta(days=7)
             agg = (
                 ReadingProgress.objects
                 .filter(updated_at__gte=since)
@@ -1123,15 +1001,13 @@ def reading_now(request):
             ]
             cache.set(cache_key, data, 60 * 15)
 
-        # ✅ Sessiya kontent filtri
-        data = [d for d in data if d.get("manga") and not cf_should_hide_manga(d["manga"], request)]
         ctx["items"] = data
 
     elif tab == "popular":
         cache_key = f"reading_popular_{limit}_v1"
         data = cache.get(cache_key)
         if data is None:
-            since = now() - timedelta(days=30)
+            since = timezone.now() - timedelta(days=30)
             agg = (
                 ChapterVisit.objects
                 .filter(visited_at__gte=since)
@@ -1157,27 +1033,22 @@ def reading_now(request):
             ]
             cache.set(cache_key, data, 60 * 15)
 
-        # ✅ Sessiya kontent filtri
-        data = [d for d in data if d.get("manga") and not cf_should_hide_manga(d["manga"], request)]
         ctx["items"] = data
 
-    else:  # latest (default)
+    else:  # latest
         cache_key = "reading_latest_v1"
         feed = cache.get(cache_key)
         if feed is None:
-            # Oxirgi 7 kun: har title'dan 3 tagacha so‘nggi bob
             feed = _build_recent_feed(limit_titles=30, per_title=3, window_hours=24*7)
             cache.set(cache_key, feed, 60 * 10)
 
-        # ✅ Har bir element dict: {"manga": ..., "chapter": ...}
-        feed = cf_filter_list(feed, request, key="manga")
         ctx["feed"] = feed
         ctx["active_tab"] = "latest"
 
     return render(request, "manga/reading_now.html", ctx)
 
 
-from django.db.models import Max, Subquery, OuterRef
+# =========================== Reading history ===========================
 
 @login_required
 def reading_history(request):
@@ -1189,7 +1060,7 @@ def reading_history(request):
     order = (request.GET.get("order") or "new").lower()
     tab   = (request.GET.get("tab") or "titles").lower()
 
-    # ---- visits
+    # visits
     visits_base = ChapterVisit.objects.filter(user=user)
     if q and tab == "titles":
         visits_base = visits_base.filter(
@@ -1213,7 +1084,7 @@ def reading_history(request):
         for r in last_visit_qs
     }
 
-    # ---- progress
+    # progress
     progress_qs = ReadingProgress.objects.filter(user=user).select_related("last_read_chapter", "manga")
     if q and tab == "titles":
         progress_qs = progress_qs.filter(
@@ -1229,7 +1100,7 @@ def reading_history(request):
             "page": p.last_read_page or 1,
         }
 
-    # ---- titles list (raw, before pagination)
+    # titles list (raw)
     manga_ids = set(visit_map.keys()) | set(prog_map.keys())
     items_titles = []
     if manga_ids:
@@ -1288,7 +1159,7 @@ def reading_history(request):
 
     items_titles.sort(key=lambda x: x["last_time"], reverse=(order != "old"))
 
-    # ---- translators & authors (built from titles)
+    # translators & authors
     translator_map = {}
     for it in items_titles:
         m = it["manga"]
@@ -1310,7 +1181,8 @@ def reading_history(request):
     author_map = {}
     for it in items_titles:
         m = it["manga"]; author_name = getattr(m, "author", None)
-        if not author_name: continue
+        if not author_name:
+            continue
         A = author_map.setdefault(author_name, {
             "name": author_name, "last_time": it["last_time"], "ago": it["ago"],
             "cover": getattr(m, "cover_image", None), "num_titles": 0,
@@ -1323,7 +1195,6 @@ def reading_history(request):
         items_authors = [a for a in items_authors if q.lower() in (a["name"] or "").lower()]
     items_authors.sort(key=lambda x: x["last_time"], reverse=(order != "old"))
 
-    # ---- counts for left sidebar
     counts = {
         "titles":      len(items_titles),
         "translators": len(items_translators),
@@ -1341,12 +1212,10 @@ def reading_history(request):
     }
     items = items_by_tab.get(tab, items_titles)
 
-    # ---- pagination
     per_page = 10
     paginator = Paginator(items, per_page)
     page_obj = paginator.get_page(request.GET.get("page"))
 
-    # to keep q/order/tab in page links
     qs_preserve = request.GET.copy()
     qs_preserve.pop("page", None)
     preserve_qs = qs_preserve.urlencode()
@@ -1364,15 +1233,11 @@ def reading_history(request):
     return render(request, "manga/history.html", ctx)
 
 
+# =========================== History clear/remove ===========================
+
 @login_required
 @require_POST
 def history_clear(request):
-    """
-    Tarixni tozalash.
-    - Agar 'all' kelgan bo‘lsa: foydalanuvchining barcha visits va progresslari o‘chiriladi.
-    - Aks holda: joriy 'tab' bo‘yicha (tab=titles) — titles agregatiga ta'sir qiluvchi hammasi (visits+progress).
-      (translators/authors ham titles dan tuzilgani uchun titles’ni tozalash yetarli).
-    """
     tab = (request.POST.get("tab") or "titles").lower()
     clear_all = bool(request.POST.get("all"))
     nxt = request.POST.get("next") or reverse("manga:history")
@@ -1390,40 +1255,8 @@ def history_clear(request):
 @login_required
 @require_POST
 def history_remove(request, manga_id):
-    """Foydalanuvchining bitta manga bo‘yicha tarixini tozalash."""
     ChapterVisit.objects.filter(user=request.user, chapter__manga_id=manga_id).delete()
     ReadingProgress.objects.filter(user=request.user, manga_id=manga_id).delete()
     messages.success(request, "Tanlangan tayt tarixi o‘chirildi.")
     next_url = request.POST.get("next") or reverse("manga:history")
     return redirect(next_url)
-
-
-
-@require_POST
-def content_filter_save(request):
-    """
-    Modal formadan kelgan tanlovlarni sessiyaga yozadi.
-    'types', 'genres', 'tags' – barchasi YASHIRISH (exclude) uchun.
-    """
-    types  = request.POST.getlist("types")
-    genres = request.POST.getlist("genres")
-    tags   = request.POST.getlist("tags")
-
-    request.session["content_filter"] = {
-        "types": types,
-        "genres": genres,
-        "tags": tags,
-    }
-    request.session.modified = True
-
-    messages.success(request, "Kontent filtri saqlandi.")
-    nxt = request.POST.get("next") or request.META.get("HTTP_REFERER") or reverse("manga:browse")
-    return redirect(nxt)
-
-
-@login_required
-@require_POST
-def content_filter_clear(request):
-    request.session.pop("content_filter", None)
-    messages.info(request, "Filtrlar tozalandi.")
-    return redirect(request.POST.get("next") or request.META.get("HTTP_REFERER") or reverse("manga:discover"))
