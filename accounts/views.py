@@ -4,17 +4,7 @@ from django.contrib import messages
 from django.contrib.auth import login, logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import AuthenticationForm
-
-from manga.models import Chapter, ChapterPurchase, Manga, NewChapterNotification, ReadingProgress
-
-from .forms import SignupForm, UsernameChangeForm
-from .models import PendingSignup, TranslatorFollower, TranslatorTeam, UserProfile, ReadingStatus
-
-User = get_user_model()
-
-# ------------------------------------------------------------------#
-#                      АВТОРИЗАЦИЯ / РЕГИСТРАЦИЯ                     #
-# ------------------------------------------------------------------#
+from manga.models import Chapter, ChapterPurchase, Manga, ReadingProgress
 import secrets
 from django.shortcuts import render, redirect
 from django.urls import reverse
@@ -23,9 +13,23 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.core.mail import send_mail
 from django.utils import timezone
-
+from django.db.models import Sum, Count, F
+from django.db.models import Count, Sum
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from django.db.models import Count, Sum
+from manga.models import Manga, ChapterPurchase
 from .forms import SignupForm
 from .models import EmailVerificationCode
+from .forms import SignupForm, UsernameChangeForm
+from .models import PendingSignup, TranslatorFollower, TranslatorTeam, UserProfile, ReadingStatus
+
+User = get_user_model()
+
+# ------------------------------------------------------------------#
+#                      АВТОРИЗАЦИЯ / РЕГИСТРАЦИЯ                     #
+# ------------------------------------------------------------------#
+
 def signup_view(request):
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
@@ -106,7 +110,6 @@ def login_view(request):
         return redirect("manga:discover")
     return render(request, "accounts/login.html", {"form": form})
 
-
 @login_required
 def logout_view(request):
     logout(request)
@@ -116,14 +119,6 @@ def logout_view(request):
 # ------------------------------------------------------------------#
 #                           ПРОФИЛИ                                 #
 # ------------------------------------------------------------------#
-
-from django.db.models import Count, Sum
-
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
-from django.db.models import Count, Sum
-
-from manga.models import Manga, ChapterPurchase
 
 @login_required
 def profile_view(request):
@@ -206,9 +201,6 @@ def profile_view(request):
         'is_self': True,
     })
 
-
-from django.db.models import Sum, Count, F
-
 @login_required
 def translator_profile_view(request, username):
     profile_user = get_object_or_404(User, username=username)
@@ -245,7 +237,6 @@ def translator_profile_view(request, username):
         "is_following": is_following,
         "teams": teams,
     })
-
 
 @login_required
 def translator_profile_owner_view(request):
@@ -313,7 +304,6 @@ def follow_translator(request, username):
 
     return redirect("accounts:translator_profile", username=username)
 
-
 @login_required
 def top_translators(request):
     translators = (
@@ -377,29 +367,3 @@ def username_change_view(request):
         messages.success(request, f"Username '{old_username}' → '{request.user.username}' yangilandi.")
         return redirect("accounts:my_profile")
     return render(request, "accounts/username_change.html", {"form": form})
-
-
-@login_required
-def new_chapters_feed(request):
-    now = timezone.now()
-    items = (NewChapterNotification.objects
-             .filter(user=request.user, expires_at__gt=now)
-             .select_related("manga", "chapter")
-             .order_by("-created_at"))
-
-    return render(request, "accounts/notifications/new_chapters.html", {"items": items})
-
-from django.views.decorators.http import require_POST
-@login_required
-@require_POST
-def mark_notifications_seen(request):
-    NewChapterNotification.objects.filter(user=request.user, is_seen=False).update(is_seen=True)
-    return redirect(request.POST.get("next") or "accounts:new_chapters")
-
-@login_required
-@require_POST
-def clear_notifications(request):
-    # faqat ko‘rinayotganlarni (hali yaroqli) o‘chirib tashlash ixtiyoriy
-    now = timezone.now()
-    NewChapterNotification.objects.filter(user=request.user, expires_at__gt=now).delete()
-    return redirect(request.POST.get("next") or "accounts:new_chapters")
