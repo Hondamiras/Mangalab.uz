@@ -31,7 +31,7 @@ class EmailVerificationCode(models.Model):
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True, verbose_name="Rasm")
-    link = models.URLField(verbose_name="Telegram havolasi")
+    link = models.URLField(verbose_name="Telegram havolasi", null=True, blank=True)
     tanga_balance = models.PositiveIntegerField(default=0, verbose_name="Tangalar balansi")
     is_translator = models.BooleanField(default=False, verbose_name="Tarjimonmi?")
     description = models.TextField(
