@@ -2,24 +2,34 @@
 {% if chapters %}
 <div class="glass-container">
 
-  {# Header + sort #}
+  {# Header + client-side sort #}
   <div class="flex items-center justify-between mb-3">
     <h2 class="text-lg sm:text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
       Boblar ro'yxati
     </h2>
     <div class="flex items-center gap-1">
-      <a href="?order=asc"
-         class="px-3 py-1 text-xs sm:text-sm rounded-full border transition
-                {% if current_order == 'asc' %} bg-purple-500 text-white border-purple-600
-                {% else %} bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 {% endif %}">
+      <button type="button"
+              id="orderAscBtn"
+              data-order="asc"
+              class="px-3 py-1 text-xs sm:text-sm rounded-full border transition
+                     {% if current_order == 'asc' or not current_order %}
+                       bg-purple-500 text-white border-purple-600
+                     {% else %}
+                       bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700
+                     {% endif %}">
         1 → 10
-      </a>
-      <a href="?order=desc"
-         class="px-3 py-1 text-xs sm:text-sm rounded-full border transition
-                {% if current_order == 'desc' %} bg-purple-500 text-white border-purple-600
-                {% else %} bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700 {% endif %}">
+      </button>
+      <button type="button"
+              id="orderDescBtn"
+              data-order="desc"
+              class="px-3 py-1 text-xs sm:text-sm rounded-full border transition
+                     {% if current_order == 'desc' %}
+                       bg-purple-500 text-white border-purple-600
+                     {% else %}
+                       bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700
+                     {% endif %}">
         10 → 1
-      </a>
+      </button>
     </div>
   </div>
 
@@ -32,11 +42,13 @@
     <span class="ml-auto px-2 py-0.5 rounded-md bg-gray-800/60 border border-gray-700">Jami: {{ chapters|length }}</span>
   </div>
 
-  <ul class="divide-y divide-gray-700 rounded-lg overflow-hidden">
+  <ul id="chapters-list" class="divide-y divide-gray-700 rounded-lg overflow-hidden">
 
     {% for chapter in chapters %}
       {% with is_current=chapter.is_current %}
-      <li class="group">
+      <li class="group"
+          data-volume="{{ chapter.volume }}"
+          data-chapter="{{ chapter.chapter_number }}">
         {% if chapter.can_read %}
           {# ACCESS: openable #}
           <a href="{% url 'manga:chapter_read' manga.slug chapter.volume chapter.chapter_number %}"
@@ -45,7 +57,6 @@
                     {% else %} hover:bg-indigo-900/20 {% endif %}">
 
             <div class="flex items-center gap-3">
-              {# status dot #}
               {% if is_current %}
                 <span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>
               {% elif visited_chapter_ids and chapter.id in visited_chapter_ids %}
@@ -56,19 +67,6 @@
 
               <p class="text-gray-100 font-medium">
                 Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
-                {% if is_current %}
-                  {% comment %} <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-green-600/20 text-green-300 border border-green-600/30">
-                    Kelgan{% if chapter.current_page %}{% endif %}
-                  </span> {% endcomment %}
-                {% elif visited_chapter_ids and chapter.id in visited_chapter_ids %}
-                  {% comment %} <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-sky-600/20 text-sky-300 border border-sky-600/30">
-                    O‘qilgan
-                  </span> {% endcomment %}
-                {% else %}
-                  {% comment %} <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-gray-600/20 text-gray-300 border border-gray-600/30">
-                    O‘qilmagan
-                  </span> {% endcomment %}
-                {% endif %}
               </p>
             </div>
 
@@ -88,9 +86,6 @@
               <i class="fas fa-lock text-yellow-400 text-xs"></i>
               <p class="text-gray-500 font-medium">
                 Jild {{ chapter.volume }} • Bob {{ chapter.chapter_number }}
-                {% comment %} <span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-600/20 text-amber-300 border border-amber-600/30">
-                  Qulflangan
-                </span> {% endcomment %}
               </p>
             </div>
 
@@ -105,8 +100,11 @@
                 data-price="{{ chapter.price_tanga }}"
                 data-date="{{ chapter.release_date|date:'d.m.Y' }}">
                 <i class="fas fa-shopping-cart"></i>
-                <span>{{ chapter.price_tanga }}</span>
-                <i class="fas fa-coins opacity-80"></i>
+                <span>Sotib olish</span>
+                <span class="inline-flex items-center gap-1 ml-1 opacity-90">
+                  <span>{{ chapter.price_tanga }}</span>
+                  <i class="fas fa-coins"></i>
+                </span>
               </button>
             </div>
           </div>
@@ -118,55 +116,219 @@
   </ul>
 </div>
 
-{# ---------- Purchase Modal ---------- #}
-<div id="buyModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-  <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-8 text-center max-w-md w-full border border-purple-500/30 shadow-2xl shadow-purple-500/10">
-    <div class="mb-6 flex justify-center">
+{# ===================== MODALS ===================== #}
+
+{# 1) Premium bobni tasdiqlash modali #}
+<div id="buyModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 p-4">
+  <div class="mx-auto w-full max-w-md sm:max-w-lg md:max-w-xl
+              bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl
+              p-6 sm:p-8 border border-purple-500/30 shadow-2xl shadow-purple-500/10
+              relative top-1/2 -translate-y-1/2">
+    <div class="mb-4 flex justify-center">
       <div class="bg-yellow-500/20 p-4 rounded-full border border-yellow-500/40">
         <i class="fas fa-crown text-3xl text-yellow-400"></i>
       </div>
     </div>
-    <h2 class="text-2xl font-bold text-yellow-400 mb-3">Premium Bob</h2>
-    <p class="text-gray-300 mb-6 leading-relaxed" id="modalChapterInfo"></p>
-    <div class="bg-gray-700/50 rounded-lg p-4 mb-6 border border-gray-600/50">
+    <h2 class="text-xl sm:text-2xl font-bold text-yellow-400 mb-3 text-center">Premium bob</h2>
+    <p class="text-gray-300 mb-4 leading-relaxed text-center" id="modalChapterInfo"></p>
+    <div class="bg-gray-700/50 rounded-lg p-4 mb-5 border border-gray-600/50 text-center">
       <p class="text-gray-200 text-lg">
         Narx: <span class="text-purple-400 font-bold" id="modalChapterPrice">0</span> tanga
       </p>
     </div>
-    <div class="flex justify-center gap-3">
+
+    <div class="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
       <button id="confirmBuyBtn"
-              class="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 transition-all flex items-center gap-2">
+              class="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 transition-all flex items-center justify-center gap-2">
         <i class="fas fa-shopping-cart"></i><span>Sotib olish</span>
       </button>
-      <button id="closeBuyModal"
-              class="px-5 py-2.5 rounded-xl bg-gray-600 hover:bg-gray-700 transition-all text-white flex items-center gap-2">
+      <button id="openCoinsBtn"
+              class="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 transition-all text-white flex items-center justify-center gap-2">
+        <i class="fas fa-coins"></i><span>Tangalar sotib olish</span>
+      </button>
+      <button data-close-modal="#buyModal"
+              class="px-5 py-2.5 rounded-xl bg-gray-600 hover:bg-gray-700 transition-all text-white flex items-center justify-center gap-2">
         <i class="fas fa-times"></i><span>Bekor qilish</span>
       </button>
     </div>
   </div>
 </div>
 
+{# 2) Tangalar do‘koni modali #}
+<div id="coinsModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 p-4">
+  <div class="mx-auto max-w-md w-full bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 sm:p-8 border border-purple-500/30 shadow-2xl shadow-purple-500/10 relative top-1/2 -translate-y-1/2">
+    <div class="flex items-center gap-2 mb-4">
+      <i class="fas fa-coins text-yellow-400 text-2xl"></i>
+      <h3 class="text-xl sm:text-2xl font-bold text-yellow-400">Tangalar sotib olish</h3>
+    </div>
+
+    <p class="text-gray-300 mb-4 leading-relaxed">
+      Tangalarni sotib olish uchun Telegram orqali bog‘laning:
+      <a href="https://t.me/mangalabuzadmin" target="_blank" class="text-sky-400 underline">@mangalabuzadmin</a>
+    </p>
+
+    <div class="bg-gray-800/70 rounded-xl border border-gray-700 p-4 space-y-2 mb-5">
+      <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800 border border-gray-700">
+        <span class="flex items-center gap-2"><i class="fas fa-coins text-yellow-400"></i> 100 ta tanga</span>
+        <span class="text-yellow-400 font-semibold">10 000 so‘m</span>
+      </div>
+      <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800 border border-gray-700">
+        <span class="flex items-center gap-2"><i class="fas fa-coins text-yellow-400"></i> 500 ta tanga</span>
+        <span class="text-yellow-400 font-semibold">50 000 so‘m</span>
+      </div>
+      <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800 border border-gray-700">
+        <span class="flex items-center gap-2"><i class="fas fa-coins text-yellow-400"></i> 1000 ta tanga</span>
+        <span class="text-yellow-400 font-semibold">100 000 so‘m</span>
+      </div>
+    </div>
+
+    <div class="text-center">
+      <button data-close-modal="#coinsModal"
+              class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-600 hover:bg-gray-700 text-white">
+        <i class="fas fa-times"></i><span>Yopish</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+{# ===================== /MODALS ===================== #}
+
 <script>
-  // Modal elements
-  const buyModal = document.getElementById('buyModal');
-  const closeBuyModal = document.getElementById('closeBuyModal');
-  const confirmBuyBtn = document.getElementById('confirmBuyBtn');
-  const modalChapterInfo = document.getElementById('modalChapterInfo');
-  const modalChapterPrice = document.getElementById('modalChapterPrice');
+  (function(){
+    const csrfToken = '{{ csrf_token }}';
 
-  let currentPurchaseUrl = '';
-  let currentChapterUrl = '';
-  let currentButtonElement = null;
+    // ------- helpers -------
+    function $(sel, root=document){ return root.querySelector(sel); }
+    function $all(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
+    function openModal(id){ const el = (typeof id === 'string') ? document.querySelector(id) : id; el?.classList.remove('hidden'); }
+    function closeModal(id){ const el = (typeof id === 'string') ? document.querySelector(id) : id; el?.classList.add('hidden'); }
+    function on(el, ev, cb, opts){ el.addEventListener(ev, cb, opts||false); }
 
-  // Show modal
-  document.querySelectorAll('.purchase-btn').forEach(button => {
-    button.addEventListener('click', function() {
-      const title = button.dataset.title;
+    // Toast
+    function showToast(message, success){
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-5 right-5 px-4 py-2 rounded shadow-lg text-white z-50 transition transform duration-300 ' +
+                        (success ? 'bg-green-600' : 'bg-red-600');
+      toast.innerHTML = '<i class="fas ' + (success ? 'fa-check-circle' : 'fa-times-circle') + ' mr-2"></i>' + message;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-20px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // ------- CHAPTER SORT (client-side) -------
+    const chaptersList = document.getElementById('chapters-list');
+    const orderAscBtn  = document.getElementById('orderAscBtn');
+    const orderDescBtn = document.getElementById('orderDescBtn');
+
+    if (chaptersList && orderAscBtn && orderDescBtn) {
+      let items = Array.from(chaptersList.children);
+
+      const activeClasses   = ['bg-purple-500','text-white','border-purple-600'];
+      const inactiveClasses = ['bg-gray-800','text-gray-400','border-gray-700','hover:bg-gray-700'];
+
+      function setButtonState(order) {
+        if (order === 'asc') {
+          orderAscBtn.classList.add(...activeClasses);
+          orderAscBtn.classList.remove(...inactiveClasses);
+          orderDescBtn.classList.remove(...activeClasses);
+          orderDescBtn.classList.add(...inactiveClasses);
+        } else {
+          orderDescBtn.classList.add(...activeClasses);
+          orderDescBtn.classList.remove(...inactiveClasses);
+          orderAscBtn.classList.remove(...activeClasses);
+          orderAscBtn.classList.add(...inactiveClasses);
+        }
+      }
+
+      function sortChapters(order) {
+        items.sort((a, b) => {
+          const va = parseInt(a.dataset.volume || '0', 10);
+          const vb = parseInt(b.dataset.volume || '0', 10);
+          const ca = parseInt(a.dataset.chapter || '0', 10);
+          const cb = parseInt(b.dataset.chapter || '0', 10);
+
+          if (va !== vb) {
+            return order === 'asc' ? va - vb : vb - va;
+          }
+          return order === 'asc' ? ca - cb : cb - ca;
+        });
+
+        // DOMni qayta tartiblash
+        items.forEach(li => chaptersList.appendChild(li));
+
+        setButtonState(order);
+
+        // URL dagi ?order=... ni yangilab qo'yamiz (reloadsiz)
+        try {
+          const u = new URL(location);
+          u.searchParams.set('order', order);
+          history.replaceState({}, '', u);
+        } catch (e) {}
+      }
+
+      // Boshlang'ich tartib
+      let initialOrder = '{{ current_order|default:"asc" }}';
+      if (initialOrder !== 'asc' && initialOrder !== 'desc') {
+        const sp = new URLSearchParams(location.search);
+        const o = sp.get('order');
+        initialOrder = (o === 'desc') ? 'desc' : 'asc';
+      }
+      sortChapters(initialOrder);
+
+      orderAscBtn.addEventListener('click', () => sortChapters('asc'));
+      orderDescBtn.addEventListener('click', () => sortChapters('desc'));
+    }
+
+    // ------- Elements (modals) -------
+    const buyModal = document.getElementById('buyModal');
+    const coinsModal = document.getElementById('coinsModal');
+    const modalChapterInfo = document.getElementById('modalChapterInfo');
+    const modalChapterPrice = document.getElementById('modalChapterPrice');
+    const confirmBuyBtn = document.getElementById('confirmBuyBtn');
+    const openCoinsBtn = document.getElementById('openCoinsBtn');
+
+    let currentPurchaseUrl = '';
+    let currentChapterUrl = '';
+    let currentButtonElement = null;
+
+    // Open coins modal from premium modal
+    on(openCoinsBtn, 'click', () => openModal('#coinsModal'));
+
+    // Close by [data-close-modal]
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-close-modal]');
+      if (btn){
+        const target = btn.getAttribute('data-close-modal');
+        closeModal(target);
+      }
+    });
+
+    // Close on overlay click
+    [buyModal, coinsModal].forEach(m => {
+      on(m, 'click', (e) => { if (e.target === m) closeModal('#'+m.id); });
+    });
+
+    // ESC to close
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape'){
+        closeModal('#buyModal'); closeModal('#coinsModal');
+      }
+    });
+
+    // Delegate click on .purchase-btn
+    document.addEventListener('click', function(e){
+      const button = e.target.closest('.purchase-btn');
+      if (!button) return;
+
+      const title   = button.dataset.title;
       const chapter = button.dataset.chapter;
-      const price = button.dataset.price;
+      const price   = button.dataset.price;
 
       currentPurchaseUrl = button.dataset.url;
-      currentChapterUrl = button.dataset.chapterUrl;
+      currentChapterUrl  = button.dataset.chapterUrl;
       currentButtonElement = button;
 
       modalChapterInfo.innerHTML =
@@ -174,67 +336,54 @@
         '<span class="text-yellow-300">' + chapter + '-bobi</span> pullik kontent hisoblanadi.';
       modalChapterPrice.textContent = price;
 
-      buyModal.classList.remove('hidden');
+      openModal('#buyModal');
     });
-  });
 
-  // Close modal
-  closeBuyModal.addEventListener('click', function() {
-    buyModal.classList.add('hidden');
-  });
+    // Confirm purchase
+    on(confirmBuyBtn, 'click', function(){
+      confirmBuyBtn.disabled = true;
+      confirmBuyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Iltimos kuting...</span>';
 
-  // Confirm purchase
-  confirmBuyBtn.addEventListener('click', function() {
-    confirmBuyBtn.disabled = true;
-    confirmBuyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span>Iltimos kuting...</span>';
-
-    fetch(currentPurchaseUrl, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': '{{ csrf_token }}', 'X-Requested-With': 'XMLHttpRequest' },
-    })
-    .then(res => res.json())
-    .then(data => {
-      showToast(data.message || (data.success ? 'Xarid muvaffaqiyatli' : 'Xarid amalga oshmadi'), data.success);
-      if (data.success) {
-        buyModal.classList.add('hidden');
-
-        // Convert locked row to open link
-        if (currentButtonElement) {
-          const parentDiv = currentButtonElement.closest('.flex.items-center.justify-between');
-          const titleP = parentDiv.querySelector('p') ? parentDiv.querySelector('p').innerText : '';
-          parentDiv.innerHTML =
-            '<a href="' + currentChapterUrl + '" class="flex items-center justify-between w-full px-0">' +
-              '<div class="flex items-center gap-3">' +
-                '<span class="h-2.5 w-2.5 rounded-full bg-gray-500"></span>' +
-                '<p class="text-gray-100 font-medium">' + titleP + '</p>' +
-              '</div>' +
-              '<div class="flex items-center gap-4">' +
-                '<i class="fas fa-chevron-right text-xs text-gray-500 group-hover:text-indigo-400 transition-colors"></i>' +
-              '</div>' +
-            '</a>';
+      fetch(currentPurchaseUrl, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrfToken, 'X-Requested-With': 'XMLHttpRequest' },
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.need_coins){
+          closeModal('#buyModal');
+          openModal('#coinsModal');
+          showToast(data.message || 'Tangalar yetarli emas', false);
+          return;
         }
-      }
-    })
-    .catch(() => { showToast("Xatolik yuz berdi, qayta urinib ko'ring!", false); })
-    .finally(() => {
-      confirmBuyBtn.disabled = false;
-      confirmBuyBtn.innerHTML = '<i class="fas fa-shopping-cart"></i> <span>Sotib olish</span>';
-    });
-  });
 
-  // Toast
-  function showToast(message, success) {
-    const toast = document.createElement('div');
-    toast.className =
-      'fixed top-5 right-5 px-4 py-2 rounded shadow-lg text-white z-50 transition transform duration-300 ' +
-      (success ? 'bg-green-600' : 'bg-red-600');
-    toast.innerHTML = '<i class="fas ' + (success ? 'fa-check-circle' : 'fa-times-circle') + ' mr-2"></i>' + message;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(-20px)';
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
-  }
+        showToast(data.message || (data.success ? 'Xarid muvaffaqiyatli' : 'Xarid amalga oshmadi'), !!data.success);
+
+        if (data.success){
+          closeModal('#buyModal');
+
+          if (currentButtonElement){
+            const row = currentButtonElement.closest('.flex.items-center.justify-between');
+            const titleP = row.querySelector('p') ? row.querySelector('p').innerText : '';
+            row.innerHTML =
+              '<a href="' + currentChapterUrl + '" class="flex items-center justify-between w-full px-0">' +
+                '<div class="flex items-center gap-3">' +
+                  '<span class="h-2.5 w-2.5 rounded-full bg-gray-500"></span>' +
+                  '<p class="text-gray-100 font-medium">' + titleP + '</p>' +
+                '</div>' +
+                '<div class="flex items-center gap-4">' +
+                  '<i class="fas fa-chevron-right text-xs text-gray-500 group-hover:text-indigo-400 transition-colors"></i>' +
+                '</div>' +
+              '</a>';
+          }
+        }
+      })
+      .catch(() => { showToast("Xatolik yuz berdi, qayta urinib ko'ring!", false); })
+      .finally(() => {
+        confirmBuyBtn.disabled = false;
+        confirmBuyBtn.innerHTML = '<i class="fas fa-shopping-cart"></i> <span>Sotib olish</span>';
+      });
+    });
+  })();
 </script>
 {% endif %}
