@@ -214,7 +214,7 @@
                       class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
                              border border-white/10 bg-slate-900/30 text-gray-200 font-bold
                              hover:bg-slate-900/45 transition
-                             focus:outline-none focus:ring-2 focus:ring-white/20">
+                             focus:outline-none">
                 <i id="likeIcon"
                    class="{% if is_liked %}fa-solid text-pink-400{% else %}fa-regular{% endif %} fa-heart text-lg"></i>
                 <span id="likeCount">{{ likes_count|default:0|intcomma }}</span>
@@ -342,8 +342,7 @@
     function setLikedUI(liked){
       btn.classList.toggle('bg-pink-600/15', liked);
       btn.classList.toggle('border-pink-500/40', liked);
-      btn.classList.toggle('ring-2', liked);
-      btn.classList.toggle('ring-pink-400/25', liked);
+
 
       if (icon){
         icon.classList.toggle('fa-solid', liked);
@@ -394,3 +393,12 @@
     });
   })();
 </script>
+<style>
+  :root{ color-scheme: dark; } /* form control’larni darkga yaqinlashtiradi */
+
+  select { color-scheme: dark; }
+  select option{
+    background: #111c28;  /* ba’zi brauzerlar qabul qiladi */
+    color: #e2e8f0;
+  }
+</style>
