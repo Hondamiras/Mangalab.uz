@@ -1,356 +1,395 @@
 {% load cache %}
-{% load numfmt %}
 {% load humanize %}
+{% load numfmt %}
 
-{# ---------- HERO SECTION (split-cached for per-user safety) ---------- #}
-<div class="flex flex-col md:flex-row gap-0 md:gap-8 mb-8 relative">
+<style>
+  [x-cloak]{ display:none !important; }
+  .no-scrollbar{
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar{
+    width: 0;
+    height: 0;
+    display: none;
+  }
+</style>
 
-  {# Cover Image with Floating Effect (cached) #}
-  <div class="relative flex-shrink-0 self-center md:self-start transform mb-6 md:mb-0">
-    {% cache 86400 manga_cover manga.slug manga.cover_image.url %}
-    <div class="relative overflow-hidden rounded-2xl shadow-2xl border-4 border-gray-700 ">
-      <img src="{{ manga.cover_image.url }}"
-          alt="{{ manga.title }}"
-          class="aspect-[3/4] w-48 sm:w-56 md:w-64 lg:w-72 object-cover transform hover:scale-105 transition-transform duration-300">
-      <div class="absolute inset-0 bg-gradient-to-t from-gray-900/90 via-gray-900/30 to-transparent"></div>
-    </div>
-    {% endcache %}
+<section class="relative mb-10">
+  <div class="px-2 sm:px-0 py-2 sm:py-3 md:py-4">
+    <div class="flex flex-col lg:flex-row gap-8 lg:gap-10">
 
-    {# --- RASM USTIDAGI LIKE + KO'RILGAN (PAST O‘NGDA) --- #}
-    <div class="absolute bottom-3 right-3 flex flex-col items-end gap-2 z-20">
+      {# ---------------- LEFT: COVER ---------------- #}
+      <div class="flex-shrink-0 self-center lg:self-start">
+        {% cache 86400 hero_cover manga.slug manga.cover_image.url manga.age_rating manga.publication_date reads_all %}
+        <div class="relative overflow-hidden rounded-[26px] border border-white/10 shadow-2xl">
+          <img
+            src="{{ manga.cover_image.url }}"
+            alt="{{ manga.title }}"
+            class="w-[270px] sm:w-[300px] md:w-[320px] lg:w-[300px] aspect-[3/4] object-cover"
+          />
 
-      {# LIKE ICON + SONI (bosiladigan badge) #}
-      {% if request.user.is_authenticated %}
-        <button id="likeBtn"
-                type="button"
-                data-url="{% url 'manga:manga_like_toggle' slug=manga.slug %}"
-                class="group inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] cursor-pointer
-                      shadow-md hover:shadow-lg hover:-translate-y-0.5 transition
-                      {% if is_liked %}
-                        bg-pink-600/90 border border-pink-400/80 text-white
-                      {% else %}
-                        bg-black/70 border border-white/30 text-gray-200 hover:bg-black/80
-                      {% endif %}">
-          <i class="fas fa-heart text-[11px] transition-transform group-hover:scale-110"></i>
-          <span id="likeCount" class="font-semibold leading-none">
-            {{ likes_count }}
-          </span>
-        </button>
-      {% else %}
-        <a href="{% url 'accounts:login' %}?next={{ request.path }}"
-          class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-black/70 border border-white/30
-                  text-[11px] text-gray-200 hover:bg-black/80 cursor-pointer shadow-md hover:shadow-lg hover:-translate-y-0.5 transition">
-          <i class="fas fa-heart text-[11px]"></i>
-          <span class="font-semibold leading-none">
-            {{ likes_count }}
-          </span>
-        </a>
-      {% endif %}
+          <div class="absolute left-4 top-4 flex items-center gap-3 z-10">
+            {% if manga.age_rating %}
+              <span class="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-red-600/95 text-white text-sm font-semibold shadow-lg">
+                {{ manga.age_rating }}
+              </span>
+            {% endif %}
 
-      {# KO'RILGAN (VIEW) BADGE — passiv #}
-      <div
-        class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-black/70 border border-white/20
-              text-[11px] text-purple-100"
-        title="{{ reads_all|default:0|intcomma }} ta o‘qish"
-        aria-label="Jami o‘qilganlar"
-      >
-        <i class="fas fa-eye text-[10px]"></i>
-        <span>{{ reads_all|default:0|short_number }}</span>
-      </div>
-    </div>
-  </div>
+            {% if manga.publication_date %}
+              <span class="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-purple-600/90 text-white text-sm font-semibold shadow-lg">
+                <i class="fa-solid fa-calendar-days text-[13px] opacity-95"></i>
+                {{ manga.publication_date|date:"Y" }}
+              </span>
+            {% endif %}
+          </div>
 
-  {# Right column #}
-  <div class="flex flex-col flex-1 justify-center space-y-5">
-
-    {# Title & Author (cached) #}
-    {% cache 86400 manga_title_author manga.slug %}
-    <header class="text-center md:text-left space-y-3">
-      <div class="flex flex-col items-center gap-1 sm:flex-row sm:items-center sm:justify-start sm:gap-1 md:justify-start">
-        <h1 class="text-3xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-purple-400 leading-tight text-center sm:text-left break-words">
-          {{ manga.title }}
-        </h1>
-      </div>
-      <p class="text-lg sm:text-xl text-gray-300 font-light">{{ manga.author }}</p>
-    </header>
-    {% endcache %}
-
-    {# 3) Translator(lar) #}
-    {% if translator_profiles %}
-      <div class="w-full flex justify-center md:justify-start">
-        <div class="text-purple-300 flex flex-wrap items-center gap-2 text-center md:text-left">
-
-          <div class="flex items-center justify-center md:justify-start gap-2">
-            <span class="font-medium">
-              Tarjimon{% if translator_profiles|length > 1 %}lar{% endif %}:
+          <div class="absolute right-4 bottom-4 z-10">
+            <span class="inline-flex items-center gap-3 px-5 py-2 rounded-2xl bg-black/60 border border-white/10 text-gray-100 text-sm font-semibold shadow-lg">
+              <i class="fa-solid fa-eye opacity-90"></i>
+              {{ reads_all|default:0|intcomma }}
             </span>
           </div>
 
-          <div class="flex flex-wrap items-center justify-center md:justify-start gap-1">
-            {% for t in translator_profiles %}
-              <a href="{% url 'accounts:translator_profile' t.user.username %}"
-                 class="text-gray-300 hover:text-gray-100">
-                {{ t.user.username }}
-              </a>{% if not forloop.last %}, {% endif %}
-            {% endfor %}
-          </div>
-
+          <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent"></div>
         </div>
-      </div>
-    {% endif %}
-
-    {# Rating / Status / Translation badges (cached) #}
-    {% cache 86400 manga_badges manga.slug %}
-    <div class="flex flex-wrap gap-4 justify-center md:justify-start">
-
-      <div class="group px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
-        <a href="{% url 'manga:browse' %}?status={{ manga.status|urlencode }}">
-          <div class="flex flex-col items-center">
-            <span class="text-sm font-semibold text-purple-400">{{ manga.get_type_display }}: {{ manga.get_status_display }}</span>
-          </div>
-        </a>
+        {% endcache %}
       </div>
 
-      <div class="flex items-center gap-3 px-5 py-2 bg-gray-800 rounded-xl border border-gray-700 hover:border-purple-500 transition-colors">
-        <a href="{% url 'manga:browse' %}?translation={{ manga.translation_status|urlencode }}">
-          <div class="flex flex-col items-center">
-            <span class="text-sm font-semibold text-purple-400">{{ manga.get_translation_status_display }}</span>
+      {# ---------------- RIGHT: INFO ---------------- #}
+      <div class="flex-1 min-w-0 flex flex-col justify-start">
+
+        {% cache 86400 hero_title manga.slug manga.title manga.author %}
+        <div class="space-y-3 text-center sm:text-left">
+          <h1 class="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-purple-400 break-words">
+            {{ manga.title }}
+          </h1>
+          <div class="text-xl sm:text-2xl text-gray-200/90 font-medium">
+            {{ manga.author }}
           </div>
-        </a>
-      </div>
-
-      {# ESKI KO'RILGAN BADGE BU YERDA EDI — ENDINI O'CHIRDIK, CHUNKİ RASM USTIDA KO'RSATILADI #}
-    </div>
-    {% endcache %}
-
-    {# Genres & Tags (cached) #}
-    {% cache 86400 manga_metadata manga.slug %}
-    <div class="flex flex-wrap gap-3 justify-center md:justify-start">
-      {% if manga.age_rating %}
-        <a href="{% url 'manga:browse' %}?age_rating={{ manga.age_rating|urlencode }}"
-           class="flex items-center gap-2 px-3 py-1 rounded-xl bg-red-900/30 border border-red-500/30">
-          <span class="text-sm font-semibold text-purple-300">{{ manga.age_rating }}</span>
-        </a>
-      {% else %}
-        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/30">
-          <span class="text-sm font-semibold text-purple-300">Yosh belgilinmagan</span>
         </div>
-      {% endif %}
+        {% endcache %}
 
-      {% if manga.publication_date %}
-        <a href="{% url 'manga:browse' %}?publication_date={{ manga.publication_date|urlencode }}"
-           class="flex items-center gap-2 px-3 py-1 rounded-xl bg-purple-500/20 border border-purple-500/30">
-          <span class="text-sm font-semibold text-purple-300">{{ manga.publication_date|date:"Y" }}</span>
-        </a>
-      {% else %}
-        <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-red-900/30 border border-red-500/30">
-          <span class="text-sm font-semibold text-purple-300">Yil belgilinmagan</span>
-        </div>
-      {% endif %}
+        {% if translator_profiles %}
+          <div class="mt-7 flex flex-wrap items-center gap-3">
+            <span class="text-purple-300 font-semibold">
+              Tarjimon{% if translator_profiles|length > 1 %}lar{% endif %}:
+            </span>
 
-      {# first 3 genres #}
-      {% for genre in manga.genres.all|slice:":3" %}
-        <a href="{% url 'manga:browse' %}?genre={{ genre.name|urlencode }}"
-           class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 transition-all flex items-center gap-2">
-          <i class="fas fa-tag text-xs opacity-70"></i>{{ genre.name }}
-        </a>
-      {% endfor %}
-
-      {# extra genres toggle #}
-      {% with extra_genres=manga.genres.all|slice:"3:" %}
-        {% if extra_genres %}
-          <div id="extra-genres-{{ manga.id }}" class="flex flex-wrap gap-3 hidden mt-2 md:mt-0">
-            {% for genre in extra_genres %}
-              <a href="{% url 'manga:browse' %}?genre={{ genre.name|urlencode }}"
-                 class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 transition-all flex items-center gap-2">
-                <i class="fas fa-tag text-xs opacity-70"></i>{{ genre.name }}
-              </a>
-            {% endfor %}
-          </div>
-          <button type="button"
-            onclick="
-              const extra = document.getElementById('extra-genres-{{ manga.id }}');
-              if (extra.classList.contains('hidden')) { extra.classList.remove('hidden'); this.textContent='Yashirish'; }
-              else { extra.classList.add('hidden'); this.textContent='Davomi…'; }
-            "
-            class="px-4 py-1.5 text-sm bg-purple-500/20 text-purple-300 rounded-xl border border-purple-500/30 hover:bg-purple-500/30 transition-all flex items-center gap-2">
-            Davomi…
-          </button>
-        {% endif %}
-      {% endwith %}
-    </div>
-
-    <div class="flex flex-wrap gap-3 justify-center md:justify-start mb-4">
-      {% for tag in manga.tags.all|slice:":4" %}
-        <a href="{% url 'manga:browse' %}?tag={{ tag.name|urlencode }}"
-           class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 hover:bg-green-500/30 transition-all flex items-center">
-          <i class="fas fa-hashtag text-xs opacity-70"></i>{{ tag.name }}
-        </a>
-      {% endfor %}
-      {% with extra_tags=manga.tags.all|slice:"4:" %}
-        {% if extra_tags %}
-          <div id="extra-tags-{{ manga.id }}" class="flex flex-wrap gap-3 hidden">
-            {% for tag in extra_tags %}
-              <a href="{% url 'manga:browse' %}?tag={{ tag.name|urlencode }}"
-                 class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 hover:bg-green-500/30 transition-all flex items-center">
-                <i class="fas fa-hashtag text-xs opacity-70"></i>{{ tag.name }}
-              </a>
-            {% endfor %}
-          </div>
-          <button type="button"
-            onclick="
-              const extra = document.getElementById('extra-tags-{{ manga.id }}');
-              if (extra.classList.contains('hidden')) { extra.classList.remove('hidden'); this.textContent='Yashirish'; }
-              else { extra.classList.add('hidden'); this.textContent='Davomi…'; }
-            "
-            class="px-3 py-1.5 text-sm bg-green-500/20 text-green-300 rounded-xl border border-green-500/30 hover:bg-green-500/30 transition-all flex items-center gap-2">
-            Davomi…
-          </button>
-        {% endif %}
-      {% endwith %}
-    </div>
-    {% endcache %}
-
-    {# ---------- ACTION BUTTONS (NOT CACHED; per-user) ---------- #}
-    {% if first_chapter %}
-      <div class="mt-4 grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-3 gap-4">
-
-        {# 1) Reading Status #}
-        <div>
-          {% if request.user.is_authenticated %}
-            <form method="post" action="{% url 'manga:add_to_reading_list' manga.slug %}">
-              {% csrf_token %}
-              <div class="relative">
-                <select name="status" onchange="this.form.submit()"
-                        class="h-14 w-full pl-3 pr-10 text-sm bg-gray-800 border border-gray-700 rounded-2xl
-                               text-purple-300 font-medium cursor-pointer focus:outline-none appearance-none">
-                  <option value="remove">Tanlanmagan</option>
-                  {% for val,label in READING_STATUSES %}
-                    <option value="{{ val }}" {% if reading_status and reading_status.status == val %}selected{% endif %}>
-                      {{ label }}
-                    </option>
-                  {% endfor %}
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                  <svg class="w-5 h-5 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M19 9l-7 7-7-7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-            </form>
-          {% else %}
-            <a href="{% url 'accounts:login' %}?next={% url 'manga:add_to_reading_list' manga.slug %}"
-               class="h-14 w-full flex items-center justify-center gap-2 bg-gray-800 text-purple-300 border border-gray-700
-                      rounded-2xl hover:bg-gray-700 hover:text-purple-200 transition-colors duration-200 shadow-sm hover:shadow-md">
-              <span class="font-medium text-center">Ro'yxatga qo'shish uchun kiring.</span>
-            </a>
-          {% endif %}
-        </div>
-
-        {# 2) Start / Continue #}
-        <div>
-          {% if progress_current_chapter_id %}
-            {% for c in chapters %}
-              {% if c.id == progress_current_chapter_id %}
-                <a href="{% url 'manga:chapter_read' manga.slug c.volume c.chapter_number %}"
-                  class="h-14 w-full flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
-                          hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md">
-                  <i class="fas fa-redo"></i>
-
-                  {# Phone: faqat "Davom ettirish" #}
-                  <span class="font-medium sm:hidden">
-                    Davom ettirish
-                  </span>
-
-                  {# sm+ ekranlarda: eski ko‘rinishi bilan #}
-                  <span class="font-medium hidden sm:inline">
-                    Davom ettirish (Bob {{ c.chapter_number }})
-                  </span>
+            <div class="flex flex-wrap items-center gap-3">
+              {% for t in translator_profiles %}
+                <a href="{% url 'accounts:translator_profile' t.user.username %}"
+                   class="inline-flex items-center px-6 py-2 rounded-2xl bg-slate-900/35 border border-white/10 text-gray-100 font-semibold hover:bg-slate-900/55 transition">
+                  {{ t.user.username }}
                 </a>
-              {% endif %}
-            {% endfor %}
-          {% else %}
-            <a href="{% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}"
-              class="h-14 w-full flex items-center justify-center gap-2 bg-purple-600 text-white rounded-2xl
-                      hover:bg-purple-700 transition-colors duration-200 shadow-sm hover:shadow-md">
-              <i class="fas fa-play"></i>
-              <span class="font-medium">O'qishni boshlash</span>
-            </a>
-          {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% cache 86400 hero_status_pills manga.slug manga.status manga.translation_status %}
+        <div class="mt-7 flex flex-wrap items-center gap-4">
+          <a href="{% url 'manga:browse' %}?status={{ manga.status|urlencode }}"
+             class="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-purple-600/10 border border-purple-500/25 text-purple-200 font-semibold hover:bg-purple-600/15 transition">
+            <i class="fa-solid fa-shield opacity-90"></i>
+            <span>{{ manga.get_type_display }}: {{ manga.get_status_display }}</span>
+          </a>
+
+          <a href="{% url 'manga:browse' %}?translation={{ manga.translation_status|urlencode }}"
+             class="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-blue-600/10 border border-blue-500/25 text-blue-200 font-semibold hover:bg-blue-600/15 transition">
+            <i class="fa-solid fa-rotate opacity-90"></i>
+            <span>{{ manga.get_translation_status_display }}</span>
+          </a>
         </div>
+        {% endcache %}
 
+        {% if manga.genres.exists %}
+          <div class="mt-6">
+            <div class="flex flex-nowrap gap-3 overflow-x-auto no-scrollbar -mx-2 px-2 pb-2">
+              {% for genre in manga.genres.all %}
+                <a href="{% url 'manga:browse' %}?genre={{ genre.name|urlencode }}"
+                   class="flex-none inline-flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl
+                          bg-purple-600/10 border border-purple-500/25 text-purple-200 font-semibold
+                          hover:bg-purple-600/15 transition">
+                  <i class="fa-solid fa-tag opacity-80"></i>
+                  {{ genre.name }}
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
 
-        {# 3) Telegram #}
-        {% if telegram_links %}
-          <div>
-            {% if telegram_links|length == 1 %}
-              <a href="{{ telegram_links.0.link }}" target="_blank"
-                 class="h-14 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white
-                        rounded-2xl hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
-                <i class="fab fa-telegram-plane text-xl"></i>
-                <span class="font-medium">Telegram kanal</span>
-              </a>
+        {% if manga.tags.exists %}
+          <div class="mt-4">
+            <div class="flex flex-nowrap gap-3 overflow-x-auto no-scrollbar -mx-2 px-2 pb-2">
+              {% for tag in manga.tags.all %}
+                <a href="{% url 'manga:browse' %}?tag={{ tag.name|urlencode }}"
+                   class="flex-none inline-flex items-center gap-3 whitespace-nowrap px-6 py-3 rounded-2xl
+                          bg-emerald-700/20 border border-emerald-400/25 text-emerald-200 font-semibold
+                          hover:bg-emerald-700/25 transition shadow-inner">
+                  <i class="fa-solid fa-hashtag opacity-80"></i>
+                  {{ tag.name }}
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {# ---------------- ACTION ROW ---------------- #}
+        <div class="mt-7 grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+          {# 1) Reading status #}
+          <div class="col-span-2 lg:col-span-1">
+            {% if request.user.is_authenticated %}
+              <form method="post" action="{% url 'manga:add_to_reading_list' manga.slug %}">
+                {% csrf_token %}
+                <div class="relative">
+                  <select name="status" onchange="this.form.submit()"
+                          class="h-14 w-full pl-5 pr-12 rounded-2xl
+                                 bg-slate-900/30 border border-white/10 text-purple-200 font-semibold
+                                 focus:outline-none focus:ring-2 focus:ring-purple-400/40 appearance-none">
+                    <option value="remove">O'qish holati</option>
+                    {% for val,label in READING_STATUSES %}
+                      <option value="{{ val }}" {% if reading_status and reading_status.status == val %}selected{% endif %}>
+                        {{ label }}
+                      </option>
+                    {% endfor %}
+                  </select>
+
+                  <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-5 text-gray-300/80">
+                    <i class="fa-solid fa-chevron-down"></i>
+                  </div>
+                </div>
+              </form>
             {% else %}
               <button type="button"
-                      onclick="document.getElementById('telegramModal').classList.remove('hidden')"
-                      class="h-14 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white
-                             rounded-2xl hover:from-sky-600 hover:to-blue-700 transition-all duration-300 shadow-md hover:shadow-lg">
-                <i class="fab fa-telegram-plane text-xl"></i>
-                <span class="font-medium">Telegram kanallar</span>
+                      data-require-login
+                      data-login-text="Ro'yxatga qo'shish uchun kiring."
+                      class="h-14 w-full inline-flex items-center justify-center rounded-2xl
+                             bg-slate-900/30 border border-white/10 text-purple-200 font-semibold
+                             hover:bg-slate-900/45 transition">
+                O'qish holati
               </button>
             {% endif %}
           </div>
-        {% endif %}
 
-        {# ESKI LIKE TUGMASI GRID ICHIDA EDI — UNI HAM O'CHIRDIK, CHUNKİ RASM USTIDA ICON BOR #}
+          {# 2) Continue / Start #}
+          <div class="col-span-2 lg:col-span-1">
+            {% if first_chapter %}
+              {% if progress_current_chapter_id %}
+                {% for c in chapters %}
+                  {% if c.id == progress_current_chapter_id %}
+                    <a href="{% url 'manga:chapter_read' manga.slug c.volume c.chapter_number %}"
+                       class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
+                              bg-purple-600 text-white font-bold shadow-lg
+                              hover:bg-purple-700 transition focus:outline-none focus:ring-2 focus:ring-purple-400/50">
+                      <i class="fa-solid fa-rotate"></i>
+                      <span class="font-bold">Davom ettirish (Bob {{ c.chapter_number }})</span>
+                    </a>
+                  {% endif %}
+                {% endfor %}
+              {% else %}
+                <a href="{% url 'manga:chapter_read' manga.slug first_chapter.volume first_chapter.chapter_number %}"
+                   class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
+                          bg-purple-600 text-white font-bold shadow-lg
+                          hover:bg-purple-700 transition focus:outline-none focus:ring-2 focus:ring-purple-400/50">
+                  <i class="fa-solid fa-play"></i>
+                  <span class="font-bold">O‘qishni boshlash</span>
+                </a>
+              {% endif %}
+            {% else %}
+              <div class="h-14 w-full inline-flex items-center justify-center rounded-2xl bg-slate-900/30 border border-white/10 text-gray-300">
+                Bob yo‘q
+              </div>
+            {% endif %}
+          </div>
 
+          {# 3) Like #}
+          <div class="col-span-1 lg:col-span-1">
+            {% if request.user.is_authenticated %}
+              <button id="likeBtn"
+                      type="button"
+                      data-url="{% url 'manga:manga_like_toggle' slug=manga.slug %}"
+                      data-liked="{% if is_liked %}1{% else %}0{% endif %}"
+                      class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
+                             border border-white/10 bg-slate-900/30 text-gray-200 font-bold
+                             hover:bg-slate-900/45 transition
+                             focus:outline-none focus:ring-2 focus:ring-white/20">
+                <i id="likeIcon"
+                   class="{% if is_liked %}fa-solid text-pink-400{% else %}fa-regular{% endif %} fa-heart text-lg"></i>
+                <span id="likeCount">{{ likes_count|default:0|intcomma }}</span>
+              </button>
+            {% else %}
+              <button type="button"
+                      data-require-login
+                      data-login-text="Like bosish uchun kiring."
+                      class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
+                             bg-slate-900/30 border border-white/10 text-gray-200 font-bold
+                             hover:bg-slate-900/45 transition">
+                <i class="fa-regular fa-heart text-lg"></i>
+                {{ likes_count|default:0|intcomma }}
+              </button>
+            {% endif %}
+          </div>
+
+          {# 4) Telegram #}
+          <div class="col-span-1 lg:col-span-1">
+            {% if telegram_links %}
+              {% if telegram_links|length == 1 %}
+                <a href="{{ telegram_links.0.link }}" target="_blank"
+                   class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
+                          bg-blue-600 text-white font-bold shadow-lg hover:bg-blue-700 transition
+                          focus:outline-none focus:ring-2 focus:ring-blue-300/50">
+                  <i class="fa-brands fa-telegram text-xl"></i>
+                  Telegram
+                </a>
+              {% else %}
+                <button type="button"
+                        onclick="document.getElementById('telegramModal').classList.remove('hidden')"
+                        class="h-14 w-full inline-flex items-center justify-center gap-3 rounded-2xl
+                               bg-blue-600 text-white font-bold shadow-lg hover:bg-blue-700 transition
+                               focus:outline-none focus:ring-2 focus:ring-blue-300/50">
+                  <i class="fa-brands fa-telegram text-xl"></i>
+                  Telegram
+                </button>
+              {% endif %}
+            {% else %}
+              <div class="h-14 w-full inline-flex items-center justify-center rounded-2xl bg-slate-900/20 border border-white/5 text-gray-400">
+                Telegram yo‘q
+              </div>
+            {% endif %}
+          </div>
+
+        </div>
       </div>
-    {% else %}
-      <p class="mt-6 text-center sm:text-left text-gray-400 italic">
-        Hozircha hech qanday bob mavjud emas.
-      </p>
-    {% endif %}
+    </div>
   </div>
-</div>
 
-{# Like AJAX — ishlashi uchun qisqa skript #}
+  {# ===== LOGIN TOAST (hammasiga umumiy) ===== #}
+  <div id="ml-login-toast"
+       class="fixed left-1/2 -translate-x-1/2 bottom-5 z-[9999] hidden w-[92vw] max-w-md
+              rounded-2xl border border-white/10 bg-black/70 backdrop-blur px-4 py-3 shadow-2xl">
+    <div class="flex items-center justify-between gap-3">
+      <div class="text-sm text-white/95">
+        <span id="ml-login-toast-text">Davom etish uchun kiring.</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <a id="ml-login-toast-link"
+           href="{% url 'accounts:login' %}?next={{ request.get_full_path|urlencode }}"
+           class="h-9 px-3 inline-flex items-center justify-center rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold">
+          Kirish
+        </a>
+        <button type="button"
+                class="h-9 px-3 inline-flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/15 text-white"
+                onclick="document.getElementById('ml-login-toast').classList.add('hidden')">
+          Yopish
+        </button>
+      </div>
+    </div>
+  </div>
+
+</section>
+
 <script>
+  // ===== login toast helper =====
   (function(){
-    const likeBtn = document.getElementById('likeBtn');
-    if (!likeBtn) return;
+    const toast = document.getElementById('ml-login-toast');
+    const textEl = document.getElementById('ml-login-toast-text');
+    const linkEl = document.getElementById('ml-login-toast-link');
 
-    likeBtn.addEventListener('click', async function(){
-      const url = likeBtn.dataset.url;
+    function showLoginToast(message){
+      if (!toast) return;
+      if (textEl) textEl.textContent = message || "Davom etish uchun kiring.";
+      if (linkEl) linkEl.href = linkEl.href; // default next bilan turadi
+
+      toast.classList.remove('hidden');
+
+      clearTimeout(window.__mlToastT);
+      window.__mlToastT = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 2300);
+    }
+
+    // glabal qilib qo'yamiz
+    window.showLoginToast = showLoginToast;
+
+    // data-require-login bo'lgan hamma button'lar
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-require-login]');
+      if (!btn) return;
+      const msg = btn.getAttribute('data-login-text') || "Davom etish uchun kiring.";
+      showLoginToast(msg);
+    });
+  })();
+</script>
+
+<script>
+  // ===== LIKE AJAX (faqat login bo'lsa likeBtn bor) =====
+  (function(){
+    const btn = document.getElementById('likeBtn');
+    if (!btn) return;
+
+    function getCookie(name) {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return '';
+    }
+
+    const icon = document.getElementById('likeIcon');
+    const countEl = document.getElementById('likeCount');
+
+    function setLikedUI(liked){
+      btn.classList.toggle('bg-pink-600/15', liked);
+      btn.classList.toggle('border-pink-500/40', liked);
+      btn.classList.toggle('ring-2', liked);
+      btn.classList.toggle('ring-pink-400/25', liked);
+
+      if (icon){
+        icon.classList.toggle('fa-solid', liked);
+        icon.classList.toggle('fa-regular', !liked);
+        icon.classList.toggle('text-pink-400', liked);
+      }
+    }
+
+    setLikedUI(btn.dataset.liked === '1');
+
+    btn.addEventListener('click', async () => {
+      const url = btn.dataset.url;
       if (!url) return;
 
-      likeBtn.disabled = true;
+      btn.disabled = true;
+      btn.classList.add('opacity-90');
+
       try {
         const resp = await fetch(url, {
           method: 'POST',
           headers: {
-            'X-CSRFToken': '{{ csrf_token }}',
-            'X-Requested-With':'XMLHttpRequest'
-          },
+            'X-CSRFToken': getCookie('csrftoken'),
+            'X-Requested-With': 'XMLHttpRequest'
+          }
         });
-        if (!resp.ok) throw new Error();
+        if (!resp.ok) throw new Error('Like failed');
+
         const data = await resp.json();
 
-        const likeCountEl = document.getElementById('likeCount');
-        if (likeCountEl && typeof data.likes_count !== 'undefined') {
-          likeCountEl.textContent = data.likes_count;
+        if (countEl && typeof data.likes_count !== 'undefined') {
+          const n = Number(String(data.likes_count).replaceAll(',', ''));
+          countEl.textContent = isNaN(n) ? data.likes_count : n.toLocaleString('en-US');
         }
 
-        if (data.liked) {
-          likeBtn.classList.remove('text-gray-200');
-          likeBtn.classList.add('text-pink-500');
-        } else {
-          likeBtn.classList.remove('text-pink-500');
-          likeBtn.classList.add('text-gray-200');
-        }
-      } catch(e) {
-        // xohlasang toast ko'rsatib qo'yasan
+        const liked = !!data.liked;
+        btn.dataset.liked = liked ? '1' : '0';
+        setLikedUI(liked);
+
+        btn.classList.add('scale-[1.02]');
+        setTimeout(() => btn.classList.remove('scale-[1.02]'), 120);
+
+      } catch (e) {
+        // xohlasangiz showLoginToast("Xatolik...") yoki Toastify
       } finally {
-        likeBtn.disabled = false;
+        btn.classList.remove('opacity-90');
+        btn.disabled = false;
       }
     });
   })();
