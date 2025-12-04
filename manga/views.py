@@ -1,30 +1,98 @@
 import random
 from collections import defaultdict
 from datetime import datetime, date, time, timedelta
-
+from uuid import uuid4
+from django.db import transaction
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
-from django.db.models import Q, Count, F, Max, Subquery, OuterRef, Prefetch
+from django.db.models import Q, Count, F, Max, Subquery, OuterRef, Prefetch, Avg
 from django.http import HttpResponse, JsonResponse, FileResponse, HttpResponseForbidden
 from django.shortcuts import render, get_object_or_404, redirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlencode
 from django.views.decorators.http import require_POST, require_GET
-
 from manga.service import _is_translator, can_read
 from .models import (
-    ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, Page, ReadingProgress, Tag,
+    ChapterAnonVisit, ChapterPurchase, ChapterVisit, Manga, Chapter, Genre, Page, ReadingProgress, Tag,
     make_search_key
 )
-from accounts.models import ReadingStatus, UserProfile, READING_STATUSES
+from accounts.models import ReadingStatus, TranslatorRating, UserProfile, READING_STATUSES
+from django.utils.http import url_has_allowed_host_and_scheme
 
 signer = TimestampSigner(salt="page-image-v2")
 
+
+def _is_ajax(request) -> bool:
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+@require_POST
+@login_required
+@transaction.atomic
+def rate_translator(request, manga_slug, translator_id):
+    manga = get_object_or_404(Manga, slug=manga_slug)
+    translator = get_object_or_404(UserProfile, pk=translator_id, is_translator=True)
+
+    # ✅ translator shu mangaga biriktirilganmi?
+    # (Agar Manga.translators UserProfile emas, User bo‘lsa -> translator.user bilan tekshiring)
+    if not manga.translators.filter(pk=translator.pk).exists():
+        msg = "Bu tarjimon ushbu manga uchun biriktirilmagan."
+        if _is_ajax(request):
+            return JsonResponse({"ok": False, "error": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("manga:manga_details", manga_slug=manga.slug)
+
+    # ✅ rating parse + validate
+    raw = (request.POST.get("rating") or "").strip()
+    try:
+        rating = int(raw)
+    except (TypeError, ValueError):
+        rating = 0
+
+    if rating not in (1, 2, 3, 4, 5):
+        msg = "Ovoz 1 dan 5 gacha bo‘lishi kerak."
+        if _is_ajax(request):
+            return JsonResponse({"ok": False, "error": msg}, status=400)
+        messages.error(request, msg)
+        return redirect("manga:manga_details", manga_slug=manga.slug)
+
+    # ✅ save (1 user = 1 rating per manga+translator)
+    TranslatorRating.objects.update_or_create(
+        manga=manga,
+        translator=translator,
+        user=request.user,
+        defaults={"rating": rating},
+    )
+
+    # ✅ avg/count (shu manga+translator uchun)
+    agg = TranslatorRating.objects.filter(manga=manga, translator=translator).aggregate(
+        avg=Avg("rating"),
+        count=Count("id"),
+    )
+    avg = float(agg["avg"] or 0)
+    count = int(agg["count"] or 0)
+
+    if _is_ajax(request):
+        return JsonResponse({
+            "ok": True,
+            "liked": True,              # ixtiyoriy, kerak bo‘lmasa olib tashlang
+            "my_rating": rating,
+            "avg": round(avg, 1),
+            "count": count,
+        })
+
+    messages.success(request, "Ovozingiz saqlandi.")
+
+    # ✅ qaytish: oldingi sahifa/tab saqlansin (xavfsiz)
+    next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
+    if not next_url or not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
+        next_url = reverse("manga:manga_details", kwargs={"manga_slug": manga.slug})
+    return redirect(next_url)
 
 # =========================== Helpers ===========================
 
@@ -562,22 +630,33 @@ def manga_details(request, manga_slug):
             "genres",
             "tags",
             "telegram_links",
-            "translators__user",   # Tarjimonlar + ularning user'i
+            "translators__user",
+            "chapters",
         ),
         slug=manga_slug,
     )
 
+    # -------------------------
+    # Privileged (statsni ko‘rish)
+    # -------------------------
+    can_see_detailed_stats = (
+        request.user.is_authenticated and (
+            request.user.is_superuser or _is_translator(request.user)
+        )
+    )
+
+    # -------------------------
+    # Auth bo‘lsa: status/like/progress/visited
+    # -------------------------
     reading_status = None
     is_liked = False
     likes_count = manga.likes.count()
     like_toggle_url = None
 
-    reading_progress = None
     progress_current_chapter_id = None
     progress_current_page = None
     visited_chapter_ids = []
 
-    # --------- Auth bo'lsa: reading status, like, progress, visited chapters ---------
     if request.user.is_authenticated:
         user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
 
@@ -610,12 +689,15 @@ def manga_details(request, manga_slug):
             .values_list("chapter_id", flat=True)
         )
 
-    # --------- Boblar tartibi ---------
+    # -------------------------
+    # Boblar tartibi (QuerySet)
+    # -------------------------
     if order == "asc":
         chapters_qs = manga.chapters.order_by("volume", "chapter_number")
     else:
         chapters_qs = manga.chapters.order_by("-volume", "-chapter_number")
 
+    # Template’da ishlatish uchun atributlar qo‘shib chiqamiz
     chapters = []
     for ch in chapters_qs:
         ch.can_read = can_read(request.user, manga, ch)
@@ -626,7 +708,9 @@ def manga_details(request, manga_slug):
 
     first_chapter = manga.chapters.order_by("volume", "chapter_number").first()
 
-    # --------- Start / davom ettirish tugmasi ---------
+    # -------------------------
+    # Start / Resume tugmasi
+    # -------------------------
     start_button_url = None
     start_button_label = "O'qishni boshlash"
 
@@ -635,24 +719,18 @@ def manga_details(request, manga_slug):
         if resume:
             start_button_url = reverse(
                 "manga:chapter_read",
-                kwargs={
-                    "manga_slug": manga.slug,
-                    "volume": resume.volume,
-                    "chapter_number": resume.chapter_number,
-                },
+                kwargs={"manga_slug": manga.slug, "volume": resume.volume, "chapter_number": resume.chapter_number},
             )
             start_button_label = f"Davom ettirish (Bob {resume.chapter_number})"
     elif first_chapter:
         start_button_url = reverse(
             "manga:chapter_read",
-            kwargs={
-                "manga_slug": manga.slug,
-                "volume": first_chapter.volume,
-                "chapter_number": first_chapter.chapter_number,
-            },
+            kwargs={"manga_slug": manga.slug, "volume": first_chapter.volume, "chapter_number": first_chapter.chapter_number},
         )
 
-    # --------- O‘xshash mangalar (janr bo‘yicha) ---------
+    # -------------------------
+    # O‘xshash mangalar (janr)
+    # -------------------------
     user_genres = manga.genres.all()
     similar_mangas = (
         Manga.objects.exclude(pk=manga.pk)
@@ -669,7 +747,9 @@ def manga_details(request, manga_slug):
 
     telegram_links = list(manga.telegram_links.all())
 
-    # --------- Tarjimonlar (M2M + fallback) ---------
+    # -------------------------
+    # Tarjimonlar (M2M + fallback)
+    # -------------------------
     translator_profiles = list(
         manga.translators
         .filter(is_translator=True)
@@ -677,42 +757,107 @@ def manga_details(request, manga_slug):
         .order_by("user__username")
     )
 
-    # Agar M2M bo'sh bo'lsa, yaratuvchini tarjimon sifatida fallback qilish
     if not translator_profiles and manga.created_by:
         fallback_profile = getattr(manga.created_by, "userprofile", None)
         if fallback_profile and fallback_profile.is_translator:
             translator_profiles = [fallback_profile]
 
-    # --------- Statistikalar (cache bilan) ---------
+    # -------------------------
+    # ✅ Translator ratings (avg/count/my) — shu joy sizda yetishmayapti
+    # -------------------------
+    if translator_profiles:
+        # avg/count per translator (shu manga ichida)
+        rating_rows = (
+            TranslatorRating.objects
+            .filter(manga=manga, translator_id__in=[t.id for t in translator_profiles])
+            .values("translator_id")
+            .annotate(
+                rating_avg=Avg("rating"),
+                rating_count=Count("id"),
+            )
+        )
+        stat_map = {r["translator_id"]: r for r in rating_rows}
+
+        # my_rating faqat user authenticated bo‘lsa
+        my_map = {}
+        if request.user.is_authenticated:
+            my_map = dict(
+                TranslatorRating.objects
+                .filter(manga=manga, user=request.user, translator_id__in=[t.id for t in translator_profiles])
+                .values_list("translator_id", "rating")
+            )
+
+        # template ishlatadigan attribute’larni attach qilamiz
+        for t in translator_profiles:
+            s = stat_map.get(t.id) or {}
+            t.rating_avg = float(s.get("rating_avg") or 0)
+            t.rating_count = int(s.get("rating_count") or 0)
+            t.my_rating = int(my_map.get(t.id, 0))
+
+    # -------------------------
+    # Statistikalar (cache bilan)
+    # -------------------------
     ttl = getattr(settings, "MANGA_STATS_TTL", 60 * 10)
-    cache_key = f"manga:{manga.id}:stats:v1"
+    cache_key = f"manga:{manga.id}:stats:v2"
 
     stats = cache.get(cache_key)
     if stats is None:
-        agg_all = manga.chapters.aggregate(
-            readers_all=Count("visits__user", distinct=True),
-            reads_all=Count("visits"),
-        )
         since_30 = timezone.now() - timedelta(days=30)
-        agg_30d = manga.chapters.aggregate(
-            readers_30d=Count(
+
+        agg_logged_all = manga.chapters.aggregate(
+            readers_logged=Count("visits__user", distinct=True),
+            reads_logged=Count("visits"),
+        )
+        agg_logged_30d = manga.chapters.aggregate(
+            readers_logged_30d=Count(
                 "visits__user",
                 filter=Q(visits__visited_at__gte=since_30),
                 distinct=True,
             ),
-            reads_30d=Count(
+            reads_logged_30d=Count(
                 "visits",
                 filter=Q(visits__visited_at__gte=since_30),
             ),
         )
+
+        agg_anon_all = manga.chapters.aggregate(
+            readers_anon=Count("anon_visits__visitor_id", distinct=True),
+            reads_anon=Count("anon_visits"),
+        )
+        agg_anon_30d = manga.chapters.aggregate(
+            readers_anon_30d=Count(
+                "anon_visits__visitor_id",
+                filter=Q(anon_visits__visited_at__gte=since_30),
+                distinct=True,
+            ),
+            reads_anon_30d=Count(
+                "anon_visits",
+                filter=Q(anon_visits__visited_at__gte=since_30),
+            ),
+        )
+
+        readers_all = (agg_logged_all["readers_logged"] or 0) + (agg_anon_all["readers_anon"] or 0)
+        reads_all   = (agg_logged_all["reads_logged"] or 0)   + (agg_anon_all["reads_anon"] or 0)
+
+        readers_30d = (agg_logged_30d["readers_logged_30d"] or 0) + (agg_anon_30d["readers_anon_30d"] or 0)
+        reads_30d   = (agg_logged_30d["reads_logged_30d"] or 0)   + (agg_anon_30d["reads_anon_30d"] or 0)
+
         stats = {
-            "readers_all": agg_all["readers_all"] or 0,
-            "reads_all":   agg_all["reads_all"] or 0,
-            "readers_30d": agg_30d["readers_30d"] or 0,
-            "reads_30d":   agg_30d["reads_30d"] or 0,
+            "readers_all": readers_all,
+            "reads_all": reads_all,
+            "readers_30d": readers_30d,
+            "reads_30d": reads_30d,
+
+            "readers_logged": agg_logged_all["readers_logged"] or 0,
+            "reads_logged": agg_logged_all["reads_logged"] or 0,
+            "readers_logged_30d": agg_logged_30d["readers_logged_30d"] or 0,
+            "reads_logged_30d": agg_logged_30d["reads_logged_30d"] or 0,
         }
         cache.set(cache_key, stats, ttl)
 
+    # -------------------------
+    # Context
+    # -------------------------
     context = {
         "manga": manga,
         "reading_status": reading_status,
@@ -735,15 +880,24 @@ def manga_details(request, manga_slug):
 
         "similar_mangas": similar_mangas,
         "telegram_links": telegram_links,
-
-        # Faqat shu bitta context: ko‘p/bitta tarjimon baribir shu ro‘yxatda
         "translator_profiles": translator_profiles,
 
+        "can_see_detailed_stats": can_see_detailed_stats,
+
         "readers_all": stats["readers_all"],
-        "reads_all":   stats["reads_all"],
+        "reads_all": stats["reads_all"],
         "readers_30d": stats["readers_30d"],
-        "reads_30d":   stats["reads_30d"],
+        "reads_30d": stats["reads_30d"],
     }
+
+    if can_see_detailed_stats:
+        context.update({
+            "readers_logged": stats.get("readers_logged", 0),
+            "reads_logged": stats.get("reads_logged", 0),
+            "readers_logged_30d": stats.get("readers_logged_30d", 0),
+            "reads_logged_30d": stats.get("reads_logged_30d", 0),
+        })
+
     return render(request, "manga/manga_details.html", context)
 
 # =========================== Reading list/status ===========================
@@ -791,10 +945,14 @@ def thank_chapter(request, chapter_id):
 
 # =========================== Read chapter ===========================
 
+VISITOR_COOKIE = getattr(settings, "MANGALAB_VISITOR_COOKIE", "ml_vid")
+VISITOR_COOKIE_MAX_AGE = getattr(settings, "MANGALAB_VISITOR_COOKIE_MAX_AGE", 60 * 60 * 24 * 365)  # 1 yil
+
 def chapter_read(request, manga_slug, volume, chapter_number):
     manga = get_object_or_404(Manga, slug=manga_slug)
     chapter = get_object_or_404(Chapter, manga=manga, volume=volume, chapter_number=chapter_number)
 
+    # --- O‘qishga ruxsat tekshiruvi
     if not can_read(request.user, manga, chapter):
         if not request.user.is_authenticated:
             messages.warning(request, "Bobni o‘qish uchun tizimga kiring!")
@@ -807,33 +965,34 @@ def chapter_read(request, manga_slug, volume, chapter_number):
             chapter_number=chapter.chapter_number,
         )
 
+    # --- boblar ro‘yxati
     all_chapters = list(
         Chapter.objects
-               .filter(manga=manga)
-               .only("id", "volume", "chapter_number", "price_tanga")
-               .order_by("-volume", "-chapter_number")
+        .filter(manga=manga)
+        .only("id", "volume", "chapter_number", "price_tanga")
+        .order_by("-volume", "-chapter_number")
     )
 
     previous_chapter = (
         Chapter.objects
-               .filter(manga=manga)
-               .filter(
-                   Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
-                   Q(volume__lt=chapter.volume)
-               )
-               .order_by("-volume", "-chapter_number")
-               .first()
+        .filter(manga=manga)
+        .filter(
+            Q(volume=chapter.volume, chapter_number__lt=chapter.chapter_number) |
+            Q(volume__lt=chapter.volume)
+        )
+        .order_by("-volume", "-chapter_number")
+        .first()
     )
 
     next_chapter = (
         Chapter.objects
-               .filter(manga=manga)
-               .filter(
-                   Q(volume=chapter.volume, chapter_number__gt=chapter.chapter_number) |
-                   Q(volume__gt=chapter.volume)
-               )
-               .order_by("volume", "chapter_number")
-               .first()
+        .filter(manga=manga)
+        .filter(
+            Q(volume=chapter.volume, chapter_number__gt=chapter.chapter_number) |
+            Q(volume__gt=chapter.volume)
+        )
+        .order_by("volume", "chapter_number")
+        .first()
     )
 
     next_chapter_price = None
@@ -841,13 +1000,28 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         if next_chapter.price_tanga > 0 and not can_read(request.user, manga, next_chapter):
             next_chapter_price = next_chapter.price_tanga
 
-    progress = None
+    # =========================================================
+    # ✅ KO‘RISHNI YOZIB BORISH (ALL)
+    # - login bo‘lsa: ChapterVisit (user+chapter)
+    # - anon bo‘lsa: ChapterAnonVisit (visitor_id+chapter) + cookie
+    # =========================================================
+    new_vid = None
     if request.user.is_authenticated:
         ChapterVisit.objects.get_or_create(user=request.user, chapter=chapter)
+    else:
+        vid = (request.COOKIES.get(VISITOR_COOKIE) or "").strip()
+        if not vid or len(vid) > 36:  # juda uzun/iflos cookie bo‘lsa yangilaymiz
+            vid = str(uuid4())
+            new_vid = vid
+        ChapterAnonVisit.objects.get_or_create(visitor_id=vid, chapter=chapter)
 
+    # --- progress faqat login uchun
+    progress = None
+    if request.user.is_authenticated:
         progress, created = ReadingProgress.objects.get_or_create(
-            user=request.user, manga=manga,
-            defaults={"last_read_chapter": chapter, "last_read_page": 1}
+            user=request.user,
+            manga=manga,
+            defaults={"last_read_chapter": chapter, "last_read_page": 1},
         )
         if not created:
             prev = progress.last_read_chapter
@@ -860,8 +1034,8 @@ def chapter_read(request, manga_slug, volume, chapter_number):
     if request.user.is_authenticated:
         user_read_chapters = list(
             ChapterVisit.objects
-                        .filter(user=request.user, chapter__manga=manga)
-                        .values_list("chapter_id", flat=True)
+            .filter(user=request.user, chapter__manga=manga)
+            .values_list("chapter_id", flat=True)
         )
 
     pages = list(chapter.pages.all().order_by("page_number"))
@@ -875,8 +1049,8 @@ def chapter_read(request, manga_slug, volume, chapter_number):
     if request.user.is_authenticated:
         purchased_chapters = list(
             ChapterPurchase.objects
-                           .filter(user=request.user, chapter__manga=manga)
-                           .values_list("chapter_id", flat=True)
+            .filter(user=request.user, chapter__manga=manga)
+            .values_list("chapter_id", flat=True)
         )
 
     is_privileged = (
@@ -910,8 +1084,21 @@ def chapter_read(request, manga_slug, volume, chapter_number):
         "readable_chapter_ids": readable_chapter_ids,
         "is_last_chapter": is_last_chapter,
     }
-    return render(request, "manga/chapter_read.html", context)
 
+    response = render(request, "manga/chapter_read.html", context)
+
+    # anon bo‘lsa cookie yozamiz
+    if new_vid:
+        response.set_cookie(
+            VISITOR_COOKIE,
+            new_vid,
+            max_age=VISITOR_COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="Lax",
+            secure=getattr(settings, "SESSION_COOKIE_SECURE", False),
+        )
+
+    return response
 
 # =========================== Taxonomy pages ===========================
 
