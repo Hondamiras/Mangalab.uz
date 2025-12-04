@@ -14,6 +14,7 @@ from django.utils.text import slugify
 from PIL import Image
 from io import BytesIO
 from unidecode import unidecode
+import uuid
 
 
 User = get_user_model()
@@ -308,6 +309,20 @@ class ChapterVisit(models.Model):
     def __str__(self):
         return f"{self.user} → {self.chapter}"
 
+class ChapterAnonVisit(models.Model):
+    chapter = models.ForeignKey("manga.Chapter", on_delete=models.CASCADE, related_name="anon_visits")
+    visitor_id = models.CharField(max_length=36, db_index=True)
+    visited_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        unique_together = ("chapter", "visitor_id")
+        indexes = [
+            models.Index(fields=("visitor_id", "chapter")),
+            models.Index(fields=("chapter", "visited_at")),
+        ]
+
+    def __str__(self):
+        return f"{self.visitor_id} → {self.chapter}"
 
 class ChapterPurchase(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="purchased_chapters")
