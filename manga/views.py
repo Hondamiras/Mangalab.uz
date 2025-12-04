@@ -31,23 +31,47 @@ def _is_ajax(request) -> bool:
     return request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
 
+def _manga_translators_qs(manga: Manga):
+    """
+    Bir xil qoida:
+    1) Manga.translators (M2M) bo‘lsa — shu
+    2) bo‘lmasa, manga.team bo‘lsa — team.members
+    3) bo‘lmasa, created_by tarjimon bo‘lsa — created_by.userprofile
+    """
+    qs = manga.translators.filter(is_translator=True)
+    if qs.exists():
+        return qs
+
+    if manga.team_id:
+        return manga.team.members.filter(is_translator=True)
+
+    if manga.created_by_id:
+        try:
+            p = manga.created_by.userprofile
+        except UserProfile.DoesNotExist:
+            p = None
+        if p and p.is_translator:
+            return UserProfile.objects.filter(pk=p.pk)
+
+    return UserProfile.objects.none()
+
+
 @require_POST
 @login_required
 @transaction.atomic
 def rate_translator(request, manga_slug, translator_id):
-    manga = get_object_or_404(Manga, slug=manga_slug)
+    manga = get_object_or_404(Manga.objects.select_related("team", "created_by"), slug=manga_slug)
     translator = get_object_or_404(UserProfile, pk=translator_id, is_translator=True)
 
-    # ✅ translator shu mangaga biriktirilganmi?
-    # (Agar Manga.translators UserProfile emas, User bo‘lsa -> translator.user bilan tekshiring)
-    if not manga.translators.filter(pk=translator.pk).exists():
+    # ✅ endi tekshiruv details bilan 100% bir xil
+    allowed = _manga_translators_qs(manga).filter(pk=translator.pk).exists()
+    if not allowed:
         msg = "Bu tarjimon ushbu manga uchun biriktirilmagan."
         if _is_ajax(request):
             return JsonResponse({"ok": False, "error": msg}, status=400)
         messages.error(request, msg)
         return redirect("manga:manga_details", manga_slug=manga.slug)
 
-    # ✅ rating parse + validate
     raw = (request.POST.get("rating") or "").strip()
     try:
         rating = int(raw)
@@ -61,7 +85,6 @@ def rate_translator(request, manga_slug, translator_id):
         messages.error(request, msg)
         return redirect("manga:manga_details", manga_slug=manga.slug)
 
-    # ✅ save (1 user = 1 rating per manga+translator)
     TranslatorRating.objects.update_or_create(
         manga=manga,
         translator=translator,
@@ -69,7 +92,6 @@ def rate_translator(request, manga_slug, translator_id):
         defaults={"rating": rating},
     )
 
-    # ✅ avg/count (shu manga+translator uchun)
     agg = TranslatorRating.objects.filter(manga=manga, translator=translator).aggregate(
         avg=Avg("rating"),
         count=Count("id"),
@@ -80,7 +102,6 @@ def rate_translator(request, manga_slug, translator_id):
     if _is_ajax(request):
         return JsonResponse({
             "ok": True,
-            "liked": True,              # ixtiyoriy, kerak bo‘lmasa olib tashlang
             "my_rating": rating,
             "avg": round(avg, 1),
             "count": count,
@@ -88,11 +109,11 @@ def rate_translator(request, manga_slug, translator_id):
 
     messages.success(request, "Ovozingiz saqlandi.")
 
-    # ✅ qaytish: oldingi sahifa/tab saqlansin (xavfsiz)
     next_url = request.POST.get("next") or request.META.get("HTTP_REFERER")
     if not next_url or not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
         next_url = reverse("manga:manga_details", kwargs={"manga_slug": manga.slug})
     return redirect(next_url)
+
 
 # =========================== Helpers ===========================
 
