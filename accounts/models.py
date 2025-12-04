@@ -6,6 +6,9 @@ from datetime import timedelta
 from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
+from django import forms
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db.models import Q
 
 User = get_user_model()
 
@@ -27,7 +30,6 @@ class EmailVerificationCode(models.Model):
     def __str__(self):
         return f"{self.user.email} → {self.code}"
 
-    
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True, verbose_name="Rasm")
@@ -71,12 +73,10 @@ class UserProfile(models.Model):
     def is_in_team(self, team_slug: str) -> bool:
         return self.teams.filter(slug=team_slug).exists()
 
-from django import forms
 class TranslatorSelfEditForm(forms.ModelForm):
     class Meta:
         model = UserProfile
         fields = ('avatar', 'description')
-
 
 class TranslatorTeam(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="Jamoa nomi")
@@ -116,7 +116,6 @@ class TranslatorTeam(models.Model):
     @property
     def member_count(self):
         return self.members.count()
-
 
 ROLE_CHOICES = (
     ("lead", "Jamoa yetakchisi"),
@@ -186,7 +185,6 @@ class ReadingStatus(models.Model):
     def __str__(self):
         return f"{self.user_profile.user.username} — {self.manga.title} ({self.status})"
 
-
 class PendingSignup(models.Model):
     username      = models.CharField(max_length=150, unique=True)
     email         = models.EmailField(unique=True)
@@ -199,3 +197,45 @@ class PendingSignup(models.Model):
 
     def save_password(self, raw_password):
         self.password_hash = make_password(raw_password)
+
+class TranslatorRating(models.Model):
+    manga = models.ForeignKey(
+        "manga.Manga",
+        on_delete=models.CASCADE,
+        related_name="translator_ratings",
+    )
+    translator = models.ForeignKey(
+        "accounts.UserProfile",
+        on_delete=models.CASCADE,
+        related_name="ratings_received",
+        limit_choices_to={"is_translator": True},
+    )
+    user = models.ForeignKey(  # ovoz bergan odam
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="translator_ratings_given",
+    )
+    rating = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name="Ovoz (1-5)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("manga", "translator", "user")  # 1 user = 1 vote (shu manga+translator uchun)
+        constraints = [
+            models.CheckConstraint(
+                check=Q(rating__gte=1) & Q(rating__lte=5),
+                name="translator_rating_1_5",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["manga", "translator"]),
+            models.Index(fields=["translator", "created_at"]),
+        ]
+        verbose_name = "Tarjimon reytingi"
+        verbose_name_plural = "Tarjimon reytinglari"
+
+    def __str__(self):
+        return f"{self.manga} | {self.translator} <= {self.user} : {self.rating}"
