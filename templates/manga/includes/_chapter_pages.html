@@ -36,6 +36,17 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 
+{# ==== Yandex loader (1 marta) ==== #}
+<script>
+  window.yaContextCb = window.yaContextCb || [];
+</script>
+<script src="https://yandex.ru/ads/system/context.js" async></script>
+
+{# ==== TOP banner ==== #}
+<div class="my-6 flex justify-center">
+  <div id="yandex_rtb_R-A-17756347-1_top" style="min-height:120px;"></div>
+</div>
+
 <div id="chapter-pages" class="sm:container mx-auto px-0 sm:px-4">
   {% for _ in pages %}
     <div class="flex justify-center page-container" data-page-index="{{ forloop.counter0 }}">
@@ -44,27 +55,29 @@
   {% endfor %}
 </div>
 
-{# ==== Yandex – loader + bob oxiridagi banner ==== #}
-<script>
-  // Loader ni shu sahifada yoqamiz
-  window.yaContextCb = window.yaContextCb || [];
-</script>
-<script src="https://yandex.ru/ads/system/context.js" async></script>
-
+{# ==== BOTTOM banner ==== #}
 <div class="my-6 flex justify-center">
-  <div id="yandex_rtb_R-A-17756347-1" style="min-height:120px;"></div>
+  <div id="yandex_rtb_R-A-17756347-1_bottom" style="min-height:120px;"></div>
 </div>
 
+{# ==== Yandex – ikkala joyga render qilish ==== #}
 <script>
   window.yaContextCb = window.yaContextCb || [];
 
   window.yaContextCb.push(function () {
-    if (!window.Ya || !Ya.Context || !Ya.Context.AdvManager) {
-      return;
-    }
+    if (!window.Ya || !Ya.Context || !Ya.Context.AdvManager) return;
+
+    // Tepadagi banner
     Ya.Context.AdvManager.render({
       blockId: "R-A-17756347-1",
-      renderTo: "yandex_rtb_R-A-17756347-1",
+      renderTo: "yandex_rtb_R-A-17756347-1_top",
+      async: true,
+    });
+
+    // Pastdagi banner
+    Ya.Context.AdvManager.render({
+      blockId: "R-A-17756347-1",
+      renderTo: "yandex_rtb_R-A-17756347-1_bottom",
       async: true,
     });
   });
@@ -73,20 +86,19 @@
 
 <script>
   // --- sozlamalar ---
-  const PREFETCH_AHEAD = 2;      // yuklangan sahifadan keyin qancha fon prefetch
-  const WARM_PREFETCH  = 2;      // sahifa ochilganda darhol fon’da boshlab yuboriladiganlar
-  const CONCURRENCY    = 2;      // bir vaqtning o‘zida yuklanadigan rasmlar
-  const ROOT_MARGIN    = '900px 0px'; // ko‘rinishga yaqinlashganda HIGH navbatga qo‘yish
+  const PREFETCH_AHEAD = 2;
+  const WARM_PREFETCH  = 2;
+  const CONCURRENCY    = 2;
+  const ROOT_MARGIN    = '900px 0px';
 
   const pages = JSON.parse(document.getElementById('pages-data').textContent);
   const container = document.getElementById('chapter-pages');
 
-  // Navbatlar
-  const hiQ = [];               // yuqori prioritet
-  const lowQ = [];              // past prioritet (prefetch)
-  const queued   = new Set();   // navbatga qo‘yilgan indexlar
-  const inflight = new Set();   // hozir yuklanayotgan indexlar
-  const loaded   = new Set();   // yuklab bo‘lingan indexlar
+  const hiQ = [];
+  const lowQ = [];
+  const queued   = new Set();
+  const inflight = new Set();
+  const loaded   = new Set();
 
   function enqueue(i, high = true){
     if (i < 0 || i >= pages.length) return;
@@ -96,7 +108,6 @@
     pump();
   }
 
-  // high flag yo‘qolib ketmasligi uchun obyekt qaytaramiz
   function dequeue(){
     if (hiQ.length) return { i: hiQ.shift(), high: true };
     if (lowQ.length) return { i: lowQ.shift(), high: false };
@@ -121,7 +132,6 @@
     const img = document.createElement('img');
     img.alt = pages[i].alt || `Page ${i+1}`;
     img.decoding = 'async';
-    // img.loading = undefined;  // lazy emas, JS boshqaradi
     img.fetchPriority = high ? 'high' : 'low';
     img.referrerPolicy = 'no-referrer';
     img.draggable = false;
