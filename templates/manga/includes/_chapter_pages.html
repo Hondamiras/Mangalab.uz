@@ -44,6 +44,28 @@
   {% endfor %}
 </div>
 
+{# ==== Bob oxiridagi reklama (banner) ==== #}
+<div class="my-6 flex justify-center">
+  <div id="yandex_rtb_R-A-17756347-1"></div>
+</div>
+<script>
+  // Agar loader hali ishlamagan bo'lsa ham, massivni yaratib qo'yamiz
+  window.yaContextCb = window.yaContextCb || [];
+
+  window.yaContextCb.push(function () {
+    if (!window.Ya || !Ya.Context || !Ya.Context.AdvManager) {
+      return;
+    }
+    Ya.Context.AdvManager.render({
+      blockId: "R-A-17756347-1",
+      renderTo: "yandex_rtb_R-A-17756347-1",
+      async: true,
+    });
+  });
+</script>
+{# ==== /Reklama ==== #}
+
+
 <script>
   // --- sozlamalar ---
   const PREFETCH_AHEAD = 2;      // yuklangan sahifadan keyin qancha fon prefetch
