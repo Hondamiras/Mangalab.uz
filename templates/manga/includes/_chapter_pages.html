@@ -44,12 +44,18 @@
   {% endfor %}
 </div>
 
-{# ==== Bob oxiridagi reklama (banner) ==== #}
-<div class="my-6 flex justify-center">
-  <div id="yandex_rtb_R-A-17756347-1"></div>
-</div>
+{# ==== Yandex – loader + bob oxiridagi banner ==== #}
 <script>
-  // Agar loader hali ishlamagan bo'lsa ham, massivni yaratib qo'yamiz
+  // Loader ni shu sahifada yoqamiz
+  window.yaContextCb = window.yaContextCb || [];
+</script>
+<script src="https://yandex.ru/ads/system/context.js" async></script>
+
+<div class="my-6 flex justify-center">
+  <div id="yandex_rtb_R-A-17756347-1" style="min-height:120px;"></div>
+</div>
+
+<script>
   window.yaContextCb = window.yaContextCb || [];
 
   window.yaContextCb.push(function () {
@@ -63,8 +69,7 @@
     });
   });
 </script>
-{# ==== /Reklama ==== #}
-
+{# ==== /Yandex reklama ==== #}
 
 <script>
   // --- sozlamalar ---
@@ -116,33 +121,29 @@
     const img = document.createElement('img');
     img.alt = pages[i].alt || `Page ${i+1}`;
     img.decoding = 'async';
-    // 👇 lazy ishlatilmaydi — faqat JS boshqaradi
-    // img.loading = undefined;
-    img.fetchPriority = high ? 'high' : 'low';  // brauzerga aniq hint
+    // img.loading = undefined;  // lazy emas, JS boshqaradi
+    img.fetchPriority = high ? 'high' : 'low';
     img.referrerPolicy = 'no-referrer';
     img.draggable = false;
     img.className = 'w-full md:w-[400px] max-w-full h-auto transition-opacity duration-500 ease-in-out opacity-0 select-none';
 
     img.onload = () => {
       img.classList.add('opacity-100');
-      loader.replaceWith(img);                 // spinner o‘rniga rasm
+      loader.replaceWith(img);
       inflight.delete(i);
       loaded.add(i);
-      // Ketma-ket keyingilarni fon’da tayyorlab boramiz
-      for (let k = 1; k <= PREFETCH_AHEAD; k++) enqueue(i + k, /*high=*/false);
+      for (let k = 1; k <= PREFETCH_AHEAD; k++) enqueue(i + k, false);
       pump();
     };
 
     img.onerror = () => {
-      // Foydalanuvchiga ko‘rinadigan xabar va qayta urinib ko‘rish tugmasi
       loader.innerHTML = '<button type="button" style="color:#b91c1c; text-decoration:underline">Yuklashda xatolik — qayta urinib ko‘rish</button>';
       const btn = loader.querySelector('button');
       if (btn){
         btn.addEventListener('click', () => {
-          // xatodan keyin qayta urinish
           queued.delete(i);
           inflight.delete(i);
-          enqueue(i, /*high=*/true);
+          enqueue(i, true);
         }, { once: true });
       } else {
         inflight.delete(i);
@@ -150,14 +151,11 @@
       pump();
     };
 
-    // Yuklashni shu yerda boshlaymiz
     img.src = pages[i].url;
   }
 
-  // Ko‘rinishga kirganda — birinchi bo‘lib HIGH navbatga
   const io = ('IntersectionObserver' in window)
     ? new IntersectionObserver((entries) => {
-        // ko‘rinishga eng yaqinini oldin qo‘yish
         const h = (window.innerHeight || document.documentElement.clientHeight) / 2;
         entries
           .filter(e => e.isIntersecting)
@@ -165,25 +163,23 @@
                        - Math.abs(b.target.getBoundingClientRect().top - h))
           .forEach(e => {
             const i = parseInt(e.target.getAttribute('data-page-index'), 10);
-            enqueue(i, /*high=*/true);
-            // shu sahifadan keyingi bittasini fon’da tayyorlab boramiz
-            enqueue(i + 1, /*high=*/false);
+            enqueue(i, true);
+            enqueue(i + 1, false);
           });
       }, { root: null, rootMargin: ROOT_MARGIN, threshold: 0.01 })
     : null;
 
-  // Barcha konteynerlarni kuzatamiz (fallback: IO bo‘lmasa ham ishlaydi)
   const nodes = container.querySelectorAll('.page-container');
-  nodes.forEach(el => io ? io.observe(el) : enqueue(parseInt(el.getAttribute('data-page-index'), 10), true));
+  nodes.forEach(el =>
+    io ? io.observe(el) : enqueue(parseInt(el.getAttribute('data-page-index'), 10), true)
+  );
 
-  // Warm start: sahifa ochilishi bilan yuqori + fon navbatini ishga tushiramiz
   window.addEventListener('DOMContentLoaded', () => {
-    enqueue(0, /*high=*/true);                      // birinchi elementni majburan
-    for (let j = 1; j <= WARM_PREFETCH; j++) enqueue(j, /*high=*/false);  // fon prefetch
+    enqueue(0, true);
+    for (let j = 1; j <= WARM_PREFETCH; j++) enqueue(j, false);
     pump();
   });
 
-  // anti-save mayda choralar
   document.addEventListener('contextmenu', e => e.preventDefault(), {passive:false});
   document.addEventListener('dragstart',  e => e.preventDefault(), {passive:false});
 </script>
