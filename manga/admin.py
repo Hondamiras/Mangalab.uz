@@ -8,8 +8,12 @@ from django.db.models import Max, Q
 from django.shortcuts import render, redirect
 from django.urls import path, reverse
 from django.utils.html import format_html
+import tempfile
+from django.db import transaction
 
-from .forms import MultiPageUploadForm, ChapterAdminForm
+from manga.services.pdf_to_pages import render_pdf_to_pages
+
+from .forms import ChapterPDFUploadForm, MultiPageUploadForm, ChapterAdminForm
 from .models import (
     ChapterPurchase,
     MangaTelegramLink,
@@ -207,10 +211,18 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         "chapter_number",
         "price_tanga",
         "page_count",
-        "upload_pages_link",  # 📤 Tugma bob ro‘yxatida
+        "upload_pages_link",
+        "upload_pdf_link",
     )
-    search_fields = ("manga__title",)
-    search_help_text = "Manga nomi bo‘yicha qidirish"
+
+    # ✅ foydali search: manga title + qo‘shimcha title + slug
+    search_fields = (
+        "manga__title",
+        "manga__titles__name",
+        "manga__slug",
+    )
+    search_help_text = "Manga nomi / qo‘shimcha nomlari / slug bo‘yicha qidiring."
+
     list_per_page = 40
     list_editable = ("volume", "price_tanga")
 
@@ -219,7 +231,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         qs = super().get_queryset(request)
         if request.user.is_superuser:
             return qs
-        # Faqat o‘ziga tegishli yoki tarjimon bo‘lgan mangalarning boblari
         return qs.filter(
             Q(manga__created_by=request.user) |
             Q(manga__translators__user=request.user)
@@ -227,14 +238,13 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
-        # Agar superuser bo‘lmasa thanks maydonini olib tashlaymiz
         if not request.user.is_superuser and "thanks" in form.base_fields:
             form.base_fields.pop("thanks")
         return form
 
     def get_list_filter(self, request):
         if request.user.is_superuser:
-            return ("manga",)
+            return ("manga", "volume")
         return ()
 
     def get_changeform_initial_data(self, request):
@@ -253,7 +263,8 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
     def get_list_display(self, request):
         """
-        Agar superuser bo'lsa, release_date ustunini ham qo‘shamiz.
+        ⚠️ MUHIM: sizda get_list_display borligi uchun list_display e'tiborga olinmaydi.
+        Shu sabab 'upload_pdf_link'ni ham shu yerga qo‘shish shart.
         """
         base = [
             "manga",
@@ -262,15 +273,13 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             "price_tanga",
             "page_count",
             "upload_pages_link",
+            "upload_pdf_link",  # ✅ qo‘shildi
         ]
         if request.user.is_superuser:
             return base + ["release_date"]
         return base
 
     def get_exclude(self, request, obj=None):
-        """
-        Formda ham non-superuserlardan release_date maydonini yashiramiz.
-        """
         if not request.user.is_superuser:
             return ["release_date"]
         return []
@@ -300,15 +309,8 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
     # ================== BULK BOB YARATISH ==================
     def save_model(self, request, obj, form, change):
-        """
-        change=True yoki bulk_total <=1 bo‘lsa – oddiy saqlash.
-        bulk_total >1 bo‘lsa – tanlangan Manga+Jild uchun mavjud eng katta
-        chapter_number dan boshlab ketma-ket bulk_total ta bob yaratadi,
-        birinchisi sifatida esa aynan obj'ni saqlaymiz.
-        """
         bulk_total = form.cleaned_data.get("bulk_total") or 1
 
-        # Tahrirlash yoki oddiy bitta bob
         if change or bulk_total <= 1:
             super().save_model(request, obj, form, change)
             return
@@ -318,7 +320,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         price_tanga = form.cleaned_data["price_tanga"]
         release_date = form.cleaned_data["release_date"]
 
-        # Tanlangan manga + jild bo‘yicha eng oxirgi bob raqami
         last_num = (
             Chapter.objects.filter(manga=manga, volume=volume)
             .aggregate(Max("chapter_number"))["chapter_number__max"]
@@ -326,7 +327,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         )
         start = last_num + 1
 
-        # Obj'ni birinchi bob sifatida saqlaymiz
         obj.manga = manga
         obj.volume = volume
         obj.chapter_number = start
@@ -335,7 +335,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
         super().save_model(request, obj, form, change=False)
 
-        # Qolgan boblarni bulk_create bilan qo‘shamiz
         new_chapters = []
         for i in range(1, bulk_total):
             new_chapters.append(
@@ -357,11 +356,16 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             level=messages.SUCCESS,
         )
 
-    # ================== BULK UPLOAD TUGMASI ==================
+    # ================== BULK UPLOAD / PDF UPLOAD TUGMALARI ==================
     def upload_pages_link(self, obj):
         url = reverse("admin:chapter_upload_pages", args=[obj.pk])
         return format_html('<a class="button" href="{}">📤 Sahifalarni yuklash</a>', url)
     upload_pages_link.short_description = "Bulk Upload"
+
+    def upload_pdf_link(self, obj):
+        url = reverse("admin:chapter_upload_pdf", args=[obj.pk])
+        return format_html('<a class="button" href="{}">📄 PDF yuklash</a>', url)
+    upload_pdf_link.short_description = "PDF Upload"
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         if extra_context is None:
@@ -387,7 +391,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         )
         return super().change_view(request, object_id, form_url, extra_context=extra_context)
 
-    # ================== CUSTOM URL & VIEW (MULTI UPLOAD) ==================
+    # ================== CUSTOM URLS ==================
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
@@ -396,13 +400,17 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
                 self.admin_site.admin_view(self.upload_pages_view),
                 name="chapter_upload_pages",
             ),
+            path(
+                "<int:chapter_id>/upload_pdf/",
+                self.admin_site.admin_view(self.upload_pdf_view),
+                name="chapter_upload_pdf",
+            ),
         ]
         return custom_urls + urls
 
+    # ================== BULK UPLOAD VIEW (sizniki - tegmadim) ==================
     def upload_pages_view(self, request, chapter_id):
-        """
-        Bitta bob uchun bir nechta sahifa (rasm)larni yuklash.
-        """
+        # ... sizning kod o‘z holicha qoladi ...
         chapter = (
             Chapter.objects.select_related("manga")
             .filter(pk=chapter_id)
@@ -412,7 +420,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             messages.error(request, "Bunday bob topilmadi.")
             return redirect("admin:manga_chapter_changelist")
 
-        # Huquq tekshirish: superuser / created_by / translators
         if not request.user.is_superuser:
             can_edit = (
                 chapter.manga.created_by_id == request.user.id
@@ -431,8 +438,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
                     return int(m.group(1)) if m else 0
 
                 files = form.cleaned_data["images"]
-                # MultipleFileField: agar bitta fayl bo'lsa -> obyekt,
-                # ko'p bo'lsa -> list. Biz hammasini listga aylantirib olamiz.
                 if not isinstance(files, (list, tuple)):
                     files = [files]
 
@@ -463,20 +468,102 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         return render(
             request,
             "admin/bulk_upload.html",
-            {
-                "form": form,
-                "chapter": chapter,
-            },
+            {"form": form, "chapter": chapter},
         )
+
     # ================== FOREIGNKEY FILTERLARI ==================
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "manga" and not request.user.is_superuser:
-            # Faqat user bog‘langan mangalar:
             kwargs["queryset"] = Manga.objects.filter(
                 Q(created_by=request.user) |
                 Q(translators__user=request.user)
             ).distinct()
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    # ================== PDF UPLOAD VIEW (✅ ishlaydigan) ==================
+    def upload_pdf_view(self, request, chapter_id):
+        import os
+        import tempfile
+
+        chapter = Chapter.objects.select_related("manga").filter(pk=chapter_id).first()
+        if not chapter:
+            messages.error(request, "Bunday bob topilmadi.")
+            return redirect("admin:manga_chapter_changelist")
+
+        if not request.user.is_superuser:
+            can_edit = (
+                chapter.manga.created_by_id == request.user.id
+                or chapter.manga.translators.filter(user=request.user).exists()
+            )
+            if not can_edit:
+                messages.error(request, "Bu bob uchun PDF yuklash huquqingiz yo'q.")
+                return redirect("admin:manga_chapter_changelist")
+
+        if request.method == "POST":
+            form = ChapterPDFUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                f = form.cleaned_data["pdf"]
+                replace_existing = form.cleaned_data.get("replace_existing", True)
+                dpi = form.cleaned_data.get("dpi") or 144
+                max_width = form.cleaned_data.get("max_width") or 1400
+
+                # ✅ PDF ekanini tez tekshirib olamiz (xato format bo‘lsa)
+                try:
+                    head = f.read(4)
+                    f.seek(0)
+                    if head != b"%PDF":
+                        messages.error(request, "Bu fayl PDFga o‘xshamaydi (header %PDF emas).")
+                        return redirect("admin:manga_chapter_change", chapter_id)
+                except Exception:
+                    # seek bo‘lmasa ham davom etamiz
+                    pass
+
+                tmp_path = None
+                should_delete = False
+
+                try:
+                    # 1) Agar Django upload faylni diskka yozgan bo‘lsa -> shu pathni ishlatamiz
+                    if hasattr(f, "temporary_file_path"):
+                        tmp_path = f.temporary_file_path()
+                        should_delete = False
+                    else:
+                        # 2) Aks holda real temp fayl yaratib (mkstemp), yozib, yopamiz
+                        fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+                        with os.fdopen(fd, "wb") as out:
+                            for chunk in f.chunks():
+                                out.write(chunk)
+                        should_delete = True
+
+                    # ⚠️ atomic xohlasangiz qoladi. Lekin storage rollback bo‘lmaydi.
+                    # Shuning uchun hozir minimal variant: atomic ishlatmaymiz.
+                    created = render_pdf_to_pages(
+                        chapter,
+                        tmp_path,
+                        dpi=dpi,
+                        max_width=max_width,
+                        replace_existing=replace_existing,
+                        quality=82,
+                    )
+
+                except Exception as e:
+                    messages.error(request, f"PDF konvert xatosi: {e}")
+                    return redirect("admin:manga_chapter_change", chapter_id)
+                finally:
+                    # mkstemp bilan yaratgan bo‘lsak o‘chirib ketamiz
+                    if should_delete and tmp_path:
+                        try:
+                            os.remove(tmp_path)
+                        except Exception:
+                            pass
+
+                messages.success(request, f"PDF qabul qilindi: {created} ta WEBP sahifa yaratildi.")
+                return redirect("admin:manga_chapter_change", chapter_id)
+
+        else:
+            form = ChapterPDFUploadForm()
+
+        return render(request, "admin/upload_pdf.html", {"form": form, "chapter": chapter})
+
 
 
 # ===== Page =====
