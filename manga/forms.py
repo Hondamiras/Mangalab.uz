@@ -73,3 +73,37 @@ class ChapterAdminForm(forms.ModelForm):
         # Tahrirlash rejimida bulk_total keraksiz — yashirib qo'yamiz
         if self.instance and self.instance.pk:
             self.fields["bulk_total"].widget = forms.HiddenInput()
+
+
+
+
+
+
+#======================== PDF UPLOAD FORM ========================#
+from django.core.validators import FileExtensionValidator
+
+
+class ChapterPDFUploadForm(forms.Form):
+    pdf = forms.FileField(
+        validators=[FileExtensionValidator(["pdf"])],
+        help_text="PDF tashlang — sistema o‘zi sahifa-sahifa WEBP qiladi.",
+    )
+    replace_existing = forms.BooleanField(
+        required=False,
+        initial=True,
+        help_text="Oldingi sahifalarni o‘chirib qayta yaratish",
+    )
+    dpi = forms.IntegerField(
+        required=False,
+        initial=144,
+        min_value=72,
+        max_value=200,
+        help_text="144 tavsiya. 200+ qilmang (serverga og‘ir).",
+    )
+    max_width = forms.IntegerField(
+        required=False,
+        initial=1400,
+        min_value=600,
+        max_value=2200,
+        help_text="Rasm maksimal eni (px). 1400 tavsiya.",
+    )
