@@ -557,7 +557,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
                             pass
 
                 messages.success(request, f"PDF qabul qilindi: {created} ta WEBP sahifa yaratildi.")
-                return redirect("admin:manga_chapter_change", chapter_id)
+                return redirect("admin:manga_chapter_changelist")
 
         else:
             form = ChapterPDFUploadForm()
