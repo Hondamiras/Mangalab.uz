@@ -398,6 +398,132 @@ class Page(models.Model):
                 pass
 
 
+# -------------------------
+# PDF Upload Job (queue/progress uchun)
+# -------------------------
+class ChapterPDFJob(models.Model):
+    """
+    Chapter uchun PDF yuklash navbati.
+    Maqsad: PDF'ni fon rejimida WEBP sahifalarga aylantirish,
+    progress/status ko‘rsatish, va ish tugagach PDFni o‘chirish.
+
+    Bu model mavjud kodlaringizni buzmaydi — faqat yangi jadval qo‘shadi.
+    """
+
+    STATUS_PENDING = "PENDING"
+    STATUS_PROCESSING = "PROCESSING"
+    STATUS_DONE = "DONE"
+    STATUS_FAILED = "FAILED"
+    STATUS_CANCELLED = "CANCELLED"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_DONE, "Done"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
+
+    chapter = models.ForeignKey(
+        "manga.Chapter",
+        on_delete=models.CASCADE,
+        related_name="pdf_jobs",
+        verbose_name="Qaysi bobga tegishli?",
+    )
+
+    pdf = models.FileField(
+        upload_to="pdf_jobs/",
+        validators=[FileExtensionValidator(["pdf"])],
+        verbose_name="PDF fayl",
+        help_text="PDF yuklanadi, keyin fon rejimida WEBP sahifalarga aylantiriladi.",
+    )
+
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+        verbose_name="Holati",
+    )
+
+    # Progress: 0..total (PDF betlar bo‘yicha)
+    progress = models.PositiveIntegerField(default=0, verbose_name="Tayyor bo‘lgan betlar")
+    total = models.PositiveIntegerField(default=0, verbose_name="Jami betlar")
+
+    # Parametrlar (har bir job uchun saqlanadi)
+    replace_existing = models.BooleanField(
+        default=True,
+        verbose_name="Oldingi sahifalarni o‘chirib qayta yaratish",
+    )
+    dpi = models.PositiveIntegerField(default=144, verbose_name="DPI")
+    max_width = models.PositiveIntegerField(default=1400, verbose_name="Max width (px)")
+    quality = models.PositiveIntegerField(default=82, verbose_name="WEBP quality")
+
+    # Xatolik bo‘lsa
+    error = models.TextField(blank=True, default="", verbose_name="Xatolik")
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="pdf_jobs_created",
+        verbose_name="Kim yukladi",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Yaratilgan vaqt")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="Boshlangan vaqt")
+    finished_at = models.DateTimeField(null=True, blank=True, verbose_name="Tugagan vaqt")
+
+    class Meta:
+        verbose_name = "PDF navbat"
+        verbose_name_plural = "PDF navbatlar"
+        ordering = ("-id",)
+        indexes = [
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["chapter", "status"]),
+        ]
+
+    def __str__(self):
+        ch = self.chapter_id or "?"
+        return f"PDFJob #{self.pk} (ch={ch}) {self.status} {self.progress}/{self.total}"
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in (self.STATUS_PENDING, self.STATUS_PROCESSING)
+
+    def mark_processing(self, *, total: int | None = None):
+        self.status = self.STATUS_PROCESSING
+        self.started_at = timezone.now()
+        if total is not None:
+            self.total = int(total)
+        self.save(update_fields=["status", "started_at", "total"])
+
+    def mark_done(self):
+        self.status = self.STATUS_DONE
+        self.finished_at = timezone.now()
+        # progress totalga teng bo‘lsin (agar total ma’lum bo‘lsa)
+        if self.total and self.progress < self.total:
+            self.progress = self.total
+            self.save(update_fields=["status", "finished_at", "progress"])
+        else:
+            self.save(update_fields=["status", "finished_at"])
+
+    def mark_failed(self, err: str):
+        self.status = self.STATUS_FAILED
+        self.finished_at = timezone.now()
+        self.error = (err or "")[:4000]
+        self.save(update_fields=["status", "finished_at", "error"])
+
+    def update_progress(self, done: int, total: int | None = None):
+        self.progress = int(done) if done is not None else 0
+        if total is not None:
+            self.total = int(total)
+            self.save(update_fields=["progress", "total"])
+        else:
+            self.save(update_fields=["progress"])
+
+
 # Faylni model o‘chirilganda ham storage’dan o‘chirish
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
@@ -433,3 +559,5 @@ class ReadingProgress(models.Model):
     def __str__(self) -> str:
         ch_num = self.last_read_chapter.chapter_number if self.last_read_chapter else "—"
         return f"{self.user.username} — {self.manga.title} (ch.{ch_num}, p.{self.last_read_page})"
+
+
