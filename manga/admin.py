@@ -1,6 +1,6 @@
 # manga/admin.py
 import re
-
+from django.utils import timezone
 from django.contrib import admin, messages
 from django.contrib.auth import get_user_model
 from django.core.files.storage import default_storage
@@ -15,6 +15,7 @@ from manga.services.pdf_to_pages import render_pdf_to_pages
 
 from .forms import ChapterPDFUploadForm, MultiPageUploadForm, ChapterAdminForm
 from .models import (
+    ChapterPDFJob,
     ChapterPurchase,
     MangaTelegramLink,
     MangaTitle,
@@ -199,42 +200,57 @@ class MangaAdmin(OwnMixin, admin.ModelAdmin):
             kwargs["queryset"] = UserModel.objects.filter(userprofile__is_translator=True)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
-
+from django.db.models import Q, Max, OuterRef, Subquery
 # ===== Chapter =====
 @admin.register(Chapter)
 class ChapterAdmin(OwnMixin, admin.ModelAdmin):
     form = ChapterAdminForm
 
+    # ⚠️ list_display baribir get_list_display bilan override bo‘ladi,
+    # lekin qoldirsangiz ham mayli (asosiy sozlash get_list_display’da)
     list_display = (
         "manga",
         "volume",
         "chapter_number",
         "price_tanga",
         "page_count",
-        "upload_pages_link",
         "upload_pdf_link",
+        "pdf_status",
+        "upload_pages_link",
     )
 
-    # ✅ foydali search: manga title + qo‘shimcha title + slug
     search_fields = (
         "manga__title",
         "manga__titles__name",
         "manga__slug",
     )
     search_help_text = "Manga nomi / qo‘shimcha nomlari / slug bo‘yicha qidiring."
-
     list_per_page = 40
     list_editable = ("volume", "price_tanga")
 
-    # ================== QUERYSET & FORM KO‘RINISHI ==================
+    # ================== QUERYSET (✅ tez + pdf_status uchun annotate) ==================
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(
-            Q(manga__created_by=request.user) |
-            Q(manga__translators__user=request.user)
-        ).distinct()
+
+        if not request.user.is_superuser:
+            qs = qs.filter(
+                Q(manga__created_by=request.user) |
+                Q(manga__translators__user=request.user)
+            ).distinct()
+
+        # ✅ pdf_status uchun (N+1 bo‘lmasin): latest job fieldlarini annotate qilamiz
+        try:
+            latest_job = ChapterPDFJob.objects.filter(chapter=OuterRef("pk")).order_by("-id")
+            qs = qs.annotate(
+                _pdf_job_status=Subquery(latest_job.values("status")[:1]),
+                _pdf_job_progress=Subquery(latest_job.values("progress")[:1]),
+                _pdf_job_total=Subquery(latest_job.values("total")[:1]),
+            )
+        except Exception:
+            # ChapterPDFJob yo‘q bo‘lsa / import bo‘lmasa — admin yiqilmasin
+            pass
+
+        return qs
 
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
@@ -247,24 +263,54 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             return ("manga", "volume")
         return ()
 
-    def get_changeform_initial_data(self, request):
-        initial = super().get_changeform_initial_data(request)
-        last_chapter = Chapter.objects.order_by("-id").first()
-        if last_chapter:
-            initial["manga"] = last_chapter.manga_id
-            initial["chapter_number"] = last_chapter.chapter_number + 1
-            initial["volume"] = last_chapter.volume
-        return initial
-
-    # ================== KO‘RINADIGAN USTUNLAR ==================
+    # ================== USTUNLAR ==================
     def page_count(self, obj):
         return obj.pages.count()
     page_count.short_description = "Sahifalar soni"
 
+    def pdf_status(self, obj):
+        """
+        ✅ listda job status/progress ko‘rsatadi.
+        Annotate bo‘lsa — query qilmaydi.
+        """
+        status = getattr(obj, "_pdf_job_status", None)
+        prog = getattr(obj, "_pdf_job_progress", None)
+        total = getattr(obj, "_pdf_job_total", None)
+
+        if not status:
+            # fallback: annotate ishlamasa
+            try:
+                job = obj.pdf_jobs.order_by("-id").first()
+                if not job:
+                    return "—"
+                status = job.status
+                prog = job.progress
+                total = job.total
+            except Exception:
+                return "—"
+
+        # chiroyli ko‘rinish (xohlasangiz olib tashlang)
+        badge = {
+            "PENDING":  ("⏳ PENDING",  "#999"),
+            "PROCESSING": ("⚙️ PROCESSING", "#2d7"),
+            "DONE":     ("✅ DONE",     "#4caf50"),
+            "FAILED":   ("❌ FAILED",   "#e53935"),
+        }.get(str(status), (str(status), "#888"))
+
+        label, color = badge
+        if total:
+            text = f"{label} ({prog}/{total})"
+        else:
+            text = f"{label}"
+
+        return format_html('<span style="font-weight:600;color:{}">{}</span>', color, text)
+
+    pdf_status.short_description = "PDF Status"
+
     def get_list_display(self, request):
         """
-        ⚠️ MUHIM: sizda get_list_display borligi uchun list_display e'tiborga olinmaydi.
-        Shu sabab 'upload_pdf_link'ni ham shu yerga qo‘shish shart.
+        ✅ Siz xohlagan tartib:
+        PDF yuklash tugmasi -> PDF status -> Bulk upload tugmasi
         """
         base = [
             "manga",
@@ -272,8 +318,9 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             "chapter_number",
             "price_tanga",
             "page_count",
+            "upload_pdf_link",
+            "pdf_status",
             "upload_pages_link",
-            "upload_pdf_link",  # ✅ qo‘shildi
         ]
         if request.user.is_superuser:
             return base + ["release_date"]
@@ -284,79 +331,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             return ["release_date"]
         return []
 
-    # ================== PERMISSION HELPERLAR ==================
-    def _can_edit_chapter(self, request, obj):
-        if request.user.is_superuser or obj is None:
-            return True
-        manga = obj.manga
-        if manga.created_by_id == request.user.id:
-            return True
-        return manga.translators.filter(user=request.user).exists()
-
-    def has_change_permission(self, request, obj=None):
-        if not super().has_change_permission(request, obj):
-            return False
-        if obj is None:
-            return True
-        return self._can_edit_chapter(request, obj)
-
-    def has_delete_permission(self, request, obj=None):
-        if not super().has_delete_permission(request, obj):
-            return False
-        if obj is None:
-            return True
-        return self._can_edit_chapter(request, obj)
-
-    # ================== BULK BOB YARATISH ==================
-    def save_model(self, request, obj, form, change):
-        bulk_total = form.cleaned_data.get("bulk_total") or 1
-
-        if change or bulk_total <= 1:
-            super().save_model(request, obj, form, change)
-            return
-
-        manga = form.cleaned_data["manga"]
-        volume = form.cleaned_data["volume"]
-        price_tanga = form.cleaned_data["price_tanga"]
-        release_date = form.cleaned_data["release_date"]
-
-        last_num = (
-            Chapter.objects.filter(manga=manga, volume=volume)
-            .aggregate(Max("chapter_number"))["chapter_number__max"]
-            or 0
-        )
-        start = last_num + 1
-
-        obj.manga = manga
-        obj.volume = volume
-        obj.chapter_number = start
-        obj.price_tanga = price_tanga
-        obj.release_date = release_date
-
-        super().save_model(request, obj, form, change=False)
-
-        new_chapters = []
-        for i in range(1, bulk_total):
-            new_chapters.append(
-                Chapter(
-                    manga=manga,
-                    volume=volume,
-                    chapter_number=start + i,
-                    price_tanga=price_tanga,
-                    release_date=release_date,
-                )
-            )
-
-        if new_chapters:
-            Chapter.objects.bulk_create(new_chapters)
-
-        self.message_user(
-            request,
-            f"{bulk_total} ta bob ({manga.title}, jild {volume}) muvaffaqiyatli yaratildi.",
-            level=messages.SUCCESS,
-        )
-
-    # ================== BULK UPLOAD / PDF UPLOAD TUGMALARI ==================
+    # ================== LINKLAR ==================
     def upload_pages_link(self, obj):
         url = reverse("admin:chapter_upload_pages", args=[obj.pk])
         return format_html('<a class="button" href="{}">📤 Sahifalarni yuklash</a>', url)
@@ -367,55 +342,19 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         return format_html('<a class="button" href="{}">📄 PDF yuklash</a>', url)
     upload_pdf_link.short_description = "PDF Upload"
 
-    def change_view(self, request, object_id, form_url="", extra_context=None):
-        if extra_context is None:
-            extra_context = {}
-
-        upload_url = reverse("admin:chapter_upload_pages", args=[object_id])
-        extra_context["upload_pages_button"] = format_html(
-            """
-            <div style="margin: 10px 0 20px 0;">
-                <a href="{}" class="button" style="
-                    background-color: #2e8540;
-                    color: white;
-                    padding: 6px 12px;
-                    border-radius: 5px;
-                    text-decoration: none;
-                    font-weight: bold;
-                ">
-                    📤 Sahifalarni yuklash
-                </a>
-            </div>
-            """,
-            upload_url,
-        )
-        return super().change_view(request, object_id, form_url, extra_context=extra_context)
-
-    # ================== CUSTOM URLS ==================
+    # ================== URLS ==================
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path(
-                "<int:chapter_id>/upload_pages/",
-                self.admin_site.admin_view(self.upload_pages_view),
-                name="chapter_upload_pages",
-            ),
-            path(
-                "<int:chapter_id>/upload_pdf/",
-                self.admin_site.admin_view(self.upload_pdf_view),
-                name="chapter_upload_pdf",
-            ),
+            path("<int:chapter_id>/upload_pages/", self.admin_site.admin_view(self.upload_pages_view), name="chapter_upload_pages"),
+            path("<int:chapter_id>/upload_pdf/", self.admin_site.admin_view(self.upload_pdf_view), name="chapter_upload_pdf"),
         ]
         return custom_urls + urls
 
-    # ================== BULK UPLOAD VIEW (sizniki - tegmadim) ==================
+    # ================== BULK UPLOAD VIEW (tegmadim) ==================
     def upload_pages_view(self, request, chapter_id):
-        # ... sizning kod o‘z holicha qoladi ...
-        chapter = (
-            Chapter.objects.select_related("manga")
-            .filter(pk=chapter_id)
-            .first()
-        )
+        # ... sizning mavjud kodingiz o‘z holicha qoladi ...
+        chapter = Chapter.objects.select_related("manga").filter(pk=chapter_id).first()
         if not chapter:
             messages.error(request, "Bunday bob topilmadi.")
             return redirect("admin:manga_chapter_changelist")
@@ -432,6 +371,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         if request.method == "POST":
             form = MultiPageUploadForm(request.POST, request.FILES)
             if form.is_valid():
+                import re
 
                 def extract_number(filename: str) -> int:
                     m = re.search(r"(\d+)", filename)
@@ -440,7 +380,6 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
                 files = form.cleaned_data["images"]
                 if not isinstance(files, (list, tuple)):
                     files = [files]
-
                 files = sorted(files, key=lambda f: extract_number(f.name))
 
                 existing_max = (
@@ -451,13 +390,7 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
 
                 new_pages = []
                 for index, f in enumerate(files):
-                    new_pages.append(
-                        Page(
-                            chapter=chapter,
-                            image=f,
-                            page_number=existing_max + index + 1,
-                        )
-                    )
+                    new_pages.append(Page(chapter=chapter, image=f, page_number=existing_max + index + 1))
 
                 Page.objects.bulk_create(new_pages)
                 messages.success(request, f"{len(files)} ta sahifa yuklandi!")
@@ -465,26 +398,10 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
         else:
             form = MultiPageUploadForm()
 
-        return render(
-            request,
-            "admin/bulk_upload.html",
-            {"form": form, "chapter": chapter},
-        )
+        return render(request, "admin/bulk_upload.html", {"form": form, "chapter": chapter})
 
-    # ================== FOREIGNKEY FILTERLARI ==================
-    def formfield_for_foreignkey(self, db_field, request, **kwargs):
-        if db_field.name == "manga" and not request.user.is_superuser:
-            kwargs["queryset"] = Manga.objects.filter(
-                Q(created_by=request.user) |
-                Q(translators__user=request.user)
-            ).distinct()
-        return super().formfield_for_foreignkey(db_field, request, **kwargs)
-
-    # ================== PDF UPLOAD VIEW (✅ ishlaydigan) ==================
+    # ================== PDF UPLOAD VIEW (✅ navbatga qo‘yadi, listga qaytaradi) ==================
     def upload_pdf_view(self, request, chapter_id):
-        import os
-        import tempfile
-
         chapter = Chapter.objects.select_related("manga").filter(pk=chapter_id).first()
         if not chapter:
             messages.error(request, "Bunday bob topilmadi.")
@@ -503,68 +420,54 @@ class ChapterAdmin(OwnMixin, admin.ModelAdmin):
             form = ChapterPDFUploadForm(request.POST, request.FILES)
             if form.is_valid():
                 f = form.cleaned_data["pdf"]
-                replace_existing = form.cleaned_data.get("replace_existing", True)
-                dpi = form.cleaned_data.get("dpi") or 144
-                max_width = form.cleaned_data.get("max_width") or 1400
 
-                # ✅ PDF ekanini tez tekshirib olamiz (xato format bo‘lsa)
+                # PDF header tez tekshiruv
                 try:
                     head = f.read(4)
                     f.seek(0)
                     if head != b"%PDF":
                         messages.error(request, "Bu fayl PDFga o‘xshamaydi (header %PDF emas).")
-                        return redirect("admin:manga_chapter_change", chapter_id)
+                        return redirect("admin:manga_chapter_changelist")
                 except Exception:
-                    # seek bo‘lmasa ham davom etamiz
                     pass
 
-                tmp_path = None
-                should_delete = False
+                # 1 ta chapterga 1 ta active job
+                if ChapterPDFJob.objects.filter(chapter=chapter, status__in=["PENDING", "PROCESSING"]).exists():
+                    messages.warning(request, "Bu bob uchun PDF allaqachon navbatda yoki ishlovda.")
+                    return redirect("admin:manga_chapter_changelist")
 
-                try:
-                    # 1) Agar Django upload faylni diskka yozgan bo‘lsa -> shu pathni ishlatamiz
-                    if hasattr(f, "temporary_file_path"):
-                        tmp_path = f.temporary_file_path()
-                        should_delete = False
-                    else:
-                        # 2) Aks holda real temp fayl yaratib (mkstemp), yozib, yopamiz
-                        fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
-                        with os.fdopen(fd, "wb") as out:
-                            for chunk in f.chunks():
-                                out.write(chunk)
-                        should_delete = True
+                # ✅ Model fieldlari har xil bo‘lsa ham yiqilmasin
+                allowed = {fld.name for fld in ChapterPDFJob._meta.fields}
+                create_kwargs = {
+                    "chapter": chapter,
+                    "pdf": f,
+                    "status": "PENDING",
+                    "progress": 0,
+                    "total": 0,
+                    "replace_existing": form.cleaned_data.get("replace_existing", True),
+                    "dpi": form.cleaned_data.get("dpi") or 144,
+                    "max_width": form.cleaned_data.get("max_width") or 1400,
+                    "quality": 82,
+                    "created_by": request.user,
+                    "created_at": timezone.now(),
+                }
+                create_kwargs = {k: v for k, v in create_kwargs.items() if k in allowed}
 
-                    # ⚠️ atomic xohlasangiz qoladi. Lekin storage rollback bo‘lmaydi.
-                    # Shuning uchun hozir minimal variant: atomic ishlatmaymiz.
-                    created = render_pdf_to_pages(
-                        chapter,
-                        tmp_path,
-                        dpi=dpi,
-                        max_width=max_width,
-                        replace_existing=replace_existing,
-                        quality=82,
-                    )
+                job = ChapterPDFJob.objects.create(**create_kwargs)
 
-                except Exception as e:
-                    messages.error(request, f"PDF konvert xatosi: {e}")
-                    return redirect("admin:manga_chapter_change", chapter_id)
-                finally:
-                    # mkstemp bilan yaratgan bo‘lsak o‘chirib ketamiz
-                    if should_delete and tmp_path:
-                        try:
-                            os.remove(tmp_path)
-                        except Exception:
-                            pass
+                messages.success(request, "PDF qabul qilindi ✅ Navbatga qo‘yildi. Konvert fon rejimida ishlaydi.")
 
-                messages.success(request, f"PDF qabul qilindi: {created} ta WEBP sahifa yaratildi.")
+                # ✅ “PDF navbatga qo‘yildi” bo‘lsa RO‘YXATGA qaytarsin
+                # Agar xohlasangiz next param orqali filtr/searchni ham saqlab qaytarasiz:
+                next_url = request.POST.get("next") or request.GET.get("next")
+                if next_url:
+                    return redirect(next_url)
+
                 return redirect("admin:manga_chapter_changelist")
-
         else:
             form = ChapterPDFUploadForm()
 
         return render(request, "admin/upload_pdf.html", {"form": form, "chapter": chapter})
-
-
 
 # ===== Page =====
 class IsWebPFilter(admin.SimpleListFilter):
