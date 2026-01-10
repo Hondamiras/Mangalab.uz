@@ -1,6 +1,6 @@
 import math
 from io import BytesIO
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, List, Dict, Any
 
 import pypdfium2 as pdfium
 from PIL import Image, ImageChops, ImageOps
@@ -11,11 +11,17 @@ from django.db.models import Max
 from ..models import Page
 
 WEBP_MAX_DIM = 16383
-CHUNK_HEIGHT = 12000
+CHUNK_HEIGHT = 12000  # split_long_pages=True bo‘lsa ishlaydi
 
-# DPI limitlar: xiralik bo'lmasin, lekin server ham o'lmasin :)
 MIN_DPI = 144
-MAX_DPI = 450   # kerak bo'lsa 600 ham qilsa bo'ladi, lekin sekinlashadi
+MAX_DPI = 450
+
+
+def _safe_close(obj) -> None:
+    try:
+        obj.close()
+    except Exception:
+        pass
 
 
 def _detect_content_crop_units(
@@ -28,21 +34,19 @@ def _detect_content_crop_units(
     pad_px: int = 12,
 ) -> Tuple[float, float]:
     """
-    Sahifaning yon oq marginlarini topadi (left/right crop) va PDF unitda qaytaradi.
-    Past rezolyutsiya preview bilan ishlaydi => tez.
+    Sahifaning yon (left/right) oq marginlarini topadi va PDF unit’da qaytaradi.
+    Tez preview render bilan ishlaydi.
     """
-    # preview scale: taxminan 700px kenglik
     if w_units <= 0:
         return 0.0, 0.0
 
     preview_scale = float(preview_max_width_px) / float(w_units)
-    preview_scale = max(0.20, min(preview_scale, 2.0))  # juda kichik/kattani cheklaymiz
+    preview_scale = max(0.20, min(preview_scale, 2.0))
 
     bmp = page.render(scale=preview_scale)
     try:
         img = bmp.to_pil().convert("RGB")
 
-        # oq fon bilan farqini olib, threshold qilamiz
         bg = Image.new("RGB", img.size, (255, 255, 255))
         diff = ImageChops.difference(img, bg).convert("L")
         diff = ImageOps.autocontrast(diff)
@@ -53,116 +57,112 @@ def _detect_content_crop_units(
             return 0.0, 0.0
 
         left_px, _, right_px, _ = bbox
-
-        # padding (kesib yubormasin)
         left_px = max(0, left_px - pad_px)
         right_px = min(img.width, right_px + pad_px)
 
-        # unitga o'tkazamiz: px = unit * scale
         crop_left_units = float(left_px) / float(preview_scale)
         crop_right_units = float(img.width - right_px) / float(preview_scale)
 
-        # safety: haddan oshmasin
         crop_left_units = max(0.0, min(crop_left_units, w_units - 1.0))
         crop_right_units = max(0.0, min(crop_right_units, w_units - 1.0))
 
-        # agar juda agressiv bo'lib qolsa (content juda tor bo'lsa), kesmaymiz
         content_w = w_units - crop_left_units - crop_right_units
-        if content_w <= w_units * 0.35:  # juda tor => no crop
+        if content_w <= w_units * 0.35:
             return 0.0, 0.0
 
         return crop_left_units, crop_right_units
     finally:
-        try:
-            bmp.close()
-        except Exception:
-            pass
+        _safe_close(bmp)
+
+
+def _pick_scale(
+    *,
+    content_w_units: float,
+    h_units: float,
+    target_w_px: int,
+    min_dpi: int,
+    max_dpi: int,
+    force_single_image: bool,
+) -> float:
+    """
+    Scale tanlash:
+    - width bo‘yicha target_w_px ga chiqadi
+    - min_dpi dan pastga tushmaslikka harakat qiladi
+    - max_dpi dan oshirmaydi
+    - WEBP_MAX_DIM limitdan oshirmaydi
+    - force_single_image=True bo‘lsa: height ham WEBP_MAX_DIM dan oshmasin (1 sahifa = 1 WEBP)
+    """
+    content_w_units = max(1.0, float(content_w_units))
+    h_units = max(1.0, float(h_units))
+
+    scale_by_width = float(target_w_px) / float(content_w_units)
+    scale_by_dpi = float(min_dpi) / 72.0
+    scale = max(scale_by_width, scale_by_dpi)
+
+    scale = min(scale, float(max_dpi) / 72.0)
+    scale = min(scale, float(WEBP_MAX_DIM) / float(content_w_units))
+
+    if force_single_image:
+        scale = min(scale, float(WEBP_MAX_DIM) / float(h_units))
+
+    return max(scale, 0.10)
 
 
 def render_pdf_to_pages(
     chapter,
     pdf_path: str,
     *,
-    dpi: int = 144,                 # endi bu "min dpi" sifatida ishlaydi
-    max_width: int = 1400,          # target content width
+    dpi: int = 144,
+    max_width: int = 1400,
     replace_existing: bool = True,
     quality: int = 82,
     webp_method: int = 4,
     progress_cb: Optional[Callable[[int, int], None]] = None,
-
-    # ✅ worker eski kodida total_pages= yuborishi mumkin
-    total_pages: Optional[int] = None,
-) -> int:
+    split_long_pages: bool = False,
+) -> Tuple[int, int]:
     """
     PDF -> WEBP.
-    - Kattalashtirib resize QILMAYDI (xiralik yo'q).
-    - Content bbox aniqlab, yon marginlarni kesib render qiladi (sharp + tezroq).
-    - Uzun sahifalar chunk bo'lib render bo'ladi (RAM yengil).
-    """
 
+    split_long_pages=False (default):
+      ✅ 1 PDF sahifa = 1 WEBP (ketma-ketlik ideal)
+      ✅ Juda uzun sahifada scale pasayadi, lekin bitta rasm bo‘lib qoladi
+
+    split_long_pages=True:
+      Uzun sahifalar CHUNK_HEIGHT bo‘yicha bo‘linadi (tepdan pastga).
+      (Bu rejimda 1 PDF sahifa bir nechta WEBP bo‘lib ketadi.)
+
+    progress_cb(done, total):
+      done = yaratilgan WEBP soni
+      total = chiqishi kutilayotgan WEBP soni
+    """
     min_dpi = max(int(dpi or MIN_DPI), MIN_DPI)
-    max_dpi = MAX_DPI
+    max_dpi = int(MAX_DPI)
     target_w = int(max_width or 1400)
     quality = int(quality or 82)
     webp_method = int(webp_method if webp_method is not None else 4)
 
+    # page_number start
     if replace_existing:
         Page.objects.filter(chapter=chapter).delete()
-        page_no = 0
+        out_no = 0
     else:
-        page_no = (
+        out_no = (
             Page.objects.filter(chapter=chapter)
             .aggregate(Max("page_number"))["page_number__max"]
             or 0
         )
 
-    created = 0
     pdf = pdfium.PdfDocument(pdf_path)
+    created = 0
+
+    plan: List[Dict[str, Any]] = []
+    total_outputs = 0
 
     try:
-        # total bo'laklarni hisoblash (progress uchun)
-        total_pieces = 0
+        page_count = len(pdf)
 
-        # 1-pass: total pieces estimate
-        for i in range(len(pdf)):
-            p = pdf[i]
-            try:
-                try:
-                    w_units, h_units = p.get_size()
-                except Exception:
-                    w_units, h_units = 595.0, 842.0
-
-                # content crop topamiz (tez preview)
-                crop_l, crop_r = _detect_content_crop_units(p, w_units, h_units)
-
-                content_w_units = max(1.0, float(w_units) - float(crop_l) - float(crop_r))
-
-                # scale: target_w bo'yicha + min_dpi
-                scale_by_width = float(target_w) / float(content_w_units)
-                scale_by_dpi = float(min_dpi) / 72.0
-                scale = max(scale_by_width, scale_by_dpi)
-
-                # max_dpi limit
-                scale = min(scale, float(max_dpi) / 72.0)
-
-                # webp width limit
-                max_scale_webp = float(WEBP_MAX_DIM) / float(content_w_units)
-                scale = min(scale, max_scale_webp)
-
-                predicted_h_px = float(h_units) * float(scale)
-                pieces = max(1, int(math.ceil(predicted_h_px / float(CHUNK_HEIGHT))))
-                total_pieces += pieces
-            finally:
-                try:
-                    p.close()
-                except Exception:
-                    pass
-
-        if progress_cb:
-            progress_cb(0, total_pieces)
-
-        # 2-pass: real render
-        for i in range(len(pdf)):
+        # ---------- 1-pass: plan + total estimate ----------
+        for i in range(page_count):
             page = pdf[i]
             try:
                 try:
@@ -173,74 +173,142 @@ def render_pdf_to_pages(
                 crop_l, crop_r = _detect_content_crop_units(page, w_units, h_units)
                 content_w_units = max(1.0, float(w_units) - float(crop_l) - float(crop_r))
 
-                scale_by_width = float(target_w) / float(content_w_units)
-                scale_by_dpi = float(min_dpi) / 72.0
-                scale = max(scale_by_width, scale_by_dpi)
+                scale = _pick_scale(
+                    content_w_units=content_w_units,
+                    h_units=h_units,
+                    target_w_px=target_w,
+                    min_dpi=min_dpi,
+                    max_dpi=max_dpi,
+                    force_single_image=(not split_long_pages),
+                )
 
-                scale = min(scale, float(max_dpi) / 72.0)
-                scale = min(scale, float(WEBP_MAX_DIM) / float(content_w_units))
-                scale = max(scale, 0.10)
+                predicted_h_px = float(h_units) * float(scale)
+                pieces = (
+                    max(1, int(math.ceil(predicted_h_px / float(CHUNK_HEIGHT))))
+                    if split_long_pages
+                    else 1
+                )
 
-                chunk_units = float(CHUNK_HEIGHT) / float(scale)
+                plan.append(
+                    {
+                        "w_units": float(w_units),
+                        "h_units": float(h_units),
+                        "crop_l": float(crop_l),
+                        "crop_r": float(crop_r),
+                        "scale": float(scale),
+                        "pieces": int(pieces),
+                    }
+                )
+                total_outputs += int(pieces)
 
-                slice_top = float(h_units)
-                while slice_top > 0:
-                    slice_bottom = max(0.0, slice_top - chunk_units)
+            finally:
+                _safe_close(page)
 
-                    top_margin = float(h_units) - float(slice_top)
-                    bottom_margin = float(slice_bottom)
+        if progress_cb:
+            progress_cb(0, total_outputs)
 
-                    # crop tuple: (left, top, right, bottom) marginlar (unitda)
-                    crop = (float(crop_l), float(top_margin), float(crop_r), float(bottom_margin))
+        # ---------- 2-pass: render ----------
+        for i, meta in enumerate(plan):
+            page = pdf[i]
+            try:
+                h_units = float(meta["h_units"])
+                crop_l = float(meta["crop_l"])
+                crop_r = float(meta["crop_r"])
+                scale = float(meta["scale"])
+                pieces = int(meta["pieces"])
+
+                if pieces <= 1:
+                    # 1 PDF sahifa = 1 WEBP
+                    # pdfium crop: (left, bottom, right, top) — bu marginlar (unitda)
+                    crop = (crop_l, 0.0, crop_r, 0.0)
 
                     bmp = page.render(scale=scale, crop=crop)
                     try:
                         img = bmp.to_pil().convert("RGB")
 
-                        # ✅ bu yerda kattalashtirish YO'Q.
-                        # faqat safety (kamdan-kam limitdan oshsa) kichraytirish
-                        if img.width > WEBP_MAX_DIM:
-                            new_h = int(img.height * (WEBP_MAX_DIM / img.width))
-                            img = img.resize((WEBP_MAX_DIM, new_h), Image.LANCZOS)
-                        if img.height > WEBP_MAX_DIM:
-                            new_w = int(img.width * (WEBP_MAX_DIM / img.height))
-                            img = img.resize((new_w, WEBP_MAX_DIM), Image.LANCZOS)
+                        # safety: limitdan oshsa kichraytirish
+                        if img.width > WEBP_MAX_DIM or img.height > WEBP_MAX_DIM:
+                            ratio = min(WEBP_MAX_DIM / img.width, WEBP_MAX_DIM / img.height)
+                            img = img.resize(
+                                (max(1, int(img.width * ratio)), max(1, int(img.height * ratio))),
+                                Image.LANCZOS,
+                            )
 
                         buf = BytesIO()
                         img.save(buf, format="WEBP", quality=quality, method=webp_method)
                         buf.seek(0)
 
-                        page_no += 1
+                        out_no += 1
                         fname = (
                             f"chapters/{chapter.manga.slug}/v{chapter.volume}/"
-                            f"ch{chapter.chapter_number}/{page_no:03d}.webp"
+                            f"ch{chapter.chapter_number}/{out_no:03d}.webp"
                         )
 
-                        page_obj = Page(chapter=chapter, page_number=page_no)
+                        page_obj = Page(chapter=chapter, page_number=out_no)
                         page_obj.image.save(fname, ContentFile(buf.read()), save=True)
 
                         created += 1
                         if progress_cb:
-                            progress_cb(created, total_pieces)
+                            progress_cb(created, total_outputs)
 
                     finally:
-                        try:
-                            bmp.close()
-                        except Exception:
-                            pass
+                        _safe_close(bmp)
 
-                    slice_top = slice_bottom
+                else:
+                    # Chunk mode: tepdan pastga
+                    chunk_units = float(CHUNK_HEIGHT) / float(scale)
+                    slice_top = float(h_units)
+
+                    while slice_top > 0:
+                        slice_bottom = max(0.0, slice_top - chunk_units)
+
+                        # Qolsin: [slice_bottom .. slice_top]
+                        top_cut = float(h_units) - float(slice_top)   # tepadan kesiladigan
+                        bottom_cut = float(slice_bottom)              # pastdan kesiladigan
+
+                        # ✅ pdfium crop: (left, bottom, right, top)
+                        crop = (crop_l, bottom_cut, crop_r, top_cut)
+
+                        bmp = page.render(scale=scale, crop=crop)
+                        try:
+                            img = bmp.to_pil().convert("RGB")
+
+                            if img.width > WEBP_MAX_DIM or img.height > WEBP_MAX_DIM:
+                                ratio = min(WEBP_MAX_DIM / img.width, WEBP_MAX_DIM / img.height)
+                                img = img.resize(
+                                    (max(1, int(img.width * ratio)), max(1, int(img.height * ratio))),
+                                    Image.LANCZOS,
+                                )
+
+                            buf = BytesIO()
+                            img.save(buf, format="WEBP", quality=quality, method=webp_method)
+                            buf.seek(0)
+
+                            out_no += 1
+                            fname = (
+                                f"chapters/{chapter.manga.slug}/v{chapter.volume}/"
+                                f"ch{chapter.chapter_number}/{out_no:03d}.webp"
+                            )
+
+                            page_obj = Page(chapter=chapter, page_number=out_no)
+                            page_obj.image.save(fname, ContentFile(buf.read()), save=True)
+
+                            created += 1
+                            if progress_cb:
+                                progress_cb(created, total_outputs)
+
+                        finally:
+                            _safe_close(bmp)
+
+                        slice_top = slice_bottom
 
             finally:
-                try:
-                    page.close()
-                except Exception:
-                    pass
+                _safe_close(page)
+
+        if progress_cb:
+            progress_cb(total_outputs, total_outputs)
+
+        return created, total_outputs
 
     finally:
-        try:
-            pdf.close()
-        except Exception:
-            pass
-
-    return created
+        _safe_close(pdf)
